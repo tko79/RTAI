@@ -79,7 +79,7 @@ int xnthread_init (xnthread_t *thread,
 	thread->tcb.stackbase = (unsigned long *)xnmalloc(stacksize);
 
 	if (!thread->tcb.stackbase)
-	    return XNERR_HEAP_NOMEM;
+	    return XNERR_NOMEM;
 	}
     else
 	thread->tcb.stackbase = NULL;
@@ -144,3 +144,7 @@ void xnthread_cleanup_tcb (xnthread_t *thread)
 
     thread->magic = 0;
 }
+
+EXPORT_SYMBOL(xnthread_init);
+
+

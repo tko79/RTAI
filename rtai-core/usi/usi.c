@@ -18,6 +18,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/init.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 
@@ -280,7 +281,7 @@ static void unregister_lxrt_usi_support(void)
 	}
 }
 
-int USI_INIT_MODULE(void)
+int __rtai_usi_init(void)
 {
 	int i;
 
@@ -301,10 +302,12 @@ int USI_INIT_MODULE(void)
 		usi_lock_pool_p[i] = &usi_lock_pool[i];
 	}
 
+	printk(KERN_INFO "RTAI[usi]: loaded.\n");
+
 	return register_lxrt_usi_support();
 }
 
-void USI_CLEANUP_MODULE(void)
+void __rtai_usi_exit(void)
 {
     unregister_lxrt_usi_support();
 
@@ -313,5 +316,11 @@ void USI_CLEANUP_MODULE(void)
 
     if (usi_lock_pool_p)
 	kfree(usi_lock_pool_p);
+
+    printk(KERN_INFO "RTAI[usi]: unloaded.\n");
 }
 
+#ifndef CONFIG_RTAI_USI_BUILTIN
+module_init(__rtai_usi_init);
+module_exit(__rtai_usi_exit);
+#endif /* !CONFIG_RTAI_USI_BUILTIN */

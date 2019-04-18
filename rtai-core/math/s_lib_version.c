@@ -19,7 +19,7 @@ static char rcsid[] = "$NetBSD: s_lib_version.c,v 1.6 1995/05/10 20:47:44 jtc Ex
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 /*
  * define and initialize _LIB_VERSION

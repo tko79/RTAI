@@ -21,6 +21,7 @@
 #include <linux/errno.h>
 #include <linux/config.h>
 #include <linux/version.h>
+#include <asm/uaccess.h>
 #include <rtai_sched.h>
 #include <rtai_lxrt.h>
 #include <rtai_bits.h>
@@ -257,10 +258,10 @@ unsigned long rt_bits_signal(BITS *bits, int setfun, unsigned long masks)
 	return masks;
 }
 
-int rt_bits_wait(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask)
+int _rt_bits_wait(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask, int space)
 {
 	RT_TASK *rt_current;
-	unsigned long flags;
+	unsigned long flags, mask;
 
 	if (bits->magic != RT_BITS_MAGIC) {
 		return BITS_ERR;
@@ -275,47 +276,57 @@ int rt_bits_wait(BITS *bits, int testfun, unsigned long testmasks, int exitfun, 
 		rem_ready_current(rt_current);
 		enqueue_blocked(rt_current, &bits->queue, 1);
 		rt_schedule();
-		if (resulting_mask) {
-			*resulting_mask = bits->mask;
-		}
+		mask = bits->mask;
 		if (rt_current->blocked_on || bits->magic != RT_BITS_MAGIC) {
 			rt_current->prio_passed_to = NOTHING;
 			rt_global_restore_flags(flags);
 			return BITS_ERR;
 		}
-	} else if (resulting_mask) {
-		*resulting_mask = bits->mask;
+	} else {
+		mask = bits->mask;
 	}
 	exec_fun[exitfun](bits, exitmasks);
 	rt_global_restore_flags(flags);
+	if (resulting_mask) {
+		if (space) {
+			*resulting_mask = mask;
+		} else {
+			copy_to_user(resulting_mask, &mask, sizeof(mask));
+		}
+	}
 	return 0;
 }
 
-int rt_bits_wait_if(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask)
+int _rt_bits_wait_if(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask, int space)
 {
-	unsigned long flags;
+	unsigned long flags, mask;
 
 	if (bits->magic != RT_BITS_MAGIC) {
 		return BITS_ERR;
 	}
 
 	flags = rt_global_save_flags_and_cli();
-	if (resulting_mask) {
-		*resulting_mask = bits->mask;
-	}
+	mask = bits->mask;
 	if (test_fun[testfun](bits, testmasks)) {
 		exec_fun[exitfun](bits, exitmasks);
 		rt_global_restore_flags(flags);
 		return 1;
 	} 
 	rt_global_restore_flags(flags);
+	if (resulting_mask) {
+		if (space) {
+			*resulting_mask = mask;
+		} else {
+			copy_to_user(resulting_mask, &mask, sizeof(mask));
+		}
+	}
 	return 0;
 }
 
-int rt_bits_wait_until(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME time, unsigned long *resulting_mask)
+int _rt_bits_wait_until(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME time, unsigned long *resulting_mask, int space)
 {
 	RT_TASK *rt_current;
-	unsigned long flags;
+	unsigned long flags, mask;
 
 	if (bits->magic != RT_BITS_MAGIC) {
 		return BITS_ERR;
@@ -336,9 +347,7 @@ int rt_bits_wait_until(BITS *bits, int testfun, unsigned long testmasks, int exi
 		} else {
 			rt_current->queue.prev = rt_current->queue.next = &rt_current->queue;
 		}
-		if (resulting_mask) {
-			*resulting_mask = bits->mask;
-		}
+		mask = bits->mask;
 		if (bits->magic != RT_BITS_MAGIC) {
 			rt_current->prio_passed_to = NOTHING;
 			rt_global_restore_flags(flags);
@@ -348,17 +357,24 @@ int rt_bits_wait_until(BITS *bits, int testfun, unsigned long testmasks, int exi
 			rt_global_restore_flags(flags);
 			return BITS_TIMOUT;
 		}
-	} else if (resulting_mask) {
-		*resulting_mask = bits->mask;
+	} else {
+		mask = bits->mask;
 	}
 	exec_fun[exitfun](bits, exitmasks);
 	rt_global_restore_flags(flags);
+	if (resulting_mask) {
+		if (space) {
+			*resulting_mask = mask;
+		} else {
+			copy_to_user(resulting_mask, &mask, sizeof(mask));
+		}
+	}
 	return 0;
 }
 
-int rt_bits_wait_timed(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME delay, unsigned long *resulting_mask)
+int _rt_bits_wait_timed(BITS *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME delay, unsigned long *resulting_mask, int space)
 {
-	return rt_bits_wait_until(bits, testfun, testmasks, exitfun, exitmasks, get_time() + delay, resulting_mask);
+	return _rt_bits_wait_until(bits, testfun, testmasks, exitfun, exitmasks, get_time() + delay, resulting_mask, space);
 }
 
 /* +++++++++++++++++++++++++++++ NAMED BITS +++++++++++++++++++++++++++++++++ */
@@ -428,36 +444,43 @@ struct rt_native_fun_entry rt_bits_entries[] = {
 	{ { 1, rt_get_bits },           	BITS_GET },
 	{ { 1, rt_bits_reset },         	BITS_RESET },
 	{ { 1, rt_bits_signal },        	BITS_SIGNAL },
-	{ { UW1(6, 0), rt_bits_wait },          BITS_WAIT },
-	{ { UW1(6, 0), rt_bits_wait_if },       BITS_WAIT_IF },
-	{ { UW1(8, 0), rt_bits_wait_until },    BITS_WAIT_UNTIL },
-	{ { UW1(8, 0), rt_bits_wait_timed },	BITS_WAIT_TIMED },
+	{ { 1, _rt_bits_wait },          	BITS_WAIT },
+	{ { 1, _rt_bits_wait_if },       	BITS_WAIT_IF },
+	{ { 1, _rt_bits_wait_until },    	BITS_WAIT_UNTIL },
+	{ { 1, _rt_bits_wait_timed },		BITS_WAIT_TIMED },
 	{ { 0, 0 },                            	000 }
 };
 
 extern int set_rt_fun_entries(struct rt_native_fun_entry *entry);
 extern void reset_rt_fun_entries(struct rt_native_fun_entry *entry);
 
-int BITS_INIT_MODULE(void)
+int __rtai_bits_init(void)
 {
 	return set_rt_fun_entries(rt_bits_entries);
 }
 
-void BITS_CLEANUP_MODULE(void)
+void __rtai_bits_exit(void)
 {
 	reset_rt_fun_entries(rt_bits_entries);
 }
 
-/* ++++++++++++++++++++++++++++++++ END BITS ++++++++++++++++++++++++++++++++ */
+#ifndef CONFIG_RTAI_BITS_BUILTIN
+module_init(__rtai_bits_init);
+module_exit(__rtai_bits_exit);
+#endif /* !CONFIG_RTAI_BITS_BUILTIN */
 
-/*
+#ifdef CONFIG_KBUILD
 EXPORT_SYMBOL(rt_bits_init);
 EXPORT_SYMBOL(rt_bits_delete);
 EXPORT_SYMBOL(rt_get_bits);
 EXPORT_SYMBOL(rt_bits_reset);
 EXPORT_SYMBOL(rt_bits_signal);
-EXPORT_SYMBOL(rt_bits_wait);
-EXPORT_SYMBOL(rt_bits_wait_if);
-EXPORT_SYMBOL(rt_bits_wait_until);
-EXPORT_SYMBOL(rt_bits_wait_timed);
-*/
+EXPORT_SYMBOL(_rt_bits_wait);
+EXPORT_SYMBOL(_rt_bits_wait_if);
+EXPORT_SYMBOL(_rt_bits_wait_until);
+EXPORT_SYMBOL(_rt_bits_wait_timed);
+EXPORT_SYMBOL(rt_named_bits_init);
+EXPORT_SYMBOL(rt_named_bits_delete);
+EXPORT_SYMBOL(rt_bits_init_u);
+EXPORT_SYMBOL(rt_bits_delete_u);
+#endif /* CONFIG_KBUILD */

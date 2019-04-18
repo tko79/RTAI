@@ -23,25 +23,17 @@
 
 #include <rtai_types.h>
 
-#ifdef __CONFIG_RTAI_LEDS_SUPPORT
+#ifdef CONFIG_RTAI_INTERNAL_LEDS_SUPPORT
 
 #include <asm/rtai_leds.h>
-
-#ifdef CONFIG_RTAI_LEDS_BUILTIN
-#define LEDS_INIT_MODULE     leds_init_module
-#define LEDS_CLEANUP_MODULE  leds_cleanup_module
-#else  /* !CONFIG_RTAI_LEDS_BUILTIN */
-#define LEDS_INIT_MODULE     init_module
-#define LEDS_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_LEDS_BUILTIN */
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-int LEDS_INIT_MODULE(void);
+int __rtai_leds_init(void);
 
-void LEDS_CLEANUP_MODULE(void);
+void __rtai_leds_exit(void);
 
 void rt_leds_set_mask(unsigned int mask,
 		      unsigned int value);
@@ -66,6 +58,6 @@ void rt_config_leds(unsigned int type,
 }
 #endif /* __cplusplus */
 
-#endif /* __CONFIG_RTAI_LEDS_SUPPORT */
+#endif /* CONFIG_RTAI_INTERNAL_LEDS_SUPPORT */
 
 #endif /* !_RTAI_LEDS_H */

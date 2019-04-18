@@ -48,6 +48,8 @@
 
 #include "xenomai/queue.h"
 
+#define XNPOD_APERIODIC_TICK       0
+
 /* Number of outstanding timers (hint only) -- must be ^2 */
 #define XNTIMER_WHEELSIZE 128
 #define XNTIMER_WHEELMASK (XNTIMER_WHEELSIZE - 1)
@@ -107,11 +109,17 @@ void xntimer_destroy(xntimer_t *timer);
 
 void xntimer_do_timers(int incr);
 
-void xntimer_start(xntimer_t *timer,
-		   xnticks_t value,
-		   xnticks_t interval);
+int xntimer_start(xntimer_t *timer,
+		  xnticks_t value,
+		  xnticks_t interval);
 
 void xntimer_stop(xntimer_t *timer);
+
+xnticks_t xntimer_get_date(xntimer_t *timer);
+
+xnticks_t xntimer_get_timeout(xntimer_t *timer);
+
+void xntimer_freeze(void);
 
 #ifdef __cplusplus
 }

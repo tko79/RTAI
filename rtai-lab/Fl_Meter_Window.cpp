@@ -16,7 +16,32 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
-#include "Fl_Meter_Window.h"
+#include <Fl_Meter_Window.h>
+
+int Fl_Meter_Window::x()
+{
+	return MWin->x();
+}
+
+int Fl_Meter_Window::y()
+{
+	return MWin->y();
+}
+
+int Fl_Meter_Window::w()
+{
+	return MWin->w();
+}
+
+int Fl_Meter_Window::h()
+{
+	return MWin->h();
+}
+
+void Fl_Meter_Window::resize(int x, int y, int w, int h)
+{
+	MWin->resize(x,y,w,h);
+}
 
 void Fl_Meter_Window::show()
 {

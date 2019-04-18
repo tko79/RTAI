@@ -48,7 +48,9 @@ struct option options[] = {
     { "help",       0, 0, 'h' },
     { "r8254",      0, 0, 'r' },
     { "kernel",     0, 0, 'k' },
+#ifdef CONFIG_RTAI_SCHED_LXRT
     { "user",       0, 0, 'u' },
+#endif
     { "period",     1, 0, 'p' },
     { "time",       1, 0, 't' },
     { "cpu",        0, 0, 'c' },
@@ -71,8 +73,10 @@ void print_usage(void)
 	 "      calibrate 8254 oneshot programming type\n"
 	 "  -k, --kernel\n"
 	 "      oneshot latency calibrated for scheduling kernel space tasks\n"
+#ifdef CONFIG_RTAI_SCHED_LXRT
 	 "  -u, --user\n"
 	 "      oneshot latency calibrated for scheduling user space tasks\n"
+#endif
 	 "  -p <period (us)>, --period <period (us)>\n"
 	 "      the period of the underlying hard real time task/intr, default 100 (us)\n"
 	 "  -t <duration (s)>, --time <duration (s)>\n"
@@ -98,7 +102,7 @@ static void unload_kernel_helper (void)
 {
     char modunload[1024];
 
-    snprintf(modunload,sizeof(modunload),"/sbin/rmmod rtai_calibration >/dev/null 2>&1");
+    snprintf(modunload,sizeof(modunload),"/sbin/rmmod %s >/dev/null 2>&1",KERNEL_HELPER_PATH);
     system(modunload);
 }
 
@@ -122,7 +126,9 @@ int main(int argc, char *argv[])
 				exit(0);
 			}
 			case 'r':
+#ifdef CONFIG_RTAI_SCHED_LXRT
 			case 'u':
+#endif
 			case 'c':
 			case 'b':
 			case 'a':
@@ -152,7 +158,7 @@ int main(int argc, char *argv[])
 
 	atexit(&unload_kernel_helper);
 
-	snprintf(modload,sizeof(modload),"/sbin/insmod -o rtai_calibration %s >/dev/null 2>&1",KERNEL_HELPER_PATH);
+	snprintf(modload,sizeof(modload),"/sbin/insmod %s >/dev/null 2>&1",KERNEL_HELPER_PATH);
 	system(modload);
 
 	signal(SIGINT, endme);

@@ -28,6 +28,7 @@
  * @defgroup mbx Mailbox functions
  *@{*/
 
+#include <asm/uaccess.h>
 
 #include <rtai_schedcore.h>
 
@@ -35,7 +36,7 @@ MODULE_LICENSE("GPL");
 
 /* +++++++++++++++++++++++++++++ MAIL BOXES ++++++++++++++++++++++++++++++++ */
 
-static inline void mbx_signal(MBX *mbx)
+static void mbx_signal(MBX *mbx)
 {
 	unsigned long flags;
 	RT_TASK *task;
@@ -98,7 +99,7 @@ res:	if (mbx->sndsem.type > 0) {
 
 #define RT_MBX_MAGIC 0x3ad46e9b
 
-static inline int mbx_wait(MBX *mbx, int *fravbs, RT_TASK *rt_current)
+static int mbx_wait(MBX *mbx, int *fravbs, RT_TASK *rt_current)
 {
 	unsigned long flags;
 
@@ -127,7 +128,7 @@ static inline int mbx_wait(MBX *mbx, int *fravbs, RT_TASK *rt_current)
 	return 0;
 }
 
-static inline int mbx_wait_until(MBX *mbx, int *fravbs, RTIME time, RT_TASK *rt_current)
+static int mbx_wait_until(MBX *mbx, int *fravbs, RTIME time, RT_TASK *rt_current)
 {
 	unsigned long flags;
 
@@ -167,7 +168,7 @@ static inline int mbx_wait_until(MBX *mbx, int *fravbs, RTIME time, RT_TASK *rt_
 
 #define MOD_SIZE(indx) ((indx) < mbx->size ? (indx) : (indx) - mbx->size)
 
-static inline int mbxput(MBX *mbx, char **msg, int msg_size)
+static int mbxput(MBX *mbx, char **msg, int msg_size, int space)
 {
 	unsigned long flags;
 	int tocpy;
@@ -179,7 +180,11 @@ static inline int mbxput(MBX *mbx, char **msg, int msg_size)
 		if (tocpy > mbx->frbs) {
 			tocpy = mbx->frbs;
 		}
-		memcpy(mbx->bufadr + mbx->lbyte, *msg, tocpy);
+		if (space) {
+			memcpy(mbx->bufadr + mbx->lbyte, *msg, tocpy);
+		} else {
+			copy_from_user(mbx->bufadr + mbx->lbyte, *msg, tocpy);
+		}
 		flags = rt_spin_lock_irqsave(&(mbx->lock));
 		mbx->frbs -= tocpy;
 		mbx->avbs += tocpy;
@@ -191,7 +196,7 @@ static inline int mbxput(MBX *mbx, char **msg, int msg_size)
 	return msg_size;
 }
 
-static inline int mbxovrwrput(MBX *mbx, char **msg, int msg_size)
+static int mbxovrwrput(MBX *mbx, char **msg, int msg_size, int space)
 {
 	unsigned long flags;
 	int tocpy,n;
@@ -208,7 +213,11 @@ static inline int mbxovrwrput(MBX *mbx, char **msg, int msg_size)
 			if (tocpy > mbx->frbs) {
 				tocpy = mbx->frbs;
 			}
-			memcpy(mbx->bufadr + mbx->lbyte, *msg, tocpy);
+			if (space) {
+				memcpy(mbx->bufadr + mbx->lbyte, *msg, tocpy);
+			} else {
+				copy_from_user(mbx->bufadr + mbx->lbyte, *msg, tocpy);
+			}
 	        	flags = rt_spin_lock_irqsave(&(mbx->lock));
 			mbx->frbs -= tocpy;
 			mbx->avbs += tocpy;
@@ -236,7 +245,7 @@ static inline int mbxovrwrput(MBX *mbx, char **msg, int msg_size)
 	return 0;
 }
 
-static inline int mbxget(MBX *mbx, char **msg, int msg_size)
+static int mbxget(MBX *mbx, char **msg, int msg_size, int space)
 {
 	unsigned long flags;
 	int tocpy;
@@ -248,7 +257,11 @@ static inline int mbxget(MBX *mbx, char **msg, int msg_size)
 		if (tocpy > mbx->avbs) {
 			tocpy = mbx->avbs;
 		}
-		memcpy(*msg, mbx->bufadr + mbx->fbyte, tocpy);
+		if (space) {
+			memcpy(*msg, mbx->bufadr + mbx->fbyte, tocpy);
+		} else {
+			copy_to_user(*msg, mbx->bufadr + mbx->fbyte, tocpy);
+		}
 		flags = rt_spin_lock_irqsave(&(mbx->lock));
 		mbx->frbs  += tocpy;
 		mbx->avbs  -= tocpy;
@@ -260,7 +273,7 @@ static inline int mbxget(MBX *mbx, char **msg, int msg_size)
 	return msg_size;
 }
 
-static inline int mbxevdrp(MBX *mbx, char **msg, int msg_size)
+static int mbxevdrp(MBX *mbx, char **msg, int msg_size, int space)
 {
 	int tocpy, fbyte, avbs;
 
@@ -273,7 +286,11 @@ static inline int mbxevdrp(MBX *mbx, char **msg, int msg_size)
 		if (tocpy > avbs) {
 			tocpy = avbs;
 		}
-		memcpy(*msg, mbx->bufadr + fbyte, tocpy);
+		if (space) {
+			memcpy(*msg, mbx->bufadr + fbyte, tocpy);
+		} else {
+			copy_to_user(*msg, mbx->bufadr + mbx->fbyte, tocpy);
+		}
 		avbs     -= tocpy;
 		msg_size -= tocpy;
 		*msg     += tocpy;
@@ -282,13 +299,54 @@ static inline int mbxevdrp(MBX *mbx, char **msg, int msg_size)
 	return msg_size;
 }
 
-int rt_mbx_evdrp(MBX *mbx, void *msg, int msg_size)
+
+/**
+ * @brief Receives bytes as many as possible leaving the message
+ * available for another receive.
+ *
+ * rt_mbx_evdrp receives at most @e msg_size of bytes of message
+ * from the mailbox @e mbx and then returns immediately.
+ * Does what rt_mbx_receive_wp does while keeping the message in the mailbox buffer.
+ * Useful if one needs to just preview the mailbox content, without actually
+ * receiving it.
+ *
+ * @param mbx is a pointer to a user allocated mailbox structure.
+ *
+ * @param msg points to a buffer provided by the caller.
+ *
+ * @param msg_size corresponds to the size of the message to be received.
+ *
+ * @return The number of bytes not received is returned.
+ */
+int _rt_mbx_evdrp(MBX *mbx, void *msg, int msg_size, int space)
 {
-	return mbxevdrp(mbx, (char **)(&msg), msg_size);
+	return mbxevdrp(mbx, (char **)(&msg), msg_size, space);
 }
+
 
 #define CHK_MBX_MAGIC { if (mbx->magic != RT_MBX_MAGIC) { return -EINVAL; } }
 
+
+/**
+ * @brief Initializes a fully typed mailbox queueing tasks
+ * according to the specified type.
+ *
+ * rt_typed_mbx_init initializes a mailbox of size @e size. @e mbx must
+ * point to a user allocated MBX structure. Tasks are queued in FIFO
+ * order (FIFO_Q), priority order (PRIO_Q) or resource order (RES_Q).
+ *
+ * @param mbx is a pointer to a user allocated mailbox structure.
+ *
+ * @param size corresponds to the size of the mailbox.
+ *
+ * @param type corresponds to the queueing policy: FIFO_Q, PRIO_Q or RES_Q.
+ *
+ * @return On success 0 is returned. On failure, a special value is
+ * returned as indicated below:
+ * - @b ENOMEM: Space could not be allocated for the mailbox buffer.
+ *
+ * See also: notes under rt_mbx_init().
+ */
 int rt_typed_mbx_init(MBX *mbx, int size, int type)
 {
 	if (!(mbx->bufadr = sched_malloc(size))) { 
@@ -326,13 +384,17 @@ int rt_typed_mbx_init(MBX *mbx, int size, int type)
  * Thus mailboxes provide a flexible mechanism to allow you to freely
  * implement your own policy.
  *
+ * rt_mbx_init is equivalent to rt_typed_mbx_init(mbx, size, PRIO_Q).
+ *
  * @param mbx is a pointer to a user allocated mailbox structure.
  *
  * @param size corresponds to the size of the mailbox.
  *
  * @return On success 0 is returned. On failure, a special value is
  * returned as indicated below:
- * - @b EINVAL: Space could not be allocated for the mailbox buffer.
+ * - @b ENOMEM: Space could not be allocated for the mailbox buffer.
+ *
+ * See also: notes under rt_typed_mbx_init().
  */
 int rt_mbx_init(MBX *mbx, int size)
 {
@@ -344,10 +406,10 @@ int rt_mbx_init(MBX *mbx, int size)
  *
  * @brief Deletes a mailbox.
  * 
- * rt_mbx_delete removes a mailbox previously created with rt_mbox_init().
+ * rt_mbx_delete removes a mailbox previously created with rt_mbx_init().
  *
- * @param mbx Pointer to the structure used in the corresponding call
- * to rt_mbox_init.
+ * @param mbx is the pointer to the structure used in the corresponding call
+ * to rt_mbx_init.
  *
  * @return 0 is returned on success. On failure, a negative value is
  * returned as described below:
@@ -385,22 +447,26 @@ int rt_mbx_delete(MBX *mbx)
  *
  * @param msg_size is the size of the message.
  *
- * @return On success, the number of unsent bytes is returned. On
- * failure a negative value is returned as described below:
- * - @b EINVAL: @e mbx points to not a valid mailbox.
+ * @return On success, 0 is returned.
+ * On failure a value is returned as described below:
+ * - the number of bytes not received: an error is occured 
+ *   in the queueing of all sending tasks.
+ * - @b EINVAL: mbx points to an invalid mailbox.
  */
-int rt_mbx_send(MBX *mbx, void *msg, int msg_size)
+int _rt_mbx_send(MBX *mbx, void *msg, int msg_size, int space)
 {
+	RT_TASK *rt_current = RT_CURRENT;
+
 	CHK_MBX_MAGIC;
 	if (rt_sem_wait(&mbx->sndsem) > 1) {
 		return msg_size;
 	}
 	while (msg_size) {
-		if (mbx_wait(mbx, &mbx->frbs, RT_CURRENT)) {
+		if (mbx_wait(mbx, &mbx->frbs, rt_current)) {
 			rt_sem_signal(&mbx->sndsem);
 			return msg_size;
 		}
-		msg_size = mbxput(mbx, (char **)(&msg), msg_size);
+		msg_size = mbxput(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 	}
 	rt_sem_signal(&mbx->sndsem);
@@ -424,19 +490,20 @@ int rt_mbx_send(MBX *mbx, void *msg, int msg_size)
  * failure a negative value is returned as described below:
  * - @b EINVAL: @e mbx points to an invalid mailbox.
  */
-int rt_mbx_send_wp(MBX *mbx, void *msg, int msg_size)
+int _rt_mbx_send_wp(MBX *mbx, void *msg, int msg_size, int space)
 {
 	unsigned long flags;
+	RT_TASK *rt_current = RT_CURRENT;
 
 	CHK_MBX_MAGIC;
 	flags = rt_global_save_flags_and_cli();
 	if (mbx->sndsem.count && mbx->frbs) {
 		mbx->sndsem.count = 0;
 		if (mbx->sndsem.type > 0) {
-			(mbx->sndsem.owndby = mbx->owndby = RT_CURRENT)->owndres += 2;
+			(mbx->sndsem.owndby = mbx->owndby = rt_current)->owndres += 2;
 		}
 		rt_global_restore_flags(flags);
-		msg_size = mbxput(mbx, (char **)(&msg), msg_size);
+		msg_size = mbxput(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 		rt_sem_signal(&mbx->sndsem);
 	} else {
@@ -459,19 +526,20 @@ int rt_mbx_send_wp(MBX *mbx, void *msg, int msg_size)
  * below:
  * - @b EINVAL: @e mbx points to an invalid mailbox.
  */
-int rt_mbx_send_if(MBX *mbx, void *msg, int msg_size)
+int _rt_mbx_send_if(MBX *mbx, void *msg, int msg_size, int space)
 {
 	unsigned long flags;
+	RT_TASK *rt_current = RT_CURRENT;
 
 	CHK_MBX_MAGIC;
 	flags = rt_global_save_flags_and_cli();
 	if (mbx->sndsem.count && msg_size <= mbx->frbs) {
 		mbx->sndsem.count = 0;
 		if (mbx->sndsem.type > 0) {
-			(mbx->sndsem.owndby = mbx->owndby = RT_CURRENT)->owndres += 2;
+			(mbx->sndsem.owndby = mbx->owndby = rt_current)->owndres += 2;
 		}
 		rt_global_restore_flags(flags);
-		mbxput(mbx, (char **)(&msg), msg_size);
+		mbxput(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 		rt_sem_signal(&mbx->sndsem);
 		return 0;
@@ -482,7 +550,7 @@ int rt_mbx_send_if(MBX *mbx, void *msg, int msg_size)
 
 
 /**
- * @brief Sends a message with timeout.
+ * @brief Sends a message with absolute timeout.
  *
  * rt_mbx_send_until sends a message @e msg of @e msg_size bytes to
  * the mailbox @e mbx. The caller will be blocked until all bytes of
@@ -496,24 +564,27 @@ int rt_mbx_send_if(MBX *mbx, void *msg, int msg_size)
  *
  * @param time is an absolute value for the timeout.
  *
- * @return On success, the number of unsent bytes is returned. On
- * failure a negative value is returned as described below:
+ * @return On success, 0 is returned.
+ * On failure a value is returned as described below:
+ * - the number of bytes not received: an error is occured 
+ *   in the queueing of all sending tasks or the timeout has expired.
  * - @b EINVAL: mbx points to an invalid mailbox.
  *
- * See also: notes under @ref rt_mbx_send_timed().
+ * See also: notes under @ref _rt_mbx_send_timed().
  */
-int rt_mbx_send_until(MBX *mbx, void *msg, int msg_size, RTIME time)
+int _rt_mbx_send_until(MBX *mbx, void *msg, int msg_size, RTIME time, int space)
 {
+	RT_TASK *rt_current = RT_CURRENT;
 	CHK_MBX_MAGIC;
 	if (rt_sem_wait_until(&mbx->sndsem, time) > 1) {
 		return msg_size;
 	}
 	while (msg_size) {
-		if (mbx_wait_until(mbx, &mbx->frbs, time, RT_CURRENT)) {
+		if (mbx_wait_until(mbx, &mbx->frbs, time, rt_current)) {
 			rt_sem_signal(&mbx->sndsem);
 			return msg_size;
 		}
-		msg_size = mbxput(mbx, (char **)(&msg), msg_size);
+		msg_size = mbxput(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 	}
 	rt_sem_signal(&mbx->sndsem);
@@ -522,7 +593,7 @@ int rt_mbx_send_until(MBX *mbx, void *msg, int msg_size, RTIME time)
 
 
 /**
- * @brief Sends a message with timeout.
+ * @brief Sends a message with relative timeout.
  *
  * rt_mbx_send_timed send a message @e msg of @e msg_size bytes to the
  * mailbox @e mbx. The caller will be blocked until all bytes of message 
@@ -536,15 +607,17 @@ int rt_mbx_send_until(MBX *mbx, void *msg, int msg_size, RTIME time)
  *
  * @param delay is the timeout value relative to the current time.
  *
- * @return On success, the number of unsent bytes is returned. On
- * failure a negative value is returned as described below:
+ * @return On success, 0 is returned.
+ * On failure a value is returned as described below:
+ * - the number of bytes not received: an error is occured 
+ *   in the queueing of all sending tasks or the timeout has expired.
  * - @b EINVAL: mbx points to an invalid mailbox.
  *
- * See also: notes under @ref rt_mbx_send_until().
+ * See also: notes under @ref _rt_mbx_send_until().
  */
-int rt_mbx_send_timed(MBX *mbx, void *msg, int msg_size, RTIME delay)
+int _rt_mbx_send_timed(MBX *mbx, void *msg, int msg_size, RTIME delay, int space)
 {
-	return rt_mbx_send_until(mbx, msg, msg_size, get_time() + delay);
+	return _rt_mbx_send_until(mbx, msg, msg_size, get_time() + delay, space);
 }
 
 
@@ -559,24 +632,27 @@ int rt_mbx_send_timed(MBX *mbx, void *msg, int msg_size, RTIME delay)
  *
  * @param msg points to a buffer provided by the caller.
  *
- * @param msg_size corresponds to the size of the message received.
+ * @param msg_size corresponds to the size of the message to be received.
  *
- * @return On success, the number of received bytes is returned. On
- * failure a negative value is returned as described below:
+ * @return On success, 0 is returned.
+ * On failure a value is returned as described below:
+ * - the number of bytes not received: an error is occured 
+ *   in the queueing of all receiving tasks.
  * - @b EINVAL: mbx points to an invalid mailbox.
  */
-int rt_mbx_receive(MBX *mbx, void *msg, int msg_size)
+int _rt_mbx_receive(MBX *mbx, void *msg, int msg_size, int space)
 {
+	RT_TASK *rt_current = RT_CURRENT;
 	CHK_MBX_MAGIC;
 	if (rt_sem_wait(&mbx->rcvsem) > 1) {
 		return msg_size;
 	}
 	while (msg_size) {
-		if (mbx_wait(mbx, &mbx->avbs, RT_CURRENT)) {
+		if (mbx_wait(mbx, &mbx->avbs, rt_current)) {
 			rt_sem_signal(&mbx->rcvsem);
 			return msg_size;
 		}
-		msg_size = mbxget(mbx, (char **)(&msg), msg_size);
+		msg_size = mbxget(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 	}
 	rt_sem_signal(&mbx->rcvsem);
@@ -589,31 +665,32 @@ int rt_mbx_receive(MBX *mbx, void *msg, int msg_size)
  * calling task.
  *
  * rt_mbx_receive_wp receives at most @e msg_size of bytes of message
- * from mailbox mbx then returns immediately.
+ * from the mailbox @e mbx then returns immediately.
  *
  * @param mbx is a pointer to a user allocated mailbox structure.
  *
  * @param msg points to a buffer provided by the caller.
  *
- * @param msg_size corresponds to the size of the message received.
+ * @param msg_size corresponds to the size of the message to be received.
  *
- * @return On success, the number of received bytes is returned. On
+ * @return On success, the number of bytes not received is returned. On
  * failure a negative value is returned as described below:
  * - @b EINVAL: mbx points to not a valid mailbox.
  */
-int rt_mbx_receive_wp(MBX *mbx, void *msg, int msg_size)
+int _rt_mbx_receive_wp(MBX *mbx, void *msg, int msg_size, int space)
 {
 	unsigned long flags;
+	RT_TASK *rt_current = RT_CURRENT;
 
 	CHK_MBX_MAGIC;
 	flags = rt_global_save_flags_and_cli();
 	if (mbx->rcvsem.count && mbx->avbs) {
 		mbx->rcvsem.count = 0;
 		if (mbx->rcvsem.type > 0) {
-			(mbx->rcvsem.owndby = mbx->owndby = RT_CURRENT)->owndres += 2;
+			(mbx->rcvsem.owndby = mbx->owndby = rt_current)->owndres += 2;
 		}
 		rt_global_restore_flags(flags);
-		msg_size = mbxget(mbx, (char **)(&msg), msg_size);
+		msg_size = mbxget(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 		rt_sem_signal(&mbx->rcvsem);
 	} else {
@@ -634,26 +711,27 @@ int rt_mbx_receive_wp(MBX *mbx, void *msg, int msg_size)
  *
  * @param msg points to a buffer provided by the caller.
  *
- * @param msg_size corresponds to the size of the message received.
+ * @param msg_size corresponds to the size of the message to be received.
  *
- * @return On success, the number of received bytes (0 or @e msg_size)
+ * @return On success, the number of bytes not received (0 or @e msg_size)
  * is returned. On failure a negative value is returned as described
  * below:
  * - @b EINVAL: mbx points to an invalid mailbox.
  */
-int rt_mbx_receive_if(MBX *mbx, void *msg, int msg_size)
+int _rt_mbx_receive_if(MBX *mbx, void *msg, int msg_size, int space)
 {
 	unsigned long flags;
+	RT_TASK *rt_current = RT_CURRENT;
 
 	CHK_MBX_MAGIC;
 	flags = rt_global_save_flags_and_cli();
 	if (mbx->rcvsem.count && msg_size <= mbx->avbs) {
 		mbx->rcvsem.count = 0;
 		if (mbx->rcvsem.type > 0) {
-			(mbx->rcvsem.owndby = mbx->owndby = RT_CURRENT)->owndres += 2;
+			(mbx->rcvsem.owndby = mbx->owndby = rt_current)->owndres += 2;
 		}
 		rt_global_restore_flags(flags);
-		mbxget(mbx, (char **)(&msg), msg_size);
+		mbxget(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 		rt_sem_signal(&mbx->rcvsem);
 		return 0;
@@ -664,7 +742,7 @@ int rt_mbx_receive_if(MBX *mbx, void *msg, int msg_size)
 
 
 /**
- * @brief Receives a message with timeout.
+ * @brief Receives a message with absolute timeout.
  *
  * rt_mbx_receive_until receives a message of @e msg_size bytes from
  * the mailbox @e mbx. The caller will be blocked until all bytes of
@@ -678,24 +756,27 @@ int rt_mbx_receive_if(MBX *mbx, void *msg, int msg_size)
  *
  * @param time is an absolute value of the timeout.
  *
- * @return On success, the number of received bytes is returned. On
- * failure a negative value is returned as described below:
+ * @return On success, 0 is returned.
+ * On failure a value is returned as described below:
+ * - the number of bytes not received: an error is occured 
+ *   in the queueing of all receiving tasks or the timeout has expired.
  * - @b EINVAL: mbx points to an invalid mailbox.
  *
  * See also: notes under rt_mbx_received_timed().
  */
-int rt_mbx_receive_until(MBX *mbx, void *msg, int msg_size, RTIME time)
+int _rt_mbx_receive_until(MBX *mbx, void *msg, int msg_size, RTIME time, int space)
 {
+	RT_TASK *rt_current = RT_CURRENT;
 	CHK_MBX_MAGIC;
 	if (rt_sem_wait_until(&mbx->rcvsem, time) > 1) {
 		return msg_size;
 	}
 	while (msg_size) {
-		if (mbx_wait_until(mbx, &mbx->avbs, time, RT_CURRENT)) {
+		if (mbx_wait_until(mbx, &mbx->avbs, time, rt_current)) {
 			rt_sem_signal(&mbx->rcvsem);
 			return msg_size;
 		}
-		msg_size = mbxget(mbx, (char **)(&msg), msg_size);
+		msg_size = mbxget(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 	}
 	rt_sem_signal(&mbx->rcvsem);
@@ -704,7 +785,7 @@ int rt_mbx_receive_until(MBX *mbx, void *msg, int msg_size, RTIME time)
 
 
 /**
- * @brief Receives a message with timeout.
+ * @brief Receives a message with relative timeout.
  *
  * rt_mbx_receive_timed receives a message of @e msg_size bytes from
  * the mailbox @e mbx. The caller will be blocked until all bytes of 
@@ -718,21 +799,37 @@ int rt_mbx_receive_until(MBX *mbx, void *msg, int msg_size, RTIME time)
  *
  * @param delay is the timeout value relative to the current time.
  *
- * @return On success, the number of received bytes is returned. On
- * failure a negative value is returned as described below:
+ * @return On success, 0 is returned.
+ * On failure a value is returned as described below:
+ * - the number of bytes not received: an error is occured 
+ *   in the queueing of all receiving tasks or the timeout has expired.
  * - @b EINVAL: mbx points to an invalid mailbox.
  *
  * See also: notes under rt_mbx_received_until().
  */
-int rt_mbx_receive_timed(MBX *mbx, void *msg, int msg_size, RTIME delay)
+int _rt_mbx_receive_timed(MBX *mbx, void *msg, int msg_size, RTIME delay, int space)
 {
-	return rt_mbx_receive_until(mbx, msg, msg_size, get_time() + delay);
+	return _rt_mbx_receive_until(mbx, msg, msg_size, get_time() + delay, space);
 }
 
 
-int rt_mbx_ovrwr_send(MBX *mbx, void *msg, int msg_size)
+/**
+ * @brief Sends a message overwriting what already in the buffer
+ * if there is no place for the message.
+ *
+ * rt_mbx_ovrwr_send sends the message @e msg of @e msg_size bytes
+ * to the mailbox @e mbx overwriting what already in the mailbox
+ * buffer if there is no place for the message. Useful for logging
+ * purposes. It returns immediately and the caller is never blocked.
+ *
+ * @return On success, 0 is returned. On failure a negative value
+ * is returned as described below:
+ * - @b EINVAL: @e mbx points to an invalid mailbox.
+ */
+int _rt_mbx_ovrwr_send(MBX *mbx, void *msg, int msg_size, int space)
 {
 	unsigned long flags;
+	RT_TASK *rt_current = RT_CURRENT;
 
 	CHK_MBX_MAGIC;
 
@@ -740,10 +837,10 @@ int rt_mbx_ovrwr_send(MBX *mbx, void *msg, int msg_size)
 	if (mbx->sndsem.count) {
 		mbx->sndsem.count = 0;
 		if (mbx->sndsem.type > 0) {
-			(mbx->sndsem.owndby = mbx->owndby = RT_CURRENT)->owndres += 2;
+			(mbx->sndsem.owndby = mbx->owndby = rt_current)->owndres += 2;
 		}
 		rt_global_restore_flags(flags);
-		msg_size = mbxovrwrput(mbx, (char **)(&msg), msg_size);
+		msg_size = mbxovrwrput(mbx, (char **)(&msg), msg_size, space);
 		mbx_signal(mbx);
 		rt_sem_signal(&mbx->sndsem);
 	} else {
@@ -756,16 +853,39 @@ int rt_mbx_ovrwr_send(MBX *mbx, void *msg, int msg_size)
 
 #include <rtai_registry.h>
 
-MBX *rt_typed_named_mbx_init(const char *mbx_name, int size, int qtype)
+
+/**
+ * @brief Initializes a specifically typed (fifo queued, priority queued
+ * or resource queued) mailbox identified by a name.
+ *
+ * _rt_typed_named_mbx_init initializes a mailbox of type @e qtype
+ * and size @e size identified by @e name. Named mailboxed
+ * are useful for use among different processes, kernel/user space and
+ * in distributed applications, see netrpc.
+ *
+ * @param mbx_name is the mailbox name; since it can be a clumsy identifier,
+ * services are provided to convert 6 characters identifiers to unsigned long
+ * (see nam2num()).
+ *
+ * @param size corresponds to the size of the mailbox.
+ *
+ * @param qtype corresponds to the queueing policy: FIFO_Q, PRIO_Q or RES_Q.
+ *
+ * @return On success the pointer to the allocated mbx is returned.
+ * On failure, NULL is returned.
+ *
+ * See also: notes under rt_mbx_init() and rt_typed_mbx_init().
+ */
+MBX *_rt_typed_named_mbx_init(unsigned long mbx_name, int size, int qtype)
 {
 	MBX *mbx;
-	unsigned long name;
 
-	if ((mbx = rt_get_adr(name = nam2num(mbx_name)))) {
+	if ((mbx = rt_get_adr_cnt(mbx_name))) {
 		return mbx;
 	}
-	if ((mbx = rt_malloc(sizeof(MBX))) && !rt_typed_mbx_init(mbx, size, qtype)) {
-		if (rt_register(name, mbx, IS_MBX, 0)) {
+	if ((mbx = rt_malloc(sizeof(MBX)))) {
+		rt_typed_mbx_init(mbx, size, qtype);
+		if (rt_register(mbx_name, mbx, IS_MBX, 0)) {
 			return mbx;
 		}
 		rt_mbx_delete(mbx);
@@ -774,50 +894,100 @@ MBX *rt_typed_named_mbx_init(const char *mbx_name, int size, int qtype)
 	return (MBX *)0;
 }
 
+
+/**
+ *
+ * @brief Deletes a named mailbox.
+ * 
+ * rt_named_mbx_delete removes a mailbox previously created
+ * with _rt_typed_named_mbx_init().
+ *
+ * @param mbx is the pointer to the structure returned by a corresponding
+ * call to _rt_typed_named_mbx_init.
+ *
+ * As it is done by all the named allocation functions delete calls have just
+ * the effect of decrementing a usage count till the last is done, as that is
+ * the one that really frees the object.
+ *
+ * @return On success, an integer >=0 is returned.
+ * On failure, a negative value is returned as described below:
+ * - @b EFAULT: deletion of mailbox failed.
+ *
+ * See also: notes under rt_mbx_delete().
+ */
 int rt_named_mbx_delete(MBX *mbx)
 {
-	if (!rt_mbx_delete(mbx)) {
-		rt_free(mbx);
+	int ret;
+	if (!(ret = rt_drg_on_adr_cnt(mbx))) {
+		if (!rt_mbx_delete(mbx)) {
+			rt_free(mbx);
+			return 0;
+		} else {
+			return -EFAULT;
+		}
 	}
-	return rt_drg_on_adr(mbx);
+	return ret;
 }
 
 /* +++++++++++++++++++++++++ MAIL BOXES ENTRIES +++++++++++++++++++++++++++++ */
 
 struct rt_native_fun_entry rt_mbx_entries[] = {
 
-	{ { 0, rt_typed_mbx_init }, 	       TYPED_MBX_INIT },
-	{ { 0, rt_mbx_delete }, 	       MBX_DELETE },
-	{ { 0, rt_typed_named_mbx_init },      NAMED_MBX_INIT },
-	{ { 0, rt_named_mbx_delete },          NAMED_MBX_DELETE },
-	{ { UR1(2, 3), rt_mbx_send }, 	       MBX_SEND },
-	{ { UR1(2, 3), rt_mbx_send_wp },       MBX_SEND_WP },
-	{ { UR1(2, 3), rt_mbx_send_if },       MBX_SEND_IF },
-	{ { UR1(2, 3), rt_mbx_send_until },    MBX_SEND_UNTIL },
-	{ { UR1(2, 3), rt_mbx_send_timed },    MBX_SEND_TIMED },
-	{ { UW1(2, 3), rt_mbx_receive },       MBX_RECEIVE },
-	{ { UW1(2, 3), rt_mbx_receive_wp },    MBX_RECEIVE_WP },
-	{ { UW1(2, 3), rt_mbx_receive_if },    MBX_RECEIVE_IF },
-	{ { UW1(2, 3), rt_mbx_receive_until }, MBX_RECEIVE_UNTIL },
-	{ { UW1(2, 3), rt_mbx_receive_timed }, MBX_RECEIVE_TIMED },
-	{ { UR1(2, 3), rt_mbx_ovrwr_send },    MBX_EVDRP },
-        { { UW1(2, 3), rt_mbx_evdrp },         MBX_OVRWR_SEND },
-	{ { 0, 0 },  		      	       000 }
+	{ { 0, rt_typed_mbx_init }, 	      	TYPED_MBX_INIT },
+	{ { 0, rt_mbx_delete }, 	      	MBX_DELETE },
+	{ { 0, _rt_typed_named_mbx_init },  	NAMED_MBX_INIT },
+	{ { 0, rt_named_mbx_delete },		NAMED_MBX_DELETE },
+	{ { 1, _rt_mbx_send }, 	       		MBX_SEND },
+	{ { 1, _rt_mbx_send_wp },      		MBX_SEND_WP },
+	{ { 1, _rt_mbx_send_if },      	 	MBX_SEND_IF },
+	{ { 1, _rt_mbx_send_until },    	MBX_SEND_UNTIL },
+	{ { 1, _rt_mbx_send_timed },    	MBX_SEND_TIMED },
+	{ { 1, _rt_mbx_receive },       	MBX_RECEIVE },
+	{ { 1, _rt_mbx_receive_wp },    	MBX_RECEIVE_WP },
+	{ { 1, _rt_mbx_receive_if },    	MBX_RECEIVE_IF },
+	{ { 1, _rt_mbx_receive_until }, 	MBX_RECEIVE_UNTIL },
+	{ { 1, _rt_mbx_receive_timed }, 	MBX_RECEIVE_TIMED },
+	{ { 1, _rt_mbx_ovrwr_send },    	MBX_OVRWR_SEND },
+        { { 1, _rt_mbx_evdrp },         	MBX_EVDRP },
+	{ { 0, 0 },  		      	       	000 }
 };
 
 extern int set_rt_fun_entries(struct rt_native_fun_entry *entry);
 extern void reset_rt_fun_entries(struct rt_native_fun_entry *entry);
 
-int MBX_INIT_MODULE (void)
+int __rtai_mbx_init (void)
 {
 	return set_rt_fun_entries(rt_mbx_entries);
 }
 
-void MBX_CLEANUP_MODULE (void)
+void __rtai_mbx_exit (void)
 {
 	reset_rt_fun_entries(rt_mbx_entries);
 }
 
-/* +++++++++++++++++++++++++++ END MAIL BOXES +++++++++++++++++++++++++++++++ */
-
 /*@}*/
+
+#ifndef CONFIG_RTAI_MBX_BUILTIN
+module_init(__rtai_mbx_init);
+module_exit(__rtai_mbx_exit);
+#endif /* !CONFIG_RTAI_MBX_BUILTIN */
+
+#ifdef CONFIG_KBUILD
+EXPORT_SYMBOL(_rt_mbx_evdrp);
+EXPORT_SYMBOL(rt_typed_mbx_init);
+EXPORT_SYMBOL(rt_mbx_init);
+EXPORT_SYMBOL(rt_mbx_delete);
+EXPORT_SYMBOL(_rt_mbx_send);
+EXPORT_SYMBOL(_rt_mbx_send_wp);
+EXPORT_SYMBOL(_rt_mbx_send_if);
+EXPORT_SYMBOL(_rt_mbx_send_until);
+EXPORT_SYMBOL(_rt_mbx_send_timed);
+EXPORT_SYMBOL(_rt_mbx_receive);
+EXPORT_SYMBOL(_rt_mbx_receive_wp);
+EXPORT_SYMBOL(_rt_mbx_receive_if);
+EXPORT_SYMBOL(_rt_mbx_receive_until);
+EXPORT_SYMBOL(_rt_mbx_receive_timed);
+EXPORT_SYMBOL(_rt_mbx_ovrwr_send);
+EXPORT_SYMBOL(_rt_typed_named_mbx_init);
+EXPORT_SYMBOL(rt_named_mbx_delete);
+#endif /* CONFIG_KBUILD */

@@ -710,7 +710,7 @@ dnl Please note that as the ac_opengl macro and the toy example evolves,
 dnl the version number increases, so you may have to adjust the above
 dnl URL accordingly.
 dnl
-dnl @version 0.01 $Id: acinclude.m4,v 1.2 2003/12/28 20:45:06 gchante Exp $
+dnl @version 0.01 $Id: acinclude.m4,v 1.1.1.1 2004/06/06 14:14:24 rpm Exp $
 dnl @author Matthew D. Langston <langston@SLAC.Stanford.EDU>
 dnl
 dnl Patched by <rpm@xenomai.org> to suit RTAI's requirements.
@@ -875,10 +875,10 @@ AC_CACHE_VAL(ac_cv_comedi,[
 
     # First check to see if --with-comedi was specified.
     if test x"${with_comedi}" != x ; then
-	if test -f "${with_comedi}/include/comedilib.h" ; then
+	if test -f "${with_comedi}/include/linux/comedilib.h" ; then
 	    ac_cv_comedi=`(cd ${with_comedi}; pwd)`
 	else
-	    AC_MSG_ERROR([${with_comedi}/include directory doesn't contain comedilib.h])
+	    AC_MSG_ERROR([${with_comedi}/include directory doesn't contain linux/comedilib.h])
 	fi
     fi
 
@@ -891,7 +891,7 @@ AC_CACHE_VAL(ac_cv_comedi,[
 		`ls -dr ../../comedi* 2>/dev/null` \
 		../../../comedi \
 		`ls -dr ../../../comedi* 2>/dev/null` ; do
-	    if test -f "$i/include/comedilib.h" ; then
+	    if test -f "$i/include/linux/comedilib.h" ; then
 		ac_cv_comedi=`(cd $i; pwd)`
 		break
 	    fi
@@ -902,7 +902,7 @@ AC_CACHE_VAL(ac_cv_comedi,[
     if test x"${ac_cv_comedi}" = x ; then
 	for i in ${prefix}/comedi* /usr/local/comedi* /usr/pkg/comedi* /usr \
 		`ls -dr /usr/lib/comedi* 2>/dev/null` ; do
-	    if test -f "$i/include/comedilib.h" ; then
+	    if test -f "$i/include/linux/comedilib.h" ; then
 		ac_cv_comedi=`(cd $i; pwd)`
 		break
 	    fi
@@ -914,7 +914,7 @@ AC_CACHE_VAL(ac_cv_comedi,[
 	for i in \
 		${srcdir}/../comedi \
 		`ls -dr ${srcdir}/../comedi* 2>/dev/null` ; do
-	    if test -f "$i/include/comedilib.h" ; then
+	    if test -f "$i/include/linux/comedilib.h" ; then
 	    ac_cv_comedi=`(cd $i; pwd)`
 	    break
 	fi
@@ -924,7 +924,7 @@ AC_CACHE_VAL(ac_cv_comedi,[
 
 if test x"${ac_cv_comedi}" = x ; then
     COMEDI_DIR="# no COMEDI installation found"
-    AC_MSG_ERROR(Can't find COMEDI installation)
+    AC_MSG_ERROR(Can't find COMEDI installation ( missing linux/comedilib.h ) )
 else
     COMEDI_DIR=${ac_cv_comedi}
     AC_MSG_RESULT(found $COMEDI_DIR)

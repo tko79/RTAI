@@ -16,7 +16,32 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
-#include "Fl_Scope_Window.h"
+#include <Fl_Scope_Window.h>
+
+int Fl_Scope_Window::x()
+{
+	return SWin->x();
+}
+
+int Fl_Scope_Window::y()
+{
+	return SWin->y();
+}
+
+int Fl_Scope_Window::w()
+{
+	return SWin->w();
+}
+
+int Fl_Scope_Window::h()
+{
+	return SWin->h();
+}
+
+void Fl_Scope_Window::resize(int x, int y, int w, int h)
+{
+	SWin->resize(x,y,w,h);
+}
 
 void Fl_Scope_Window::show()
 {

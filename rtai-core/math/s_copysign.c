@@ -22,7 +22,7 @@ static char rcsid[] = "$NetBSD: s_copysign.c,v 1.8 1995/05/10 20:46:57 jtc Exp $
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 	double copysign(double x, double y)

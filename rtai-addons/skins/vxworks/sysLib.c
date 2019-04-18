@@ -75,8 +75,7 @@ void tickAnnounce(void)
     if(tick_handler != NULL)
         tick_handler(tick_handler_arg);
 
-    nkclock.hits = 1;
-    xnpod_announce_tick(&nkclock);
+    xnpod_announce_tick(&nkclock,1);
 }
 
 

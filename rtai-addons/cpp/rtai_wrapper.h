@@ -1,7 +1,7 @@
 /*
  * Project: rtai_cpp - RTAI C++ Framework 
  *
- * File: $Id: rtai_wrapper.h,v 1.1.1.1 2003/10/14 17:38:51 pgerum Exp $
+ * File: $Id: rtai_wrapper.h,v 1.4 2004/08/29 17:34:09 rpm Exp $
  *
  * Copyright: (C) 2001,2002 Erwin Rol <erwin@muffin.org>
  *
@@ -34,6 +34,8 @@
 extern "C"  {
 #endif
 
+#include <rtai_types.h>
+	
 void __rt_get_global_lock(void);
 
 void __rt_release_global_lock(void);

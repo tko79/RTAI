@@ -922,7 +922,7 @@ int main (int argc, char **argv)
 
     if (FlagLinking)
 	{
-	CCCmdString += " -u main -u mvm_init_skin";
+	CCCmdString += " -u main -u __xeno_skin_init";
 
 	CString libDir(ExecPrefix);
 	libDir += "lib";

@@ -20,8 +20,12 @@ typedef struct devStr{
   int nch;
   char IOName[20];
   char sName[20];
+  char sParam[20];
   double dParam[5];
   int i1;
-  void * ptr;
+  long l1;
+  long l2;
+  void * ptr1;
+  void * ptr2;
 }devStr;
 

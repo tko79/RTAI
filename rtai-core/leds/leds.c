@@ -88,17 +88,25 @@ void rt_config_leds(unsigned int type,
 	}
 }
 
-int LEDS_INIT_MODULE(void)
+int __rtai_leds_init(void)
 {
 	rt_config_leds(1,NULL,0);
 
+	printk(KERN_INFO "RTAI[leds]: loaded.\n");
 	return(0);
 }
 
-void LEDS_CLEANUP_MODULE(void)
+void __rtai_leds_exit(void)
 {
+	printk(KERN_INFO "RTAI[leds]: unloaded.\n");
 }
 
+#ifndef CONFIG_RTAI_LEDS_BUILTIN
+module_init(__rtai_leds_init);
+module_exit(__rtai_leds_exit);
+#endif /* !CONFIG_RTAI_LEDS_BUILTIN */
+
+#ifdef CONFIG_KBUILD
 EXPORT_SYMBOL(rt_leds_set_mask);
 EXPORT_SYMBOL(rt_toggle_leds);
 EXPORT_SYMBOL(rt_reset_leds);
@@ -107,3 +115,4 @@ EXPORT_SYMBOL(rt_clear_leds);
 EXPORT_SYMBOL(rt_get_leds);
 EXPORT_SYMBOL(rt_set_leds_port);
 EXPORT_SYMBOL(rt_config_leds);
+#endif /* CONFIG_KBUILD */

@@ -8,7 +8,7 @@
  *      contain, and more general (in that a single image can be used
  *      in many widgets).
  *
- * $Id: imgCompound.c,v 1.1 2003/10/31 15:37:26 pgerum Exp $
+ * $Id: imgCompound.c,v 1.1.1.1 2004/06/06 14:15:59 rpm Exp $
  *
  * */
 

@@ -17,7 +17,7 @@
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 
 #ifdef __STDC__

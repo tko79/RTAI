@@ -81,6 +81,7 @@ ACKNOWLEDGMENTS:
 #include <linux/kernel.h>
 #include <linux/timex.h>
 #include <linux/sched.h>
+#include <linux/interrupt.h>
 
 #include <asm/param.h>
 #include <asm/system.h>
@@ -138,13 +139,11 @@ static RT_TASK *fpu_task;
 
 DEFINE_LINUX_CR0
 
-//static RTIME rt_time_h;
 #undef rt_time_h
 #define rt_time_h (rt_smp_time_h[0])
 
 static int rt_half_tick;
 
-//static int oneshot_timer;
 #undef oneshot_timer
 #define oneshot_timer (rt_smp_oneshot_timer[0])
 
@@ -158,6 +157,10 @@ static RT_TASK *wdog_task;
 
 static int rt_next_tid = 1;       /* Next task ID */
 
+#ifdef CONFIG_RTAI_ADEOS
+static unsigned sched_virq;
+#endif /* CONFIG_RTAI_ADEOS */
+
 #define MAX_FRESTK_SRQ  64
 static struct { int srq, in, out; void *mp[MAX_FRESTK_SRQ]; } frstk_srq;
 
@@ -167,14 +170,9 @@ static struct { int srq, in, out; void *mp[MAX_FRESTK_SRQ]; } frstk_srq;
 	do { prio = (new_task = rt_linux_task.rnext)->priority; } while(0);
 
 
-static void rt_startup(void(*rt_thread)(int), int data)
+asmlinkage static void rt_startup(void(*rt_thread)(int), int data)
 {
-#ifdef CONFIG_UCLINUX
-	int flags = RTAI_TIMER_IRQLEVEL-0x100;
-	hard_restore_flags(flags);
-#else
 	hard_sti();
-#endif
 	rt_current->exectime[1] = rdtsc();
 	rt_thread(data);
 	rt_task_delete(rt_current);
@@ -244,12 +242,10 @@ int rt_task_init(RT_TASK *task, void (*rt_thread)(int), int data,
 	if (task->magic == RT_TASK_MAGIC || priority < 0) {
 		return -EINVAL;
 	}
-#ifndef CONFIG_UCLINUX
 // If the task struct is unaligned, we'll get problems later
 	if ((unsigned long)task & 0xf){
 		return -EFAULT;
 	}
-#endif
 #ifndef CONFIG_RTAI_FPU_SUPPORT
 	if (uses_fpu) {
 		return -EINVAL;
@@ -433,7 +429,7 @@ int rt_kthread_init(RT_TASK *task, void (*rt_thread)(int), int data,
  *
  * See also: @ref rt_set_runnable_on_cpuid().
  */
-void rt_set_runnable_on_cpus(RT_TASK *task, unsigned int runnable_on_cpus) { }
+void rt_set_runnable_on_cpus(RT_TASK *task, unsigned long runnable_on_cpus) { }
 
 
 /**
@@ -469,7 +465,7 @@ int rt_check_current_stack(void)
 }
 
 
-#ifdef ALLOW_RR
+#if ALLOW_RR
 #define RR_YIELD() \
 if (rt_current->policy > 0) { \
 	rt_current->rr_remaining = rt_current->yield_time - rt_times.tick_time; \
@@ -513,7 +509,7 @@ if (rt_current->policy > 0) { \
 			rt_times.intr_time = new_task->yield_time; \
 		} \
 	} else { \
-		preempt = preempt_always || prio == RT_SCHED_LINUX_PRIORITY; \
+	  preempt = (preempt_always || prio == RT_SCHED_LINUX_PRIORITY);	\
 	}
 
 #else
@@ -525,7 +521,7 @@ if (rt_current->policy > 0) { \
 do { preempt = 0; } while (0)
 
 #define RR_TPREMP() \
-do { preempt = preempt_always || prio == RT_SCHED_LINUX_PRIORITY; } while (0)
+    do { preempt = (preempt_always || prio == RT_SCHED_LINUX_PRIORITY); } while (0)
 #endif
 
 #define ANTICIPATE
@@ -551,6 +547,14 @@ void rt_schedule(void)
 	RT_TASK *task, *new_task;
 	RTIME intr_time, now;
 	int prio, delay, preempt;
+
+#ifdef CONFIG_RTAI_ADEOS
+	if (adp_current != &rtai_domain)
+	    {
+	    adeos_trigger_irq(sched_virq);
+	    return;
+	    }
+#endif /* CONFIG_RTAI_ADEOS */
 
 	sched_rqsted = 1;
 	prio = RT_SCHED_LINUX_PRIORITY;
@@ -595,6 +599,8 @@ void rt_schedule(void)
 	}
 
 	if (new_task != rt_current) {
+		TRACE_RTAI_SCHED_CHANGE(rt_current->tid, new_task->tid, rt_current->state);
+
 		if (rt_current == &rt_linux_task) {
 			rt_switch_to_real_time(0);
 			save_cr0_and_clts(linux_cr0);
@@ -607,23 +613,27 @@ void rt_schedule(void)
 				restore_fpenv(fpu_task->fpu_reg);
 			}
 		}
-		if (new_task == &rt_linux_task) {
-			rt_switch_to_linux(0);
-			restore_cr0(linux_cr0);
-		}
-
-		TRACE_RTAI_SCHED_CHANGE(rt_current->tid, new_task->tid, rt_current->state);
 
 		KEXECTIME();
-//		rt_exchange_tasks(rt_current, new_task);
+
+		if (new_task == &rt_linux_task) {
+			restore_cr0(linux_cr0);
+			rt_switch_to_linux(0);
+			/* From now on, the Linux stage is re-enabled,
+			   but not sync'ed until we have actually
+			   switched to the Linux task, so that we
+			   don't end up running the Linux IRQ handlers
+			   on behalf of a non-Linux stack
+			   context... */
+		}
+
 		rt_switch_to(new_task);
+
 		if (rt_current->signal) {
 			(*rt_current->signal)();
 		}
 	}
-	return;
 }
-
 
 void rt_spv_RMS(int cpuid)
 {
@@ -819,7 +829,6 @@ int rt_task_delete(RT_TASK *task)
 	return 0;
 }
 
-
 static void rt_timer_handler(void)
 {
 	RT_TASK *task, *new_task;
@@ -887,17 +896,15 @@ static void rt_timer_handler(void)
 		TRACE_RTAI_SCHED_CHANGE(rt_current->tid, new_task->tid, rt_current->state);
 
 		KEXECTIME();
-//		rt_exchange_tasks(rt_current, new_task);
 		rt_switch_to(new_task);
 		if (rt_current->signal) {
 			(*rt_current->signal)();
 		}
 	}
-	return;
 }
 
 
-void recover_jiffies(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t recover_jiffies(int irq, void *dev_id, struct pt_regs *regs)
 {
 	unsigned long flags;
 	hard_save_flags_and_cli(flags);
@@ -906,6 +913,7 @@ void recover_jiffies(int irq, void *dev_id, struct pt_regs *regs)
 		rt_pend_linux_irq(TIMER_8254_IRQ);
 	}
 	hard_restore_flags(flags);
+	return RTAI_LINUX_IRQ_HANDLED;
 } 
 
 
@@ -1189,7 +1197,6 @@ RT_TRAP_HANDLER rt_set_task_trap_handler( RT_TASK *task,
 	return old_handler;
 }
 
-
 int rt_trap_handler(int vec, int signo, struct pt_regs *regs, void *dummy_data)
 {
         if (!rt_current) {
@@ -1209,17 +1216,6 @@ int rt_trap_handler(int vec, int signo, struct pt_regs *regs, void *dummy_data)
 
         return 1;
 }
-
-#ifdef CONFIG_RTAI_MALLOC_BUILTIN
-extern unsigned int granularity;
-MODULE_PARM(granularity, "i");
-
-extern int low_chk_ref;
-MODULE_PARM(low_chk_ref, "i");
-
-extern int low_data_mark;
-MODULE_PARM(low_data_mark, "i");
-#endif
 
 static int OneShot = ONE_SHOT;
 MODULE_PARM(OneShot, "i");
@@ -1246,93 +1242,6 @@ static void frstk_srq_handler(void)
 
 static void init_sched_entries(void);
 
-int init_module(void)
-{
-	sched_mem_init();
-	init_sched_entries();
-	rt_linux_task.uses_fpu = LinuxFpu ? 1 : 0;
-	rt_linux_task.magic = 0;
-	rt_linux_task.policy = 0;
-	rt_linux_task.state = RT_SCHED_READY;
-	rt_linux_task.msg_queue.prev = &(rt_linux_task.msg_queue);
-	rt_linux_task.msg_queue.next = &(rt_linux_task.msg_queue);
-	rt_linux_task.msg_queue.task = &rt_linux_task;
-	rt_linux_task.msg = 0;
-	rt_linux_task.ret_queue.prev = &(rt_linux_task.ret_queue);
-	rt_linux_task.ret_queue.next = &(rt_linux_task.ret_queue);
-	rt_linux_task.ret_queue.task = NOTHING;
-	rt_linux_task.priority = rt_linux_task.base_priority = RT_SCHED_LINUX_PRIORITY;
-	rt_linux_task.signal = 0;
-	rt_linux_task.prev = &rt_linux_task;
-	rt_linux_task.next = 0;
-	rt_linux_task.resume_time = RT_TIME_END;
-	rt_linux_task.tprev = rt_linux_task.tnext =
-	rt_linux_task.rprev = rt_linux_task.rnext = &rt_linux_task;
-	rt_current = &rt_linux_task;
-	fpu_task = &rt_linux_task;
-	tuned.latency = imuldiv(Latency, tuned.cpu_freq, 1000000000);
-	tuned.setup_time_TIMER_CPUNIT = imuldiv( SetupTimeTIMER, 
-						 tuned.cpu_freq, 
-						 1000000000);
-	tuned.setup_time_TIMER_UNIT   = imuldiv( SetupTimeTIMER, 
-						 TIMER_FREQ, 
-						 1000000000);
-	tuned.timers_tol[0] = 0;
-	oneshot_timer = OneShot ? 1 : 0;
-	oneshot_running = 0;
-	preempt_always = Preempt_Always ? 1 : 0;
-#ifdef CONFIG_PROC_FS
-	rtai_proc_sched_register();
-#endif
-	printk("\n***** STARTING THE UP REAL TIME SCHEDULER WITH %sLINUX *****", LinuxFpu ? "": "NO ");
-	printk("\n***** FP SUPPORT AND READY FOR A %s TIMER *****", oneshot_timer ? "ONESHOT": "PERIODIC");
-	printk("\n***<> LINUX TICK AT %d (HZ) <>***", HZ);
-	printk("\n***<> CALIBRATED CPU FREQUENCY %lu (HZ) <>***", (unsigned long)tuned.cpu_freq);
-	printk("\n***<> CALIBRATED TIMER-INTERRUPT-TO-SCHEDULER LATENCY %d (ns) <>***", imuldiv(tuned.latency - tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq));
-	printk("\n***<> CALIBRATED ONE SHOT SETUP TIME %d (ns) <>***", imuldiv(tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq));
-	printk("\n***<> COMPILER: %s***\n\n", CONFIG_RTAI_COMPILER);
-	rt_mount_rtai();
-// 0x7dd763ad == nam2num("MEMSRQ").
-	if ((frstk_srq.srq = rt_request_srq(0x7dd763ad, frstk_srq_handler, 0)) < 0) {
-		printk("MEM SRQ: no sysrq available.\n");
-		return frstk_srq.srq;
-	}
-	frstk_srq.in = frstk_srq.out = 0;
-	RT_SET_RTAI_TRAP_HANDLER(rt_trap_handler);
-#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
-	rt_set_ihook(&rtai_handle_isched_lock);
-#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
-
-	return rtai_init_features(); /* see rtai_schedcore.h */
-}
-
-
-extern void krtai_objects_release(void);
-
-void cleanup_module(void)
-{
-	RT_SET_RTAI_TRAP_HANDLER(NULL);
-	stop_rt_timer();
-	while (rt_linux_task.next) {
-		rt_task_delete(rt_linux_task.next);
-	}
-	krtai_objects_release();
-#ifdef CONFIG_PROC_FS
-        rtai_proc_sched_unregister();
-#endif
-	while (frstk_srq.out != frstk_srq.in);
-	if (rt_free_srq(frstk_srq.srq) < 0) {
-		printk("MEM SRQ: frstk_srq %d illegal or already free.\n", frstk_srq.srq);
-	}
-	rtai_cleanup_features();
-	sched_mem_end();
-#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
-	rt_set_ihook(NULL);
-#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
-	rt_umount_rtai();
-	printk("\n***** THE UP REAL TIME SCHEDULER HAS BEEN REMOVED *****\n\n");
-}
-
 /* ++++++++++++++++++++++++++ TIME CONVERSIONS +++++++++++++++++++++++++++++ */
 
 /**
@@ -1354,7 +1263,7 @@ RTIME count2nano(RTIME counts)
 {
 	int sign;
 
-	if (counts > 0) {
+	if (counts >= 0) {
 		sign = 1;
 	} else {
 		sign = 0;
@@ -1394,7 +1303,7 @@ RTIME nano2count(RTIME ns)
 {
 	int sign;
 
-	if (ns > 0) {
+	if (ns >= 0) {
 		sign = 1;
 	} else {
 		sign = 0;
@@ -1732,6 +1641,16 @@ static void init_sched_entries(void)
 
 #endif
 
+int set_rt_fun_ext_index(struct rt_fun_entry *fun, int idx)
+{
+	return -EACCES;
+}
+
+void reset_rt_fun_ext_index( struct rt_fun_entry *fun, int idx)
+{
+	return;
+}
+
 /* ++++++++++++++++++++++++++ SCHEDULER PROC FILE +++++++++++++++++++++++++++ */
 
 #ifdef CONFIG_PROC_FS
@@ -1822,4 +1741,115 @@ static void rtai_proc_sched_unregister(void)
 /* ------------------< end of proc filesystem section >------------------*/
 #endif /* CONFIG_PROC_FS */
 
-/* +++++++++++++++++++++++++++++ SCHEDULER END ++++++++++++++++++++++++++++ */
+static int __rtai_up_init(void)
+{
+	sched_mem_init();
+	init_sched_entries();
+	rt_linux_task.uses_fpu = LinuxFpu ? 1 : 0;
+	rt_linux_task.magic = 0;
+	rt_linux_task.policy = 0;
+	rt_linux_task.state = RT_SCHED_READY;
+	rt_linux_task.msg_queue.prev = &(rt_linux_task.msg_queue);
+	rt_linux_task.msg_queue.next = &(rt_linux_task.msg_queue);
+	rt_linux_task.msg_queue.task = &rt_linux_task;
+	rt_linux_task.msg = 0;
+	rt_linux_task.ret_queue.prev = &(rt_linux_task.ret_queue);
+	rt_linux_task.ret_queue.next = &(rt_linux_task.ret_queue);
+	rt_linux_task.ret_queue.task = NOTHING;
+	rt_linux_task.priority = rt_linux_task.base_priority = RT_SCHED_LINUX_PRIORITY;
+	rt_linux_task.signal = 0;
+	rt_linux_task.prev = &rt_linux_task;
+	rt_linux_task.next = 0;
+	rt_linux_task.resume_time = RT_TIME_END;
+	rt_linux_task.tprev = rt_linux_task.tnext =
+	rt_linux_task.rprev = rt_linux_task.rnext = &rt_linux_task;
+	rt_current = &rt_linux_task;
+	fpu_task = &rt_linux_task;
+	tuned.latency = imuldiv(Latency, tuned.cpu_freq, 1000000000);
+	tuned.setup_time_TIMER_CPUNIT = imuldiv( SetupTimeTIMER, 
+						 tuned.cpu_freq, 
+						 1000000000);
+	tuned.setup_time_TIMER_UNIT   = imuldiv( SetupTimeTIMER, 
+						 TIMER_FREQ, 
+						 1000000000);
+	tuned.timers_tol[0] = 0;
+	oneshot_timer = OneShot ? 1 : 0;
+	oneshot_running = 0;
+	preempt_always = Preempt_Always ? 1 : 0;
+#ifdef CONFIG_PROC_FS
+	rtai_proc_sched_register();
+#endif
+	rt_mount_rtai();
+// 0x7dd763ad == nam2num("MEMSRQ").
+	if ((frstk_srq.srq = rt_request_srq(0x7dd763ad, frstk_srq_handler, 0)) < 0) {
+		printk("MEM SRQ: no sysrq available.\n");
+		return frstk_srq.srq;
+	}
+	frstk_srq.in = frstk_srq.out = 0;
+	RT_SET_RTAI_TRAP_HANDLER(rt_trap_handler);
+#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
+	rt_set_ihook(&rtai_handle_isched_lock);
+#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
+
+#ifdef CONFIG_RTAI_ADEOS
+	sched_virq = adeos_alloc_irq();
+
+	adeos_virtualize_irq_from(&rtai_domain,
+				  sched_virq,
+				  (void (*)(unsigned))&rt_schedule,
+				  NULL,
+				  IPIPE_HANDLE_MASK);
+#endif /* CONFIG_RTAI_ADEOS */
+
+	printk(KERN_INFO "RTAI[sched_up]: loaded.\n");
+	printk(KERN_INFO "RTAI[sched_up]: fpu=%s, timer=%s.\n",
+	       LinuxFpu ? "yes" : "no",
+	       oneshot_timer ? "oneshot" : "periodic");
+	printk(KERN_INFO "RTAI[sched_up]: standard tick=%d hz, CPU freq=%lu hz.\n",
+	       HZ,
+	       (unsigned long)tuned.cpu_freq);
+	printk(KERN_INFO "RTAI[sched_up]: timer setup=%d ns, resched latency=%d ns.\n",
+	       imuldiv(tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq),
+	       imuldiv(tuned.latency - tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq));
+
+	return rtai_init_features(); /* see rtai_schedcore.h */
+}
+
+
+extern void krtai_objects_release(void);
+
+static void __rtai_up_exit(void)
+{
+	RT_SET_RTAI_TRAP_HANDLER(NULL);
+	stop_rt_timer();
+	while (rt_linux_task.next) {
+		rt_task_delete(rt_linux_task.next);
+	}
+	krtai_objects_release();
+#ifdef CONFIG_PROC_FS
+        rtai_proc_sched_unregister();
+#endif
+	while (frstk_srq.out != frstk_srq.in);
+	if (rt_free_srq(frstk_srq.srq) < 0) {
+		printk("MEM SRQ: frstk_srq %d illegal or already free.\n", frstk_srq.srq);
+	}
+
+#ifdef CONFIG_RTAI_ADEOS
+	if (sched_virq)
+	    {
+	    adeos_virtualize_irq_from(&rtai_domain,sched_virq,NULL,NULL,0);
+	    adeos_free_irq(sched_virq);
+	    }
+#endif /* CONFIG_RTAI_ADEOS */
+
+	rtai_cleanup_features();
+	sched_mem_end();
+#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
+	rt_set_ihook(NULL);
+#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
+	rt_umount_rtai();
+	printk(KERN_INFO "RTAI[sched_up]: unloaded.\n");
+}
+
+module_init(__rtai_up_init);
+module_exit(__rtai_up_exit);

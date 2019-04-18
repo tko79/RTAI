@@ -67,23 +67,15 @@ struct rt_tasklet_struct {
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_RTAI_TASKLETS_BUILTIN
-#define TASKLETS_INIT_MODULE     tasklets_init_module
-#define TASKLETS_CLEANUP_MODULE  tasklets_cleanup_module
-#else  /* !CONFIG_RTAI_TASKLETS_BUILTIN */
-#define TASKLETS_INIT_MODULE     init_module
-#define TASKLETS_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_TASKLETS_BUILTIN */
-
 #define STACK_SIZE 8196
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* !__cplusplus */
 
-int TASKLETS_INIT_MODULE(void);
+int __rtai_tasklets_init(void);
 
-void TASKLETS_CLEANUP_MODULE(void);
+void __rtai_tasklets_exit(void);
 
 struct rt_tasklet_struct *rt_init_tasklet(void);
 

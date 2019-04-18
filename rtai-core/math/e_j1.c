@@ -60,7 +60,7 @@ static char rcsid[] = "$NetBSD: e_j1.c,v 1.8 1995/05/10 20:45:27 jtc Exp $";
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 static double pone(double), qone(double);

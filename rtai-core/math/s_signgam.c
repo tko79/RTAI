@@ -1,3 +1,3 @@
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 int signgam = 0;

@@ -85,6 +85,15 @@ else
    defaultwrap=no
 fi
 
+AC_MSG_CHECKING(for Xenomai debug support)
+AC_ARG_ENABLE(xenomai-debug,
+	[ --enable-xenomai-debug	Enable Xenomai debug],
+	[case "$enableval" in
+	y | yes) CONFIG_RTAI_XENOMAI_DEBUG=y ;;
+	*) unset CONFIG_RTAI_XENOMAI_DEBUG ;;
+	esac])
+AC_MSG_RESULT(${CONFIG_RTAI_XENOMAI_DEBUG:-no})
+
 AC_MSG_CHECKING([for GCC tarball])
 
 AC_ARG_WITH(gcc-tarball,
@@ -346,6 +355,10 @@ if test x$CONFIG_RTAI_MVM_DEBUG = xy; then
   AC_DEFINE(CONFIG_RTAI_MVM_DEBUG,1,[Kconfig])
 fi
 
+if test x$CONFIG_RTAI_XENOMAI_DEBUG = xy; then
+  AC_DEFINE(CONFIG_RTAI_XENOMAI_DEBUG,1,[Kconfig])
+fi
+
 dnl Some required routines.
 AC_FUNC_ALLOCA
 AC_FUNC_FNMATCH
@@ -444,25 +457,25 @@ dnl
 AC_CONFIG_SUBDIRS(tkimg)
 
 AC_CONFIG_FILES([ \
-     Makefile \
-     vmutils/Makefile \
-     vm/Makefile \
-     include/Makefile \
-     adaptors/Makefile \
-     skins/Makefile \
-     skins/vrtai/Makefile \
-     skins/xenomai/Makefile \
-     skins/psos+/Makefile \
-     skins/vxworks/Makefile \
-     skins/vrtx/Makefile \
-     skins/uITRON/Makefile \
-     skins/pse51/Makefile \
-     skins/pse51/testsuite/Makefile \
-     gcic/Makefile \
-     scope/Makefile \
-     examples/Makefile \
-     examples/psos+/Makefile \
-     examples/psos+/satch/Makefile \
+     GNUmakefile \
+     vmutils/GNUmakefile \
+     vm/GNUmakefile \
+     include/GNUmakefile \
+     adaptors/GNUmakefile \
+     skins/GNUmakefile \
+     skins/vrtai/GNUmakefile \
+     skins/xenomai/GNUmakefile \
+     skins/psos+/GNUmakefile \
+     skins/vxworks/GNUmakefile \
+     skins/vrtx/GNUmakefile \
+     skins/uITRON/GNUmakefile \
+     skins/pse51/GNUmakefile \
+     skins/pse51/testsuite/GNUmakefile \
+     gcic/GNUmakefile \
+     scope/GNUmakefile \
+     examples/GNUmakefile \
+     examples/psos+/GNUmakefile \
+     examples/psos+/satch/GNUmakefile \
      ])
 
 AC_OUTPUT()

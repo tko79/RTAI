@@ -85,7 +85,7 @@ static char rcsid[] = "$NetBSD: e_sqrt.c,v 1.8 1995/05/10 20:46:17 jtc Exp $";
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 static	const double	one	= 1.0, tiny=1.0e-300;

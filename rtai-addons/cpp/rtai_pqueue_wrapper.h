@@ -6,7 +6,7 @@
 //
 // Authors:             Trevor Woolven (trevw@zentropix.com)
 // Original date:       Thu 15 Jul 1999
-// Id:                  @(#)$Id: rtai_pqueue_wrapper.h,v 1.1.1.1 2003/10/14 17:38:51 pgerum Exp $
+// Id:                  @(#)$Id: rtai_pqueue_wrapper.h,v 1.1.1.1 2004/06/06 14:13:43 rpm Exp $
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public

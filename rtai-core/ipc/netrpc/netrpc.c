@@ -22,6 +22,8 @@
 #include <linux/config.h>
 #include <linux/version.h>
 #include <linux/timer.h>
+#include <linux/unistd.h>
+#include <asm/uaccess.h>
 
 #include <net/ip.h>
 
@@ -96,11 +98,11 @@ MODULE_LICENSE("GPL");
 #define BASEPORT           5000
 #define NETRPC_STACK_SIZE  6000
 
-static int MaxStubs = MAX_STUBS;
+static unsigned long MaxStubs = MAX_STUBS;
 MODULE_PARM(MaxStubs, "i");
 static int MaxStubsMone;
 
-static int MaxSocks = MAX_SOCKS;
+static unsigned long MaxSocks = MAX_SOCKS;
 MODULE_PARM(MaxSocks, "i");
 
 static int StackSize = NETRPC_STACK_SIZE;
@@ -283,13 +285,10 @@ static void net_resume_task(int sock, SEM *sem)
 	rt_sem_signal(sem);
 }
 
-#define MAX_PRIO  99
-#define MIN_PRIO   1
-
-extern int get_min_tasks_cpuid(void);
-extern int set_rtext(RT_TASK *, int, int, void(*)(void), unsigned int, void *);
-extern int clr_rtext(RT_TASK *);
-extern void rt_schedule_soft(RT_TASK *);
+int get_min_tasks_cpuid(void);
+int set_rtext(RT_TASK *, int, int, void(*)(void), unsigned int, void *);
+int clr_rtext(RT_TASK *);
+void rt_schedule_soft(RT_TASK *);
 
 struct fun_args { int a[10]; long long (*fun)(int, ...); };
 
@@ -313,8 +312,7 @@ static void thread_fun(RT_TASK *task)
 {
 	if (!set_rtext(task, task->fun_args[3], 0, 0, get_min_tasks_cpuid(), 0)) {
 		sigfillset(&current->blocked);
-		current->rt_priority = MIN_PRIO;
-		current->policy      = SCHED_FIFO;
+		rtai_set_linux_task_priority(current,SCHED_FIFO,MIN_LINUX_RTPRIO);
 		soft_rt_fun_call(task, rt_task_suspend, task);
 		((void (*)(int))task->fun_args[1])(task->fun_args[2]);
 	}
@@ -374,11 +372,13 @@ static void soft_stub_fun(struct portslot_t *portslotp)
 		if (decode) {
 			decode(portslotp, msg, wsize, RPC_SRV);
 		}
-		if ((wsize = par->priority) < task->priority) {
-			task->priority = wsize;
-			(task->lnxtsk)->rt_priority = wsize >= MAX_PRIO ? MIN_PRIO : MAX_PRIO - wsize;
+		if(par->priority >= 0 && par->priority < RT_SCHED_LINUX_PRIORITY) {
+			if ((wsize = par->priority) < task->priority) {
+				task->priority = wsize;
+				rtai_set_linux_task_priority(task->lnxtsk, task->lnxtsk->policy, wsize >= MAX_LINUX_RTPRIO ? MIN_LINUX_RTPRIO : MAX_LINUX_RTPRIO - wsize);
+			}
+			task->base_priority = par->base_priority;
 		}
-		task->base_priority = par->base_priority;
 		type = par->type;
 		if (par->rsize) {
 			a[USP_RBF1(type) - 1] = (int)((char *)a + par->argsize);
@@ -441,10 +441,12 @@ static void hard_stub_fun(struct portslot_t *portslotp)
 		if (decode) {
 			decode(portslotp, msg, wsize, RPC_SRV);
 		}
-		if ((wsize = par->priority) < task->priority) {
-			task->priority = wsize;
+		if(par->priority >= 0 && par->priority < RT_SCHED_LINUX_PRIORITY) {
+			if ((wsize = par->priority) < task->priority) {
+				task->priority = wsize;
+			}
+			task->base_priority = par->base_priority;
 		}
-		task->base_priority = par->base_priority;
 		type = par->type;
 		if (par->rsize) {
 			a[USP_RBF1(type) - 1] = (int)((char *)a + par->argsize);
@@ -494,8 +496,6 @@ static void trashmsg(struct portslot_t *portslotp, int hard)
 		soft_rt_recvfrom(portslotp->socket[hard], msg, MAX_MSG_SIZE, MSG_DONTWAIT, (void *)msg, (void *)msg);
 	}
 }
-
-#define BASE_SOFT_PRIORITY 1000000000
 
 static void port_server_fun(RT_TASK *port_server)
 {
@@ -592,14 +592,22 @@ int rt_send_req_rel_port(unsigned long node, int op, unsigned long id, MBX *mbx,
 	portslotp->name = PRTSRVNAME;
 	portslotp->addr = SPRT_ADDR;
 	portslotp->addr.sin_addr.s_addr = node;
-	msg.op = op ? ntohs(portslot[op].addr.sin_port) : 0;
+	task = _rt_whoami();
+	if (op) {
+		msg.op = ntohs(portslot[op].addr.sin_port);
+		id = portslot[op].name;
+	} else {
+		msg.op = 0;
+		if (!id) {
+			id = (unsigned long)task;
+		}
+	}
 	msg.port = portslotp->sem.count = 0;
 	portslotp->sem.queue.prev = portslotp->sem.queue.next = &portslotp->sem.queue;
 	msg.hard = hard ? MSG_HARD : MSG_SOFT;
-	task = rt_whoami();
-	msg.owner = OWNER(this_node[msg.hard], id ? id : (unsigned long)task);
-	msg.priority = task->base_priority;
 	msg.name = id;
+	msg.owner = OWNER(this_node[msg.hard], id);
+	msg.priority = task->base_priority;
 	trashmsg(portslot + msg.port, msg.hard);
 	msgsize = encode ? encode(&portslot[0], &msg, sizeof(msg), PRT_REQ) : sizeof(msg);
 	for (i = 0; i < TIMER_FREQ && !portslotp->sem.count; i++) {
@@ -627,6 +635,7 @@ int rt_send_req_rel_port(unsigned long node, int op, unsigned long id, MBX *mbx,
 				portslotp->sem.count = 0;
 				portslotp->sem.queue.prev = portslotp->sem.queue.next = &portslotp->sem.queue;
 				portslotp->hard = msg.hard;
+				portslotp->owner = msg.owner;
 				portslotp->name = msg.name;
 				portslotp->addr.sin_port = htons(msg.port);
 				portslotp->mbx  = mbx;
@@ -703,7 +712,7 @@ static inline void mbx_send_if(MBX *mbx, void *sendmsg, int msg_size)
 	}
 }
 
-unsigned long long rt_net_rpc(int fun_ext_timed, long long type, void *args, int argsize)
+unsigned long long rt_net_rpc(int fun_ext_timed, long long type, void *args, int argsize, int space)
 {
 	char msg[MAX_MSG_SIZE];
 	struct reply_t { int wsize, w2size; unsigned long long retval; char msg[1]; } *reply;
@@ -756,7 +765,7 @@ unsigned long long rt_net_rpc(int fun_ext_timed, long long type, void *args, int
 		RT_TASK *task;
 
 		arg = (void *)msg;
-		arg->priority = (task = rt_whoami())->priority;
+		arg->priority = (task = _rt_whoami())->priority;
 		arg->base_priority = task->base_priority;
 		arg->argsize = argsize;
 		arg->rsize = rsize;
@@ -764,7 +773,11 @@ unsigned long long rt_net_rpc(int fun_ext_timed, long long type, void *args, int
 		arg->type = type;
 		memcpy(arg->args, args, argsize);
 		if (rsize > 0) {			
-			memcpy((char *)arg->args + argsize, (int *)((int *)args + USP_RBF1(type) - 1)[0], rsize);
+			if (space) {
+				memcpy((char *)arg->args + argsize, (int *)((int *)args + USP_RBF1(type) - 1)[0], rsize);
+			} else {
+				copy_from_user((char *)arg->args + argsize, (int *)((int *)args + USP_RBF1(type) - 1)[0], rsize);
+			}
 		}
 		rsize = sizeof(struct msg_t) - sizeof(int) + argsize + rsize;
 		if (encode) {
@@ -784,10 +797,18 @@ unsigned long long rt_net_rpc(int fun_ext_timed, long long type, void *args, int
 			decode(portslotp, portslotp->msg, rsize, RPC_RCV);
 		}
 		if ((reply = (void *)msg)->wsize) {
-			memcpy((char *)(*((int *)args + USP_WBF1(type) - 1)), reply->msg, reply->wsize);
+			if (space) {
+				memcpy((char *)(*((int *)args + USP_WBF1(type) - 1)), reply->msg, reply->wsize);
+			} else {
+				copy_to_user((char *)(*((int *)args + USP_WBF1(type) - 1)), reply->msg, reply->wsize);
+			}
 		}
 		if (reply->w2size) {
-			memcpy((char *)(*((int *)args + USP_WBF2(type) - 1)), reply->msg + reply->wsize, reply->w2size);
+			if (space) {
+				memcpy((char *)(*((int *)args + USP_WBF2(type) - 1)), reply->msg + reply->wsize, reply->w2size);
+			} else {
+				copy_to_user((char *)(*((int *)args + USP_WBF2(type) - 1)), reply->msg + reply->wsize, reply->w2size);
+			}
 		}
 		return reply->retval;
 	}
@@ -807,7 +828,7 @@ int rt_get_net_rpc_ret(MBX *mbx, unsigned long long *retval, void *msg1, int *ms
 		if (*msglen1 > reply.wsize) {
 			*msglen1 = reply.wsize;
 		}
-		rt_mbx_receive(mbx, &msg1, *msglen1);
+		_rt_mbx_receive(mbx, &msg1, *msglen1, 1);
 	} else {
 		*msglen1 = 0;
 	}
@@ -815,7 +836,7 @@ int rt_get_net_rpc_ret(MBX *mbx, unsigned long long *retval, void *msg1, int *ms
 		if (*msglen2 > reply.w2size) {
 			*msglen2 = reply.w2size;
 		}
-		rt_mbx_receive(mbx, &msg2, *msglen2);
+		_rt_mbx_receive(mbx, &msg2, *msglen2, 1);
 	} else {
 		*msglen2 = 0;
 	}
@@ -873,95 +894,6 @@ static void cleanup_softrtnet(void);
 void do_mod_timer(void)
 {
 	mod_timer(&timer, jiffies + (HZ + TIMER_FREQ/2 - 1)/TIMER_FREQ);
-}
-
-int NETRPC_INIT_MODULE(void)
-{
-	int i;
-
-	for (i = 8*sizeof(unsigned long) - 1; !test_bit(i, &MaxStubs); i--);
-	if ((1 << i) != MaxStubs) {
-		printk("MAX_STUBS (%d): must be a power of 2.\n", MaxStubs);
-		MaxStubs = 1 << (i + 1);
-		printk("MAX_STUBS (%d): forced to a power of 2.\n", MaxStubs);
-	}
-	MaxStubsMone = MaxStubs - 1;
-        if ((mod_timer_srq = rt_request_srq(0xbadbeef1, do_mod_timer, 0)) < 0) {
-		printk("MOD_TIMER: no sysrq available.\n");
-		return mod_timer_srq;
-	}
-	MaxSocks += MaxStubs;
-	SPRT_ADDR.sin_family = AF_INET;
-	SPRT_ADDR.sin_addr.s_addr = htonl(INADDR_ANY);
-	if (init_softrtnet()) {
-		return 1;
-	}
-	rt_net_rpc_fun_ext[NET_RPC_EXT] = rt_fun_lxrt;
-	set_rt_fun_entries(rt_netrpc_entries);
-	if (!(portslot = kmalloc(MaxSocks*sizeof(struct portslot_t), GFP_KERNEL))) {
-		printk("KMALLOC FAILED ALLOCATING PORT SLOTS\n");
-	}	
-	if (!ThisSoftNode) {
-		ThisSoftNode = ThisNode;
-	}
-	if (!ThisHardNode) {
-		ThisHardNode = ThisNode;
-	}
-	this_node[0] = ddn2nl(ThisSoftNode);
-	this_node[1] = ddn2nl(ThisHardNode);
-
-	for (i = 0; i < MaxSocks; i++) {
-		portslot[i].p = portslot + i;
-		portslot[i].indx = i;
-		SPRT_ADDR.sin_port = htons(BASEPORT + i);
-		portslot[i].addr = SPRT_ADDR;
-		portslot[i].socket[0] = soft_rt_socket(AF_INET, SOCK_DGRAM, 0);
-		soft_rt_bind(portslot[i].socket[0], (struct sockaddr *)&SPRT_ADDR, ADRSZ);
-		portslot[i].socket[1] = hard_rt_socket(AF_INET, SOCK_DGRAM, 0);
-		hard_rt_bind(portslot[i].socket[1], (struct sockaddr *)&SPRT_ADDR, ADRSZ);
-		soft_rt_socket_callback(portslot[i].socket[0], (void *)net_resume_task, &portslot[i].sem);
-		hard_rt_socket_callback(portslot[i].socket[1], (void *)net_resume_task, &portslot[i].sem);
-		portslot[i].owner = 0;
-		rt_typed_sem_init(&portslot[i].sem, 0, BIN_SEM | FIFO_Q);
-		portslot[i].task = 0;
-	}
-	SPRT_ADDR.sin_port = htons(BASEPORT);
-	portslotsp = MaxStubs;
-	portslot[0].name = PRTSRVNAME;
-	portslot[0].owner = OWNER(this_node, (unsigned long)port_server);
-	port_server = kmalloc(sizeof(RT_TASK) + 3*sizeof(struct fun_args), GFP_KERNEL);
-	soft_kthread_init(port_server, (int)port_server_fun, (int)port_server, RT_SCHED_LOWEST_PRIORITY);
-	portslot[0].task = (int)port_server;
-	rt_task_resume(port_server);
-	rt_typed_sem_init(&timer_sem, 0, BIN_SEM | FIFO_Q);
-	init_timer(&timer);
-	timer.function = timer_fun;
-	return 0 ;
-}
-
-void NETRPC_CLEANUP_MODULE(void)
-{
-	int i;
-
-	reset_rt_fun_entries(rt_netrpc_entries);
-	del_timer(&timer);
-	soft_kthread_delete(port_server);
-	kfree(port_server);
-	rt_sem_delete(&timer_sem);
-	for (i = 0; i < MaxStubs; i++) {
-		if (portslot[i].task) {
-			rt_task_delete((RT_TASK *)portslot[i].task);
-		}
-	}
-	for (i = 0; i < MaxSocks; i++) {
-		rt_sem_delete(&portslot[i].sem);
-		soft_rt_close(portslot[i].socket[0]);
-		hard_rt_close(portslot[i].socket[1]);
-	}
-	kfree(portslot);
-	cleanup_softrtnet();
-	rt_free_srq(mod_timer_srq);
-	return;
 }
 
 #ifdef CONFIG_RTAI_NETRPC_RTNET
@@ -1046,9 +978,9 @@ int soft_rt_recvfrom(int sock, void *msg, int msglen, unsigned int flags, struct
 #include <linux/poll.h>
 #include <linux/net.h>
 
-int errno;
+static int errno;
 
-static inline _syscall3(int, poll, struct pollfd *, ufds, unsigned int, nfds, int, timeout)
+static _syscall3(int, poll, struct pollfd *, ufds, unsigned int, nfds, int, timeout)
 
 static inline int kpoll(struct pollfd *ufds, unsigned int nfds, int timeout)
 {
@@ -1060,7 +992,7 @@ static inline int kpoll(struct pollfd *ufds, unsigned int nfds, int timeout)
 	return retval;
 }
 
-static inline _syscall2(int, socketcall, int, call, void *, args)
+static _syscall2(int, socketcall, int, call, void *, args)
 
 static inline int ksocketcall(int call, void *args)
 {
@@ -1175,14 +1107,14 @@ static inline int krecvmsg(int fd, struct msghdr *msg, unsigned flags)
 }
 
 static DECLARE_MUTEX_LOCKED(mtx);
-static int end_softrtnet;
+static unsigned long end_softrtnet;
 
 static void send_thread(void)
 {
 	int i;
 
-	current->rt_priority = MAX_PRIO;
-	current->policy      = SCHED_RR;
+	sprintf(current->comm, "SNDSRV");
+	rtai_set_linux_task_priority(current,SCHED_FIFO,MAX_LINUX_RTPRIO);
 	sigfillset(&current->blocked);
 	while (!end_softrtnet) {
 		down(&mtx);
@@ -1203,8 +1135,8 @@ static void recv_thread(void)
 	int i, nevents;
 
 	recv_handle = current;
-	current->rt_priority = MAX_PRIO;
-	current->policy      = SCHED_RR;
+	sprintf(current->comm, "RCVSRV");
+	rtai_set_linux_task_priority(current,SCHED_RR,MAX_LINUX_RTPRIO);
 	sigfillset(&current->blocked);
 	while (!end_softrtnet) {
 		if ((nevents = kpoll(pollv, MaxSocks, -1)) > 0) {
@@ -1284,8 +1216,8 @@ static void cleanup_softrtnet(void)
 	rt_free_srq(sysrq.srq);
 	end_softrtnet = 1;
 /* watch out: dirty trick, but we are sure the thread will do nothing more. */
-	recv_handle->sigpending = 1;
-	wake_up_process(recv_handle);
+	sigemptyset(&recv_handle->blocked);
+	send_sig(SIGKILL, recv_handle, 1);
 /* watch out: end of the dirty trick. */
 	softrtnet_hdl();
 	while (end_softrtnet < 7) {
@@ -1314,8 +1246,127 @@ void cleanup_softrtnet(void)
 
 #endif /* !CONFIG_RTAI_NETRPC_RTNET */
 
+extern int LxrtMode;
 /*
  * this is a thing to make available externally what it should not,
  * needed to check the working of a user message processing addon
  */
 void **rt_net_rpc_fun_hook = (void *)rt_net_rpc_fun_ext;
+
+int __rtai_netrpc_init(void)
+{
+	int i;
+
+	LxrtMode = 0;
+	for (i = 8*sizeof(unsigned long) - 1; !test_bit(i, &MaxStubs); i--);
+	if ((1 << i) != MaxStubs) {
+		printk("MAX_STUBS (%lu): must be a power of 2.\n", MaxStubs);
+		MaxStubs = 1 << (i + 1);
+		printk("MAX_STUBS (%lu): forced to a power of 2.\n", MaxStubs);
+	}
+	MaxStubsMone = MaxStubs - 1;
+        if ((mod_timer_srq = rt_request_srq(0xbadbeef1, do_mod_timer, 0)) < 0) {
+		printk("MOD_TIMER: no sysrq available.\n");
+		return mod_timer_srq;
+	}
+	MaxSocks += MaxStubs;
+	SPRT_ADDR.sin_family = AF_INET;
+	SPRT_ADDR.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (init_softrtnet()) {
+		return 1;
+	}
+	rt_net_rpc_fun_ext[NET_RPC_EXT] = rt_fun_lxrt;
+	set_rt_fun_entries(rt_netrpc_entries);
+	if (!(portslot = kmalloc(MaxSocks*sizeof(struct portslot_t), GFP_KERNEL))) {
+		printk("KMALLOC FAILED ALLOCATING PORT SLOTS\n");
+	}	
+	if (!ThisSoftNode) {
+		ThisSoftNode = ThisNode;
+	}
+	if (!ThisHardNode) {
+		ThisHardNode = ThisNode;
+	}
+	this_node[0] = ddn2nl(ThisSoftNode);
+	this_node[1] = ddn2nl(ThisHardNode);
+
+	for (i = 0; i < MaxSocks; i++) {
+		portslot[i].p = portslot + i;
+		portslot[i].indx = i;
+		SPRT_ADDR.sin_port = htons(BASEPORT + i);
+		portslot[i].addr = SPRT_ADDR;
+		portslot[i].socket[0] = soft_rt_socket(AF_INET, SOCK_DGRAM, 0);
+		soft_rt_bind(portslot[i].socket[0], (struct sockaddr *)&SPRT_ADDR, ADRSZ);
+		portslot[i].socket[1] = hard_rt_socket(AF_INET, SOCK_DGRAM, 0);
+		hard_rt_bind(portslot[i].socket[1], (struct sockaddr *)&SPRT_ADDR, ADRSZ);
+		soft_rt_socket_callback(portslot[i].socket[0], (void *)net_resume_task, &portslot[i].sem);
+		hard_rt_socket_callback(portslot[i].socket[1], (void *)net_resume_task, &portslot[i].sem);
+		portslot[i].owner = 0;
+		rt_typed_sem_init(&portslot[i].sem, 0, BIN_SEM | FIFO_Q);
+		portslot[i].task = 0;
+	}
+	SPRT_ADDR.sin_port = htons(BASEPORT);
+	portslotsp = MaxStubs;
+	portslot[0].name = PRTSRVNAME;
+	portslot[0].owner = OWNER(this_node, (unsigned long)port_server);
+	port_server = kmalloc(sizeof(RT_TASK) + 3*sizeof(struct fun_args), GFP_KERNEL);
+	soft_kthread_init(port_server, (int)port_server_fun, (int)port_server, RT_SCHED_LOWEST_PRIORITY);
+	portslot[0].task = (int)port_server;
+	rt_task_resume(port_server);
+	rt_typed_sem_init(&timer_sem, 0, BIN_SEM | FIFO_Q);
+	init_timer(&timer);
+	timer.function = timer_fun;
+	return 0 ;
+}
+
+void __rtai_netrpc_exit(void)
+{
+	int i;
+
+	reset_rt_fun_entries(rt_netrpc_entries);
+	del_timer(&timer);
+	soft_kthread_delete(port_server);
+	kfree(port_server);
+	rt_sem_delete(&timer_sem);
+	for (i = 0; i < MaxStubs; i++) {
+		if (portslot[i].task) {
+			rt_task_delete((RT_TASK *)portslot[i].task);
+		}
+	}
+	for (i = 0; i < MaxSocks; i++) {
+		rt_sem_delete(&portslot[i].sem);
+		soft_rt_close(portslot[i].socket[0]);
+		hard_rt_close(portslot[i].socket[1]);
+	}
+	kfree(portslot);
+	cleanup_softrtnet();
+	rt_free_srq(mod_timer_srq);
+	return;
+}
+
+#ifndef CONFIG_RTAI_NETRPC_BUILTIN
+module_init(__rtai_netrpc_init);
+module_exit(__rtai_netrpc_exit);
+#endif /* !CONFIG_RTAI_NETRPC_BUILTIN */
+
+#ifdef CONFIG_KBUILD
+EXPORT_SYMBOL(set_netrpc_encoding);
+EXPORT_SYMBOL(rt_send_req_rel_port);
+EXPORT_SYMBOL(rt_find_asgn_stub);
+EXPORT_SYMBOL(rt_rel_stub);
+EXPORT_SYMBOL(rt_waiting_return);
+EXPORT_SYMBOL(rt_net_rpc);
+EXPORT_SYMBOL(rt_get_net_rpc_ret);
+EXPORT_SYMBOL(rt_set_this_node);
+
+#ifdef CONFIG_RTAI_NETRPC_RTNET
+EXPORT_SYMBOL(soft_rt_socket);
+EXPORT_SYMBOL(soft_rt_close);
+EXPORT_SYMBOL(soft_rt_bind);
+EXPORT_SYMBOL(soft_rt_socket_callback);
+EXPORT_SYMBOL(soft_rt_sendto);
+EXPORT_SYMBOL(soft_rt_recvfrom);
+EXPORT_SYMBOL(ddn2nl);
+#endif /* CONFIG_RTAI_NETRPC_RTNET */
+
+EXPORT_SYMBOL(rt_net_rpc_fun_hook);
+#endif /* CONFIG_KBUILD */

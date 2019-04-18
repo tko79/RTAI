@@ -23,7 +23,8 @@ What you find in this directory
 	    of directories, in order to be compatible with your own 
 	    configuration:
 		LINUX_HOME = /usr/src/linux
-		RTAI_HOME  = /usr/src/rtai
+		RTAI_HOME  = /usr/realtime
+		COMEDI_HOME = /usr/src/comedi
 
 - rtmain.c: is the real time main program that allows the model to be 
 	    correctly executed under RTAI.
@@ -31,12 +32,50 @@ What you find in this directory
 - setup.m:  is a matlab script that simply adds the devices directory to the 
 	    "matlab" path.
 
-- devices/rtai_scope.c: is the Simulink S-Function that performs the 
+- devices/sfun_rtai_scope.c: is the Simulink S-Function that performs the 
 			multi-trace real-time scopes
 
 - devices/rtai_scope.mdl: is the Simulink Library of RTAI Scope
 
-- examples/test.mdl: is a Simulink model to test the support.
+- devices/sfun_rtai_log.c: is the Simulink S-Function that performs the 
+			multi-dimensional real time logging
+
+- devices/rtai_log.mdl: is the Simulink Library of RTAI Log
+
+- devices/sfun_rtai_led.c: is the Simulink S-Function that performs the 
+			real time leds
+
+- devices/rtai_led.mdl: is the Simulink Library of RTAI Led
+
+- devices/sfun_rtai_meter.c: is the Simulink S-Function that performs the 
+			real time (volt)meters
+
+- devices/rtai_meter.mdl: is the Simulink Library of RTAI Meter
+
+- devices/sfun_rtai_synchronoscope.c: is the Simulink S-Function that performs the 
+			real time synchronoscope
+
+- devices/rtai_synchronoscope.mdl: is the Simulink Library of RTAI Synchronoscope
+
+- devices/sfun_rtai_comedi_data_read.c: is the Simulink S-Function that performs the 
+			synchronous Comedi analog input operation
+
+- devices/rtai_comedi_data_read.mdl: is the Simulink Library of RTAI Comedi_Data_Read
+
+- devices/sfun_rtai_comedi_data_write.c: is the Simulink S-Function that performs the 
+			synchronous Comedi analog output operation
+
+- devices/rtai_comedi_data_write.mdl: is the Simulink Library of RTAI Comedi_Data_Write
+
+- devices/sfun_rtai_comedi_dio_read.c: is the Simulink S-Function that performs the 
+			synchronous Comedi digital input operation
+
+- devices/rtai_comedi_dio_read.mdl: is the Simulink Library of RTAI Comedi_Dio_Read
+
+- devices/sfun_rtai_comedi_dio_write.c: is the Simulink S-Function that performs the 
+			synchronous Comedi digital output operation
+
+- devices/rtai_comedi_dio_write.mdl: is the Simulink Library of RTAI Comedi_Dio_Write
 
 How to install the support
 ==========================
@@ -56,7 +95,7 @@ How to install the support
 How to test the support
 =======================
 
-- open the test.mdl example
+- create a *.mdl example in Simulink (test.mdl)
 
 - generate the code from the RTW menu
 
@@ -74,15 +113,7 @@ How to test the support
   code locally or remotely
 
 For the execution options available to run the RTW generated standalone code
-read the file READ in the main RTAI-Lab directory.
-
-A simple example is provided in the directory example found here. For real 
-applications you might have to rely on material found in the directory 
-lxrt/rtw. Apart from what said above RTAI-Lab usage is not different from
-standard RTW external mode so all waht available in Matlab and within lxrt/rtw
-can be used unchanged and any "already running" application you have can be 
-supervised by RTAI-Lab just by remaking and executing it as an RTW standalone
-model.
+read the file README in the main RTAI-Lab directory.
 
 Lorenzo Dozio (dozio@aero.polimi.it)
-2002 December 19.
+2003 July 31.

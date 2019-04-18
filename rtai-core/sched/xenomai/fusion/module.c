@@ -47,15 +47,14 @@ static void fusion_shutdown (int xtype)
     xnpod_shutdown(xtype);
 }
 
-int init_module (void)
+int __rtai_xeno_init (void)
 
 {
     u_long nstick = XNPOD_DEFAULT_TICK;
     int err;
 
-    err = xnpod_init(&pod,0,4095,0); /* 4096 priority levels should be
-					more than enough to map any
-					VM priority space. */
+    err = xnpod_init(&pod,FUSION_LOW_PRI,FUSION_HIGH_PRI,0);
+
     if (err != XN_OK)
 	return err;
 
@@ -81,7 +80,7 @@ int init_module (void)
     return err;
 }
 
-void cleanup_module (void)
+void __rtai_xeno_exit (void)
 
 {
     dbridge_exit();
@@ -89,3 +88,6 @@ void cleanup_module (void)
     fusion_unregister_skin();
     fusion_shutdown(XNPOD_NORMAL_EXIT);
 }
+
+module_init(__rtai_xeno_init);
+module_exit(__rtai_xeno_exit);

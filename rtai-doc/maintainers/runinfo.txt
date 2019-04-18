@@ -5,11 +5,11 @@ Purpose of the "runinfo" files
 ------------------------------
 
 "runinfo" files found in the source tree allow the "rtai-load" script
-(see rtai-scripts/rtai-load) to retrieve the information it needs to
-execute a RTAI application in an automated manner. This file basically
-describes the module dependencies (i.e from standard RTAI system
-modules) and the load/startup actions (i.e. insmoding module(s) and/or
-launching executable(s)) that need to be taken to start a given
+(see rtai-core/scripts/rtai-load) to retrieve the information it needs
+to execute a RTAI application in an automated manner. This file
+basically describes the module dependencies (i.e from standard RTAI
+system modules) and the load/startup actions (i.e. insmoding module(s)
+and/or launching executable(s)) that need to be taken to start a given
 application.
 
 This mecanism replaces the various hand-crafted "run" shell scripts
@@ -104,27 +104,18 @@ o rtai_moddir=<path_to_RTAI_system_modules>
 
   > Causes each kernel module listed in the dependency section to be
 searched into the given directory. Otherwise, it is searched in the
-current directory.
+installation directory for modules (e.g. /usr/realtime/modules).
 
 Example
 -------
 
-For instance, rtai-testing/kern/latency/runinfo specifies how to
+For instance, rtai-testsuite/kern/latency/runinfo specifies how to
 run the kernel-based latency calibration test. It contains the
 following directives:
 
 latency:ksched+fifos:push rt_process;display;popall:control_c
 
-The first line sets the system module directory to a value that will
-be patched by the configuration script while preparing the build
-environment. @RTAI_MODULE_DIR@ refers to the directory named
-<top_builddir>/modules if RTAI is built inside its own source tree, or
-<prefix>/modules if RTAI is built outside its source tree (preferred
-way). In the latter case, one will have to run "make install" after
-having built RTAI to ensure the modules are properly copied to their
-final installation location.
-
-The second line defines the "latency" target. To run the "latency"
+This line defines the "latency" target. To run the "latency"
 application, tell "rtai-load" to load the active RTAI scheduler for
 kernel-based tasks and the FIFOS support module. Then, "insmod
 ./rt_process.o", then spawn the user-space viewer called ./display (if

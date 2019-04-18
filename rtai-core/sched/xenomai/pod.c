@@ -80,16 +80,6 @@ xnpod_t *nkpod = NULL;
 
 xnintr_t nkclock;
 
-/* Kernel debugger thread */
-
-static xnthread_t *nkdbthread;
-
-static void (*nkdbentry)(void *cookie);
-
-static void (*nkdbexit)(void);
-
-static unsigned nkdbstacksz;
-
 const char *xnpod_fatal_helper (const char *format, ...)
 
 {
@@ -108,7 +98,7 @@ const char *xnpod_fatal_helper (const char *format, ...)
 	goto out;
 
     setbits(nkpod->status,XNFATAL);
-    xnarch_stop_timer();
+    xntimer_freeze();
 
     xnprintf("--%-12s PRI   STATUS\n","THREAD");
 
@@ -124,7 +114,17 @@ const char *xnpod_fatal_helper (const char *format, ...)
 	holder = nextq(&nkpod->threadq,holder);
 	}
 
-    xnprintf("\nElapsed ticks: %Lu\n",nkpod->jiffies);
+    if (testbits(nkpod->status,XNTIMED))
+	{
+	if (testbits(nkpod->status,XNTMPER))
+	    xnprintf("Timer: periodic [tickval=%luus, elapsed=%Lu]\n",
+		     xnpod_get_tickval() / 1000,
+		     nkpod->jiffies);
+	else
+	    xnprintf("Timer: aperiodic.\n");
+	}
+    else
+	xnprintf("Timer: none.\n");
 
  out:
 
@@ -171,6 +171,11 @@ static int xnpod_fault_handler (xnarch_fltinfo_t *fltinfo)
 #endif /* __KERNEL__ */
 
     return 0;
+}
+
+static void xnpod_host_tick (void *cookie) { /* Host tick relay handler */
+
+    xnarch_relay_tick();
 }
 
 /*! 
@@ -241,6 +246,8 @@ int xnpod_init (xnpod_t *pod, int minpri, int maxpri, xnflags_t flags)
     for (n = 0; n < XNTIMER_WHEELSIZE; n++)
 	initq(&pod->timerwheel[n]);
 
+    xntimer_init(&pod->htimer,&xnpod_host_tick,NULL);
+
     xnarch_atomic_set(&pod->schedlck,0);
     pod->minpri = minpri;
     pod->maxpri = maxpri;
@@ -254,6 +261,7 @@ int xnpod_init (xnpod_t *pod, int minpri, int maxpri, xnflags_t flags)
     pod->svctable.tickhandler = NULL;
     pod->svctable.faulthandler = &xnpod_fault_handler;
     pod->schedhook = NULL;
+    pod->latency = xnarch_ns_to_tsc(XNARCH_SCHED_LATENCY);
 
     sched = &pod->sched;
     initq(&sched->suspendq);
@@ -265,10 +273,9 @@ int xnpod_init (xnpod_t *pod, int minpri, int maxpri, xnflags_t flags)
 
     pod->root_prio_base = xnpod_get_minprio(pod,1);
     pod->isvc_prio_idle = xnpod_get_minprio(pod,2);
-    pod->kdbg_prio_base = xnpod_get_maxprio(pod,999);
 
     if (xnheap_init(&kheap,NULL,XNPOD_HEAPSIZE,XNPOD_PAGESIZE) != XN_OK)
-	return XNERR_POD_NOMEM;
+	return XNERR_NOMEM;
 
     /* Create the root thread -- it might be a placeholder for the
        current context or a real thread, it depends on the real-time
@@ -292,33 +299,15 @@ int xnpod_init (xnpod_t *pod, int minpri, int maxpri, xnflags_t flags)
 
     sched->runthread = &sched->rootcb;
     sched->usrthread = &sched->rootcb;
+#ifdef CONFIG_RTAI_FPU_SUPPORT
     sched->fpuholder = &sched->rootcb;
+#endif /* CONFIG_RTAI_FPU_SUPPORT */
 
     appendq(&pod->threadq,&sched->rootcb.glink);
 
     xnarch_init_root_tcb(xnthread_archtcb(&sched->rootcb),
 			 &sched->rootcb,
 			 xnthread_name(&sched->rootcb));
-
-    /* If a kernel debug monitor has registered itself, start its
-       thread. */
-
-    if (nkdbthread)
-	{
-	xnpod_init_thread(nkdbthread,
-			  "Debugger",
-			  XNPOD_KDEBUG_PRIO_BASE,
-			  XNDEBUG,
-			  nkdbstacksz,
-			  NULL,
-			  0);
-
-	xnpod_start_thread(nkdbthread,
-			   0,
-			   0,
-			   nkdbentry,
-			   nkdbthread);
-	}
 
     xnarch_notify_ready();
 
@@ -360,13 +349,6 @@ void xnpod_shutdown (int xtype)
 
     xnpod_stop_timer();
 
-    if (nkdbthread && testbits(nkdbthread->status,XNSTARTED))
-	{
-	nkdbexit();
-	xnpod_delete_thread(nkdbthread,NULL);
-	nkdbthread = NULL;
-	}
-
     splhigh(s);
 
     nholder = getheadq(&nkpod->threadq);
@@ -384,10 +366,12 @@ void xnpod_shutdown (int xtype)
 
     xnheap_destroy(&kheap);
 
+    xntimer_destroy(&nkpod->htimer);
+
     nkpod = NULL;
 }
 
-static void xnpod_fire_callouts (xnqueue_t *hookq, xnthread_t *thread)
+static inline void xnpod_fire_callouts (xnqueue_t *hookq, xnthread_t *thread)
 
 {
     xnholder_t *holder, *nholder;
@@ -490,8 +474,7 @@ static inline void xnpod_preempt_current_thread (void)
  * a thread is not expected to use the FPU. This flag is simply
  * ignored when Xenomai runs on behalf of a userspace-based real-time
  * control layer since the FPU management is always active if
- * present. This flag only applies to kernel-based layers such as
- * Adeos or RTAI.
+ * present.
  *
  * @param stacksize The size of the stack (in bytes) for the new
  * thread. If zero is passed, the nanokernel will use a reasonable
@@ -500,15 +483,23 @@ static inline void xnpod_preempt_current_thread (void)
  *
  * @param adcookie An architecture-dependent cookie. The caller should
  * pass the XNARCH_THREAD_COOKIE value defined for all real-time
- * control layers in their respective interface file
- * (i.e. xenomai/arch/<archname>.h). This system-defined cookie must
- * not be confused with the user-defined thread cookie passed to the
- * xnpod_start_thread() service.
+ * control layers in their respective interface file. This
+ * system-defined cookie must not be confused with the user-defined
+ * thread cookie passed to the xnpod_start_thread() service.
  *
  * @param magic A magic cookie each skin can define to unambiguously
  * identify threads created in their realm. This value is copied as-is
- * to the "maagic" field of the thread struct. 0 is a conventional
+ * to the "magic" field of the thread struct. 0 is a conventional
  * value for "no magic".
+ *
+ * @return XN_OK is returned on success. Otherwise, one of the
+ * following error codes indicates the cause of the failure:
+ *
+ *         - XNERR_PARAM is returned if @a flags has invalid bits set.
+ *
+ *         - XNERR_NOMEM is returned if @a thread is NULL or not
+ *         enough memory is available from the system heap to create
+ *         the new thread's stack.
  *
  * Side-effect: This routine does not call the rescheduling procedure.
  *
@@ -528,7 +519,10 @@ int xnpod_init_thread (xnthread_t *thread,
 
     if (!thread)
 	/* Allow the caller to bypass parametrical checks... */
-	return XNERR_HEAP_NOMEM;
+	return XNERR_NOMEM;
+
+    if (flags & ~(XNFPU|XNSHADOW|XNISVC))
+	return XNERR_PARAM;
 
     if (stacksize == 0)
 	stacksize = XNARCH_THREAD_STACKSZ;
@@ -611,7 +605,6 @@ void xnpod_start_thread (xnthread_t *thread,
 			 void (*entry)(void *cookie),
 			 void *cookie)
 {
-    xnsched_t *sched;
     spl_t s;
 
     if (!testbits(thread->status,XNDORMANT))
@@ -624,8 +617,6 @@ void xnpod_start_thread (xnthread_t *thread,
 	splexit(s);
 	return;
 	}
-
-    sched = thread->sched;
 
     /* Setup the TCB and initial stack frame */
 
@@ -859,7 +850,7 @@ xnflags_t xnpod_set_thread_mode (xnthread_t *thread,
  *
  * The DELETE hooks are called on behalf of the calling context (if
  * any). The information stored in the thread control block remains
- * valid until all the hook have been called.
+ * valid until all hooks have been called.
  *
  * Self-terminating a thread is allowed. In such a case, this service
  * does not return to the caller.
@@ -920,8 +911,10 @@ void xnpod_delete_thread (xnthread_t *thread, xnmutex_t *imutex)
 
     xnsynch_release_all_ownerships(thread);
 
+#ifdef CONFIG_RTAI_FPU_SUPPORT
     if (thread == sched->fpuholder)
 	sched->fpuholder = NULL;
+#endif /* CONFIG_RTAI_FPU_SUPPORT */
 
     setbits(thread->status,XNZOMBIE);
 
@@ -946,7 +939,8 @@ void xnpod_delete_thread (xnthread_t *thread, xnmutex_t *imutex)
            the user hooks have been called. FIXME: Catch 22 here,
            whether we choose to run on an invalid stack (cleanup then
            hooks), or to access the TCB space shortly after it has
-           been freed (hooks then cleanup)... Option #2 is current. */
+           been freed while non-preemptible (hooks then
+           cleanup)... Option #2 is current. */
 
 	xnthread_cleanup_tcb(thread);
 
@@ -1026,7 +1020,7 @@ int xnpod_suspend_thread (xnthread_t *thread,
 			  xnsynch_t *wchan,
 			  xnmutex_t *imutex)
 {
-    xnsched_t *sched = thread->sched;
+    xnsched_t *sched;
     spl_t s;
 
     /* This routine must be free both from interrupt preemption AND
@@ -1041,6 +1035,10 @@ int xnpod_suspend_thread (xnthread_t *thread,
     if (thread->wchan && wchan)
 	xnpod_fatal("invalid conjunctive wait on multiple synch. objects");
 
+    splhigh(s);
+
+    sched = thread->sched;
+
     if (thread == sched->runthread)
 	{
 	if (xnpod_locked_p())
@@ -1048,8 +1046,6 @@ int xnpod_suspend_thread (xnthread_t *thread,
 
 	setbits(nkpod->status,XNSCHED);
 	}
-
-    splhigh(s);
 
     /* We must make sure that we don't clear the wait channel if a
        thread is first blocked (wchan != NULL) then forcibly suspended
@@ -1357,11 +1353,19 @@ void xnpod_unblock_thread (xnthread_t *thread)
  * at the end of the ready queue, thus might cause a manual
  * round-robin effect.
  *
+ * - If the reniced thread is a user-space shadow, propagate the
+ * request to the mated Linux task.
+ *
  * Context: This routine can be called on behalf of a thread or IST
  * context.
  */
 
-void xnpod_renice_thread (xnthread_t *thread, int prio)
+void xnpod_renice_thread (xnthread_t *thread, int prio) {
+
+    xnpod_renice_thread_inner(thread,prio,1);
+}
+
+void xnpod_renice_thread_inner (xnthread_t *thread, int prio, int propagate)
 
 {
     int oldprio;
@@ -1402,12 +1406,12 @@ void xnpod_renice_thread (xnthread_t *thread, int prio)
 	    xnpod_resume_thread(thread,0);
 	}
 
+    splexit(s);
+
 #ifdef __KERNEL__
-    if (testbits(thread->status,XNSHADOW))
+    if (propagate && testbits(thread->status,XNSHADOW))
 	xnshadow_renice(thread);
 #endif /* __KERNEL__ */
-
-    splexit(s);
 }
 
 /*!
@@ -1552,55 +1556,6 @@ void xnpod_deactivate_rr (void)
     splexit(s);
 }
 
-void xnpod_freeze (void)
-
-{
-    xnholder_t *holder;
-    spl_t s;
-
-    splhigh(s);
-
-    holder = getheadq(&nkpod->threadq);
-
-    while (holder)
-	{
-	xnthread_t *thread = link2thread(holder,glink);
-
-	if (thread != nkpod->sched.runthread &&
-	    !testbits(thread->status,XNROOT|XNDEBUG|XNISVC|XNSHADOW))
-	    xnpod_suspend_thread(thread,XNFROZEN,XN_INFINITE,NULL,NULL);
-
-	holder = nextq(&nkpod->threadq,holder);
-	}
-
-    splexit(s);
-}
-
-void xnpod_unfreeze (void)
-
-{
-    xnholder_t *holder;
-    spl_t s;
-
-    splhigh(s);
-
-    holder = getheadq(&nkpod->threadq);
-
-    while (holder)
-	{
-	xnthread_t *thread = link2thread(holder,glink);
-
-	if (testbits(thread->status,XNFROZEN))
-	    xnpod_resume_thread(thread,XNFROZEN);
-
-	holder = nextq(&nkpod->threadq,holder);
-	}
-
-    xnpod_schedule(NULL);
-
-    splexit(s);
-}
-
 /*! 
  * \fn void xnpod_dispatch_signals(void)
  * \brief Deliver pending asynchronous signals to the running thread -
@@ -1679,6 +1634,35 @@ void xnpod_welcome_thread (xnthread_t *thread)
     clrbits(thread->status,XNRESTART);
 }
 
+#ifdef CONFIG_RTAI_FPU_SUPPORT
+
+/* xnpod_switch_fpu() -- Switches to the current thread's FPU
+   context, saving the previous one as needed. */
+
+void xnpod_switch_fpu (void)
+
+{
+    xnsched_t *sched = xnpod_current_sched();
+    xnthread_t *runthread = sched->runthread;
+
+    if (testbits(runthread->status,XNFPU) && sched->fpuholder != runthread)
+	{
+	if (sched->fpuholder == NULL ||
+	    xnarch_fpu_ptr(xnthread_archtcb(sched->fpuholder)) !=
+	    xnarch_fpu_ptr(xnthread_archtcb(runthread)))
+	    {
+	    if (sched->fpuholder)
+		xnarch_save_fpu(xnthread_archtcb(sched->fpuholder));
+
+	    xnarch_restore_fpu(xnthread_archtcb(runthread));
+	    }
+
+	sched->fpuholder = runthread;
+	}
+}
+
+#endif /* CONFIG_RTAI_FPU_SUPPORT */
+
 /*! 
  * \fn void xnpod_schedule(xnmutex_t *imutex);
  * \brief Rescheduling procedure entry point.
@@ -1713,7 +1697,7 @@ void xnpod_welcome_thread (xnthread_t *thread)
  * be applied. In other words, multiple changes on the scheduler state
  * can be done in a row, waking threads up, blocking others, without
  * being immediately translated into the corresponding context
- * switches, like it would be necessary if it appears that a more
+ * switches, like it would be necessary would it appear that a more
  * prioritary thread than the current one became runnable for
  * instance. When all changes have been applied, the rescheduling
  * procedure is then called to consider those changes, and possibly
@@ -1730,9 +1714,9 @@ void xnpod_welcome_thread (xnthread_t *thread)
  *
  * Lock-breaking preemption is a mean by which a thread who holds a
  * nanokernel mutex (i.e. xnmutex_t) can rely on xnpod_schedule() to
- * release such mutex and switch in another thread atomically so that
- * the incoming thread can grab this mutex while the initial holder is
- * suspended. The nanokernel automatically reacquires the mutex on
+ * release such mutex and switch in another thread atomically. The
+ * incoming thread can then grab this mutex while the initial holder
+ * is suspended. The nanokernel automatically reacquires the mutex on
  * behalf of the initial holder when it eventually resumes execution.
  * This is a desirable feature which provides a simple and safe way
  * for the upper interfaces to deal with scheduling points inside
@@ -1754,10 +1738,10 @@ void xnpod_welcome_thread (xnthread_t *thread)
 
  * - If an asynchronous service routine exists, the pending
  * asynchronous signals are delivered to a resuming thread or on
- * behalf of the caller before it returns from the procedure if it
- * happens that it has not been switched out. This behaviour can be
- * disabled by setting the XNASDI flag in the thread status mask by
- * calling xnpod_set_thread_mode().
+ * behalf of the caller before it returns from the procedure if no
+ * context switch has taken place. This behaviour can be disabled by
+ * setting the XNASDI flag in the thread's status mask by calling
+ * xnpod_set_thread_mode().
  * 
  * - The switch hooks are called on behalf of the resuming thread.
  *
@@ -1937,16 +1921,6 @@ noswitch:
 	if (testbits(threadin->status,XNROOT))
 	    xnarch_enter_root(xnthread_archtcb(threadin));
 
-	if (testbits(threadin->status,XNFPU) &&
-	    sched->fpuholder != threadin)
-	    {
-	    if (sched->fpuholder)
-		xnarch_save_fpu(xnthread_archtcb(sched->fpuholder));
-
-	    xnarch_restore_fpu(xnthread_archtcb(threadin));
-	    sched->fpuholder = threadin;
-	    }
-
 	xnthread_cleanup_tcb(threadout);
 	
  	xnarch_finalize_and_switch(xnthread_archtcb(threadout),
@@ -1957,7 +1931,7 @@ noswitch:
 	       The Linux task has resumed into the Linux domain at the
 	       last code location executed by the shadow. Remember
 	       that both sides use the Linux task's stack. */
-	    do_exit(0);
+	    xnshadow_exit();
 #endif /* __KERNEL__ */
 
 	xnpod_fatal("zombie thread %s (%p) will not die...",threadout->name,threadout);
@@ -1971,20 +1945,14 @@ noswitch:
     else if (testbits(threadin->status,XNROOT))
 	xnarch_enter_root(xnthread_archtcb(threadin));
 
-    if (testbits(threadin->status,XNFPU) &&
-	sched->fpuholder != threadin)
-	{
-	if (sched->fpuholder)
-	    xnarch_save_fpu(xnthread_archtcb(sched->fpuholder));
-
-	xnarch_restore_fpu(xnthread_archtcb(threadin));
-	sched->fpuholder = threadin;
-	}
-
     xnarch_switch_to(xnthread_archtcb(threadout),
 		     xnthread_archtcb(threadin));
 
     runthread = sched->runthread;
+
+#ifdef CONFIG_RTAI_FPU_SUPPORT
+    xnpod_switch_fpu();
+#endif /* CONFIG_RTAI_FPU_SUPPORT */
 
 #ifdef __KERNEL__
     /* Shadow on entry and root without shadow extension on exit? 
@@ -1996,7 +1964,7 @@ noswitch:
 	xnshadow_ptd(current) == NULL)
 	{
 	splexit(s);
-	do_exit(0);
+	xnshadow_exit();
 	}
 #endif /* __KERNEL__ */
 
@@ -2072,8 +2040,8 @@ void xnpod_schedule_runnable (xnthread_t *thread, int flags)
 	    }
 	}
     else if (testbits(thread->status,XNTHREAD_BLOCK_BITS))
-	/* Same remark than before in the case this routine is called with
-	   a soon-to-be-blocked running thread as argument. */
+	/* Same remark as before in the case this routine is called
+	   with a soon-to-be-blocked running thread as argument. */
 	goto maybe_switch;
 
     if (flags & XNPOD_SCHEDLIFO)
@@ -2120,21 +2088,15 @@ maybe_switch:
     else if (testbits(threadin->status,XNROOT))
 	xnarch_enter_root(xnthread_archtcb(threadin));
 
-    if (testbits(threadin->status,XNFPU) &&
-	sched->fpuholder != threadin)
-	{
-	if (sched->fpuholder)
-	    xnarch_save_fpu(xnthread_archtcb(sched->fpuholder));
-
-	xnarch_restore_fpu(xnthread_archtcb(threadin));
-	sched->fpuholder = threadin;
-	}
-
     if (nkpod->schedhook)
 	nkpod->schedhook(runthread,XNREADY);
 
     xnarch_switch_to(xnthread_archtcb(runthread),
 		     xnthread_archtcb(threadin));
+
+#ifdef CONFIG_RTAI_FPU_SUPPORT
+    xnpod_switch_fpu();
+#endif /* CONFIG_RTAI_FPU_SUPPORT */
 
     if (nkpod->schedhook && runthread == sched->runthread)
 	nkpod->schedhook(runthread,XNRUNNING);
@@ -2148,7 +2110,8 @@ maybe_switch:
  * count of ticks announced by the timer source since the epoch. The
  * epoch is initially defined by the time the nanokernel has started.
  * This service changes the epoch. Running timers use a different time
- * base thus are not affected by this operation.
+ * base thus are not affected by this operation. The nanokernel time
+ * is only accounted when the system timer runs in periodic mode.
  *
  * Side-effect:
  *
@@ -2175,16 +2138,25 @@ void xnpod_set_time (xnticks_t newtime)
  *
  * This service gets the nanokernel (external) clock time.
  *
- * @return The current nanokernel time (in ticks).
+ * @return The current nanokernel time (in ticks) if the underlying
+ * time source runs in periodic mode, or the CPU tick count if the
+ * aperiodic mode is in effect, or no timer is running.
  *
  * Side-effect: This routine does not call the rescheduling procedure.
  *
  * Context: This routine can be called on behalf of any context.
  */
 
-xnticks_t xnpod_get_time (void) {
+xnticks_t xnpod_get_time (void)
 
-    return nkpod->wallclock;
+{
+    if (testbits(nkpod->status,XNTMPER))
+	return nkpod->wallclock;
+
+    /* In aperiodic mode, our idea of time is the same as the
+       CPU's. */
+
+    return xnarch_get_cpu_tsc(); /* CPU ticks. */
 }
 
 /*! 
@@ -2221,9 +2193,9 @@ xnticks_t xnpod_get_time (void) {
  * @return XN_OK is returned on success. Otherwise, one of the
  * following error codes indicates the cause of the failure:
  *
- *         - XNERR_POD_NOHOOK is returned if type is incorrect.
+ *         - XNERR_PARAM is returned if type is incorrect.
  *
- *         - XNERR_HEAP_NOMEM is returned if not enough memory is
+ *         - XNERR_NOMEM is returned if not enough memory is
  *         available from the system heap to add the new hook.
  *
  * Side-effect: This routine does not call the rescheduling procedure.
@@ -2251,13 +2223,13 @@ int xnpod_add_hook (int type, void (*routine)(xnthread_t *))
 	    hookq = &nkpod->tdeleteq;
 	    break;
 	default:
-	    return XNERR_POD_NOHOOK;
+	    return XNERR_PARAM;
 	}
 
     hook = xnmalloc(sizeof(*hook));
 
     if (!hook)
-	return XNERR_HEAP_NOMEM;
+	return XNERR_NOMEM;
 
     inith(&hook->link);
     hook->routine = routine;
@@ -2282,7 +2254,7 @@ int xnpod_add_hook (int type, void (*routine)(xnthread_t *))
  * @param routine The address of the user-supplied routine to remove.
  *
  * @return XN_OK is returned on success. Otherwise,
- * XNERR_POD_NOHOOK is returned if type is incorrect or if the routine
+ * XNERR_PARAM is returned if type is incorrect or if the routine
  * has never been registered before.
  *
  * Side-effect: This routine does not call the rescheduling procedure.
@@ -2311,7 +2283,7 @@ int xnpod_remove_hook (int type, void (*routine)(xnthread_t *))
 	    hookq = &nkpod->tdeleteq;
 	    break;
 	default:
-	    return XNERR_POD_NOHOOK;
+	    return XNERR_PARAM;
 	}
 
     splhigh(s);
@@ -2330,7 +2302,7 @@ int xnpod_remove_hook (int type, void (*routine)(xnthread_t *))
     splexit(s);
 
     if (!hook)
-	return XNERR_POD_NOHOOK;
+	return XNERR_PARAM;
 
     xnfree(hook);
 
@@ -2385,9 +2357,9 @@ int xnpod_trap_fault (void *fltinfo)
 static void xnpod_clock_irq (void) /* Low-level clock irq handling */
 
 {
-    nkclock.hits++;
-
     xnarch_memory_barrier();
+
+    nkclock.pending++;
 
     if (xnpod_priocompare(nkclock.svcthread.cprio,nkclock.priority) < 0)
 	xnpod_renice_isvc(&nkclock.svcthread,nkclock.priority);
@@ -2395,18 +2367,33 @@ static void xnpod_clock_irq (void) /* Low-level clock irq handling */
 
 /*! 
  * \fn int xnpod_start_timer(u_long nstick, xnist_t handler)
- * \brief Start the periodic timer.
+ * \brief Start the system timer.
  *
- * The nanokernel needs a periodic source to provide the time-related
+ * The nanokernel needs a time source to provide the time-related
  * services to the upper interfaces. xnpod_start_timer() tunes the
- * timer hardware so that a user-defined routine is periodically
- * called according to a given frequency. The time interval that
- * elapses between two consecutive invocations of the handler is
- * called a tick.
+ * timer hardware so that a user-defined routine is called according
+ * to a given frequency. On architectures that provide a
+ * oneshot-programmable time source, the system timer can operate
+ * whether in aperiodic or periodic mode. Using the aperiodic mode
+ * still allows to run periodic nanokernel timers over it: the
+ * underlying hardware will simply be reprogrammed after each tick by
+ * the timer manager using the appropriate interval value (see
+ * xntimer_start()).
+ *
+ * The time interval that elapses between two consecutive invocations
+ * of the handler is called a tick.
  *
  * @param nstick The timer period in nanoseconds. XNPOD_DEFAULT_TICK
  * can be used to set this value according to the arch-dependent
- * settings.
+ * settings. If this parameter is equal to XNPOD_APERIODIC_TICK, the
+ * underlying hardware timer is set to operate in oneshot-programmable
+ * mode. In this mode, timing accuracy is higher - since it is not
+ * rounded to a constant time slice - at the expense of a lesser
+ * efficicency when many timers are simultaneously active. The
+ * aperiodic mode gives better results in configuration involving a
+ * few threads requesting timing services over different time scales
+ * that cannot be easily expressed as multiples of a single base tick,
+ * or would lead to a waste of high frequency periodical ticks.
  *
  * @param handler The address of the interrupt service thread which
  * will process each incoming tick. XNPOD_DEFAULT_TICKHANDLER can be
@@ -2415,12 +2402,24 @@ static void xnpod_clock_irq (void) /* Low-level clock irq handling */
  * should end up calling xnpod_announce_tick() to inform the
  * nanokernel of the incoming tick.
  *
- * @return XN_OK is returned on success. Otherwise,
- * XNERR_POD_BUSY is returned if the timer has already been set.
+ * @return XN_OK is returned on success. Otherwise:
+ *
+ * - XNERR_BUSY is returned if the timer has already been set.
  * xnpod_stop_timer() must be issued before xnpod_start_timer() is
  * called again.
  *
- * Side-effect: This routine does not call the rescheduling procedure.
+ * - XNERR_PARAM is returned if an invalid null tick handler has been
+ * passed, or if the timer precision cannot represent the duration of
+ * a single host tick.
+ *
+ * - XNERR_NOSYS is returned if the underlying architecture does
+ * not support the requested aperiodic timing, or if no active pod
+ * exists.
+ *
+ * Side-effect: A host timing service is started in order to relay the
+ * canonical periodical tick to the underlying architecture,
+ * regardless of the frequency used for Xenomai's system tick. This
+ * routine does not call the rescheduling procedure.
  *
  * Context: This routine must be called on behalf of a context
  * allowing immediate memory allocation requests (e.g. an
@@ -2434,41 +2433,73 @@ int xnpod_start_timer (u_long nstick, xnist_t tickhandler)
     spl_t s;
 
     if (!nkpod)
-	return XNERR_POD_UNINIT;
+	return XNERR_NOSYS;
 
+    if (tickhandler == NULL)
+	return XNERR_PARAM;
+
+#if XNARCH_APERIODIC_PREC == 0
+    if (nstick == XNPOD_APERIODIC_TICK)
+	return XNERR_NOSYS;	/* No aperiodic support */
+#endif /* XNARCH_APERIODIC_PREC == 0 */
+	
     splhigh(s);
 
     if (testbits(nkpod->status,XNTIMED))
 	{
 	splexit(s);
-	return XNERR_POD_BUSY;
+	return XNERR_BUSY;
 	}
 
-    if (nstick == XNPOD_DEFAULT_TICK)
-	nstick = XNARCH_DEFAULT_TICK;
-
-    nkpod->tickvalue = nstick;
-    nkpod->svctable.tickhandler = tickhandler;
-    /* Pre-calculate the number of ticks per second */
-    nkpod->ticks2sec = xnarch_ulldiv(1000000000LL,nstick,&rem);
-
-    if (nkpod->svctable.tickhandler != NULL)
+#if XNARCH_APERIODIC_PREC != 0
+    if (nstick == XNPOD_APERIODIC_TICK) /* Aperiodic mode. */
 	{
-	setbits(nkpod->status,XNTIMED);
-
-	xnintr_init(&nkclock,
-		    0,	/* Not used since never attached. */
-		    XNINTR_MAX_PRIORITY, /* Highest interrupt priority */
-		    NULL,
-		    nkpod->svctable.tickhandler,
-		    0);
-
-	/* The clock interrupt needs not to be attached since the
-	   timer service will handle the arch-dependent setup. */
-
-	xnarch_start_timer(nstick,&xnpod_clock_irq);
+	clrbits(nkpod->status,XNTMPER);
+	nkpod->tickvalue = 1;	/* highest precision: 1ns */
+ 	nkpod->ticks2sec = 1000000000;
+	}
+    else /* Periodic setup. */
+#endif /* XNARCH_APERIODIC_PREC != 0 */
+	{
+	setbits(nkpod->status,XNTMPER);
+	/* Pre-calculate the number of ticks per second. */
+	nkpod->tickvalue = nstick;
+	nkpod->ticks2sec = xnarch_ulldiv(1000000000LL,nstick,&rem);
 	}
 
+    if (XNARCH_HOST_TICK < nkpod->tickvalue)
+	{
+	/* Host tick shorter than the timer precision; bad... */
+	splexit(s);
+	return XNERR_PARAM;
+	}
+
+    nkpod->svctable.tickhandler = tickhandler;
+
+    setbits(nkpod->status,XNTIMED);
+
+    /* The clock interrupt does not need to be attached since the
+       timer service will handle the arch-dependent setup. */
+
+    xnintr_init(&nkclock,
+		0,	/* Not used since never attached. */
+		XNINTR_MAX_PRIORITY, /* Highest interrupt priority */
+		NULL,
+		nkpod->svctable.tickhandler,
+		0);
+
+    xnarch_start_timer(nstick,&xnpod_clock_irq);
+
+    /* When no host ticking service is active for the underlying arch,
+       the host timer exists but simply never ticks since
+       xntimer_start() is passed a null interval value. CAUTION:
+       kernel timers over aperiodic mode can be started by
+       xntimer_start() only _after_ the hw timer has been set up
+       through xnarch_start_timer(). */
+
+    xntimer_start(&nkpod->htimer,
+		  XNARCH_HOST_TICK / nkpod->tickvalue,
+		  XNARCH_HOST_TICK / nkpod->tickvalue);
     splexit(s);
 
     return XN_OK;
@@ -2500,26 +2531,30 @@ void xnpod_stop_timer (void)
     if (testbits(nkpod->status,XNTIMED))
 	{
 	if (!testbits(nkpod->status,XNFATAL))
-	    xnarch_stop_timer(); /* Already done otherwise. */
+	    xntimer_freeze();
 
-	xnintr_destroy(&nkclock);
-	clrbits(nkpod->status,XNTIMED);
+	xntimer_stop(&nkpod->htimer);
+	clrbits(nkpod->status,XNTIMED|XNTMPER);
 	}
 
     splexit(s);
 }
 
 /*! 
- * \fn void xnpod_announce_tick(xnintr_t *intr)
- * \brief Announce a new periodic clock tick.
+ * \fn void xnpod_announce_tick(xnintr_t *intr,
+                                int hits)
+ * \brief Announce a new clock tick.
  *
  * This is the default service routine for clock ticks which performs
  * the necessary housekeeping chores for time-related services managed
  * by the nanokernel. In a way or another, this routine must be called
- * to announce each new clock tick to the nanokernel.
+ * to announce each incoming clock tick to the nanokernel.
  *
  * @param intr The descriptor address of the interrupt object
  * underlying the timer interrupt.
+ *
+ * @param hits The number of pending interrupt hits to process in a
+ * row.
  *
  * Side-effect: Since this routine manages the round-robin scheduling,
  * the running thread (which has been preempted by the timer
@@ -2531,7 +2566,7 @@ void xnpod_stop_timer (void)
  * or interrupt service thread).
  */
 
-void xnpod_announce_tick (xnintr_t *intr)
+void xnpod_announce_tick (xnintr_t *intr, int hits)
 
 {
     xnthread_t *usrthread;
@@ -2539,22 +2574,17 @@ void xnpod_announce_tick (xnintr_t *intr)
 
     splhigh(s);
 
-    /* Tell the hardware control layer about the new tick(s) so that
-       platform-dependent housekeeping chores can be performed. */
-    xnarch_announce_tick();
+    xntimer_do_timers(hits); /* Fire the timeouts, if any. */
 
-    nkpod->jiffies += intr->hits;
-    nkpod->wallclock += intr->hits;
-
-    xnarch_memory_barrier();
-
-    xntimer_do_timers(intr->hits); /* Fire the timeouts if any */
+    /* Do the round-robin processing. */
 
     usrthread = xnpod_current_sched()->usrthread;
 
     if (testbits(usrthread->status,XNRRB) &&
 	usrthread->rrcredit != XN_INFINITE &&
-	!testbits(usrthread->status,XNLOCK))
+	!testbits(usrthread->status,XNLOCK) &&
+	/* Round-robin in aperiodic mode makes no sense. */
+	testbits(nkpod->status,XNTMPER))
 	{
 	/* The thread can be preempted and undergoes a round-robin
 	   scheduling. Round-robin time credit is only consumed by a
@@ -2564,7 +2594,7 @@ void xnpod_announce_tick (xnintr_t *intr)
 	   is kept unchanged, and will not be reset when this thread
 	   resumes execution. */
 
-	if (usrthread->rrcredit <= intr->hits)
+	if (usrthread->rrcredit <= hits)
 	    {
 	    /* If the time slice is exhausted for the running thread,
 	       put it back on the ready queue (in last position) and
@@ -2573,39 +2603,42 @@ void xnpod_announce_tick (xnintr_t *intr)
 	    xnpod_resume_thread(usrthread,0);
 	    }
 	else
-	    usrthread->rrcredit -= intr->hits;
+	    usrthread->rrcredit -= hits;
 	}
 
     splexit(s);
 }
 
-int xnpod_register_debugger (xnthread_t *thread,
-			     unsigned stacksize,
-			     void (*fentry)(void *cookie),
-			     void (*fexit)(void))
-{
-    if (nkdbthread)
-	return XNERR_POD_BUSY;
-
-    thread->status = 0;
-    nkdbthread = thread;
-    nkdbstacksz = stacksize;
-    nkdbentry = fentry;
-    nkdbexit = fexit;
-
-    return XN_OK;
-}
-
-void xnpod_unregister_debugger (void)
-
-{
-    if (nkdbthread)
-	{
-	if (testbits(nkdbthread->status,XNSTARTED))
-	    xnpod_delete_thread(nkdbthread,NULL);
-
-	nkdbthread = NULL;
-	}
-}
-
 /*@}*/
+
+EXPORT_SYMBOL(xnpod_activate_rr);
+EXPORT_SYMBOL(xnpod_add_hook);
+EXPORT_SYMBOL(xnpod_announce_tick);
+EXPORT_SYMBOL(xnpod_check_context);
+EXPORT_SYMBOL(xnpod_deactivate_rr);
+EXPORT_SYMBOL(xnpod_delete_thread);
+EXPORT_SYMBOL(xnpod_fatal_helper);
+EXPORT_SYMBOL(xnpod_get_time);
+EXPORT_SYMBOL(xnpod_init);
+EXPORT_SYMBOL(xnpod_init_thread);
+EXPORT_SYMBOL(xnpod_remove_hook);
+EXPORT_SYMBOL(xnpod_renice_thread);
+EXPORT_SYMBOL(xnpod_restart_thread);
+EXPORT_SYMBOL(xnpod_resume_thread);
+EXPORT_SYMBOL(xnpod_rotate_readyq);
+EXPORT_SYMBOL(xnpod_schedule);
+EXPORT_SYMBOL(xnpod_schedule_runnable);
+EXPORT_SYMBOL(xnpod_set_thread_mode);
+EXPORT_SYMBOL(xnpod_set_time);
+EXPORT_SYMBOL(xnpod_shutdown);
+EXPORT_SYMBOL(xnpod_start_thread);
+EXPORT_SYMBOL(xnpod_start_timer);
+EXPORT_SYMBOL(xnpod_stop_timer);
+EXPORT_SYMBOL(xnpod_suspend_thread);
+EXPORT_SYMBOL(xnpod_trap_fault);
+EXPORT_SYMBOL(xnpod_unblock_thread);
+EXPORT_SYMBOL(xnpod_welcome_thread);
+
+EXPORT_SYMBOL(nkclock);
+EXPORT_SYMBOL(nkgkptd);
+EXPORT_SYMBOL(nkpod);

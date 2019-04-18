@@ -30,6 +30,7 @@
 #include <linux/version.h>
 #include <linux/errno.h>
 #include <linux/stat.h>
+#include <asm/uaccess.h>
 #ifdef CONFIG_PROC_FS
 #include <linux/proc_fs.h>
 extern struct proc_dir_entry *rtai_proc_root;
@@ -78,7 +79,7 @@ MODULE_LICENSE("GPL");
 ///////////////////////////////////////////////////////////////////////////////
 //      PACKAGE GLOBAL DATA
 ///////////////////////////////////////////////////////////////////////////////
-static char rtai_pqueue_version[] = "0.6";
+#define rtai_pqueue_version "0.6"
 
 static uint num_pqueues = 0;
 static struct _pqueue_descr_struct rt_pqueue_descr[MAX_PQUEUES] = {{0}};
@@ -202,7 +203,7 @@ MSG_HDR *msg;
  	    return msg;
         }
 	DBG("incrementing Message ptr by %x\n", msg_size);
-	(char*)msg += msg_size;
+	msg = (MSG_HDR *)((char *)msg + msg_size);
     }
     DBG("cannot find unused message slot in queue\n");
     return NULL;
@@ -278,7 +279,7 @@ static mq_bool_t is_blocking(MSG_QUEUE *q)
 //
 //Returns TRUE if O_NONBLOCK = FALSE
 //
-RT_TASK *this_task = rt_whoami();
+RT_TASK *this_task = _rt_whoami();
 struct _pqueue_access_struct *task_queue_data_ptr;
 Z_APPS *zapps;
 int q_ind;
@@ -308,7 +309,7 @@ static mq_bool_t can_access(MSG_QUEUE *q, Q_ACCESS access)
 //
 mq_bool_t permissions_ok = FALSE;
 mq_bool_t mode_ok = FALSE;
-RT_TASK *caller_pid = rt_whoami();
+RT_TASK *caller_pid = _rt_whoami();
 int q_ind = 0;
 int q_access_flags = 0;
 struct _pqueue_access_struct *task_queue_data_ptr = NULL;
@@ -439,7 +440,7 @@ MQ_ATTR empty_pqueue_attrs = {0,0,0,0};
     msg_size /= sizeof(int);
     for(i = 0; i < rt_pqueue_descr[q_index].data.attrs.mq_maxmsg; i++) {
     	msg->hdr.in_use = FALSE;
-	(char*)msg += msg_size;
+	msg = (MQMSG *)((char *)msg + msg_size);
     }
 
     //De-allocate the memory reserved for the queue
@@ -523,7 +524,7 @@ int spare_count = 0;
 int first_spare = 0;
 void *mem_ptr = NULL;
 
-RT_TASK *this_task = rt_whoami();
+RT_TASK *this_task = _rt_whoami();
 struct _pqueue_access_struct *task_data_ptr = NULL;
 Z_APPS *zapps_ptr = NULL; 
 
@@ -704,7 +705,7 @@ Z_APPS *zapps_ptr = NULL;
 		rt_pqueue_descr[q_index].data.base = mem_ptr; 
 
 		//Initialise the Message Queue descriptor
-    		rt_pqueue_descr[q_index].owner = rt_whoami();
+    		rt_pqueue_descr[q_index].owner = _rt_whoami();
     		rt_pqueue_descr[q_index].open_count = 0;
 		strcpy(rt_pqueue_descr[q_index].q_name, mq_name);
 		rt_pqueue_descr[q_index].q_id = q_index + 1;
@@ -778,12 +779,11 @@ Z_APPS *zapps_ptr = NULL;
 }  // End function - mq_open
 
 // ----------------------------------------------------------------------------
-size_t mq_receive(mqd_t mq, char *msg_buffer, size_t buflen, 
-							unsigned int *msgprio)
+size_t _mq_receive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, int space)
 {
 int q_index = mq - 1;
 MQMSG *msg_ptr;
-uint nBytes, i;
+uint nBytes;
 char *msg_data;
 MSG_QUEUE *q;
 
@@ -839,13 +839,16 @@ MSG_QUEUE *q;
             //Copy data out of the queue into the supplied buffer
 	    msg_data = &msg_ptr->data;
 	    DBG("getting %d bytes from %x\n", nBytes, (int)msg_data);
-	    for(i = 0; i < nBytes; i++) {
-	        msg_buffer[i] = msg_data[i];
 
-	    }  // End for - get the message data
-
-            // Record the message's priority
-	    *msgprio = msg_ptr->hdr.priority;
+		if (space) {
+			memcpy(msg_buffer, msg_data, nBytes);
+            		// Record the message's priority
+			*msgprio = msg_ptr->hdr.priority;
+		} else {
+			copy_to_user(msg_buffer, msg_data, nBytes);
+            		// Record the message's priority
+			copy_to_user(msgprio, &msg_ptr->hdr.priority, sizeof(msgprio));
+		}
 
 	} else {
 	    REPORT("buffer size too small for message on queue\n");
@@ -876,13 +879,13 @@ MSG_QUEUE *q;
 
     }  // End if - queue id is valid
 	
-    REPORT("invalid queue specifier %ld\n", mq);	
+    REPORT("invalid queue specifier %d\n", mq);	
     return -EBADF;
 
 }  // End function - mq_receive
 
 // ----------------------------------------------------------------------------
-size_t mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime)
+size_t _mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime, int space)
 {
 	int q_index = mq - 1;
 	MQMSG *msg_ptr;
@@ -896,7 +899,7 @@ size_t mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *
 
 	//Check that the supplied queue id is valid
 	if (q_index < 0 || q_index >= MAX_PQUEUES) { 
-		REPORT("invalid queue specifier %ld\n", mq);	
+		REPORT("invalid queue specifier %d\n", mq);	
 		return -EBADF;
 	}  // End if - queue id is valid
 
@@ -915,7 +918,12 @@ size_t mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *
 
 		//Do I wanna block?
 		if (is_blocking(q)) {
+			struct timespec time;
 			DBG("Empty, blocking queue, waiting for a message to arrive\n");
+			if (!space) {
+				copy_from_user(&time, abstime, sizeof(struct timespec));
+				abstime = &time;
+			}
 			if (rt_cond_wait_until(&q->emp_cond, &q->mutex, timespec2count(abstime)) > 1) {
 				pthread_mutex_unlock(&q->mutex);
 				return -ETIMEDOUT;
@@ -946,10 +954,16 @@ size_t mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *
 		//Copy data out of the queue into the supplied buffer
 		msg_data = &msg_ptr->data;
 		DBG("getting %d bytes from %x\n", nBytes, (int)msg_data);
-		memcpy(msg_buffer, msg_data, nBytes);
 
-		// Record the message's priority
-		*msgprio = msg_ptr->hdr.priority;
+		if (space) {
+			memcpy(msg_buffer, msg_data, nBytes);
+			// Record the message's priority
+			*msgprio = msg_ptr->hdr.priority;
+		} else {
+			copy_to_user(msg_buffer, msg_data, nBytes);
+			// Record the message's priority
+			copy_to_user(msgprio, &msg_ptr->hdr.priority, sizeof(msgprio));
+		}
 
 	} else {
 		REPORT("buffer size too small for message on queue\n");
@@ -981,11 +995,11 @@ size_t mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *
 }  // End function - mq_timedreceive
 
 // ----------------------------------------------------------------------------
-int mq_send(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio)
+int _mq_send(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, int space)
 {
 
 MSG_QUEUE *q;
-int i, q_index = mq - 1;
+int q_index = mq - 1;
 MSG_HDR *this_msg;
 char *msg_data; 
 mq_bool_t q_was_empty = FALSE;
@@ -1064,9 +1078,11 @@ mq_bool_t q_was_empty = FALSE;
 		this_msg->priority,
 		(int)msg_data);
 
-	for (i = 0; i < msglen; i++) {
-	    *msg_data++ = *msg++;
-	} 
+	if (space) {
+		memcpy(msg_data, msg, msglen);
+	} else {
+		copy_from_user(msg_data, msg, msglen);
+	}
 
 	//Insert this message in the queue according to it's priority
 	insert_message(&q->data, this_msg);
@@ -1077,7 +1093,7 @@ mq_bool_t q_was_empty = FALSE;
 
 	//Does any task require notification?
 	if(q_was_empty && rt_pqueue_descr[q_index].notify.task != NULL) {
-	    DBG("notifying about queue %ld\n", mq);
+	    DBG("notifying about queue %d\n", mq);
 
 	    //TODO: The bit that actually goes here!...........
 	    //Need to think about SIGNALS, and the content of struct sigevent
@@ -1095,13 +1111,13 @@ mq_bool_t q_was_empty = FALSE;
 
     }  // End if - queue id is valid
 
-    REPORT("invalid queue specifier %ld\n", mq);	
+    REPORT("invalid queue specifier %d\n", mq);	
     return -EBADF;
 
 }  // End function - mq_send
 
 // ----------------------------------------------------------------------------
-int mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime)
+int _mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime, int space)
 {
 	MSG_QUEUE *q;
 	int q_index = mq - 1;
@@ -1115,7 +1131,7 @@ int mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio,
 
 	//Check that the supplied queue id is valid
 	if (q_index < 0 || q_index >= MAX_PQUEUES) { 
-		REPORT("invalid queue specifier %ld\n", mq);	
+		REPORT("invalid queue specifier %d\n", mq);	
 		return -EBADF;
 	}  // End if - queue id is valid
 	q = &rt_pqueue_descr[q_index];
@@ -1139,7 +1155,12 @@ int mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio,
 
 		//Do I wanna block or what?
 		if (is_blocking(q)) {
+			struct timespec time;
 			DBG("Full, blocking queue %s waiting for space\n", q->q_name);
+			if (!space) {
+				copy_from_user(&time, abstime, sizeof(struct timespec));
+				abstime = &time;
+			}
 			if (rt_cond_wait_until(&q->full_cond, &q->mutex, timespec2count(abstime)) > 1) {
 				pthread_mutex_unlock(&q->mutex);
 				return -ETIMEDOUT;
@@ -1186,7 +1207,11 @@ int mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio,
 	this_msg->priority,
 	(int)msg_data);
 
-	memcpy(msg_data, msg, msglen);
+	if (space) {
+		memcpy(msg_data, msg, msglen);
+	} else {
+		copy_from_user(msg_data, msg, msglen);
+	}
 
 	//Insert this message in the queue according to it's priority
 	insert_message(&q->data, this_msg);
@@ -1197,7 +1222,7 @@ int mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio,
 
 	//Does any task require notification?
 	if (q_was_empty && rt_pqueue_descr[q_index].notify.task != NULL) {
-		DBG("notifying about queue %ld\n", mq);
+		DBG("notifying about queue %d\n", mq);
 
 		//TODO: The bit that actually goes here!...........
 		//Need to think about SIGNALS and the content of struct sigevent
@@ -1220,7 +1245,7 @@ int mq_close(mqd_t mq)
 {
 int q_index = mq - 1;
 int q_ind = 0;
-RT_TASK *this_task = rt_whoami();
+RT_TASK *this_task = _rt_whoami();
 struct _pqueue_access_struct *task_queue_data_ptr = NULL;
 Z_APPS *zapps;
 
@@ -1257,7 +1282,7 @@ Z_APPS *zapps;
 	//Remove notification request, if any, attached to this queue
 	//by this task...
 	pthread_mutex_lock(&rt_pqueue_descr[q_index].mutex);
-	if (rt_pqueue_descr[q_index].notify.task == rt_whoami() ) {
+	if (rt_pqueue_descr[q_index].notify.task == _rt_whoami()) {
 	    rt_pqueue_descr[q_index].notify.task = NULL;
 	}
 
@@ -1277,7 +1302,7 @@ Z_APPS *zapps;
 	pthread_mutex_unlock(&pqueue_mutex);
         return OK;
     }
-    REPORT("invalid queue Id %ld\n", mq);	
+    REPORT("invalid queue Id %d\n", mq);	
     return -EINVAL;
 
 }  // End function - mq_close
@@ -1299,7 +1324,7 @@ int q_index = mq - 1;
         *attrbuf = rt_pqueue_descr[q_index].data.attrs;
 	return OK;
     }
-    REPORT("invalid queue specifier %ld\n", mq);	
+    REPORT("invalid queue specifier %d\n", mq);	
     return -EBADF;
 
 }  // End function - mq_getattr
@@ -1314,7 +1339,7 @@ int mq_setattr(mqd_t mq, const struct mq_attr *new_attrs,
 //
 int q_index = mq - 1;
 int q_ind = 0;
-RT_TASK *this_task = rt_whoami();
+RT_TASK *this_task = _rt_whoami();
 struct _pqueue_access_struct *task_queue_data_ptr = NULL;
 Z_APPS *zapps;
 
@@ -1363,7 +1388,7 @@ Z_APPS *zapps;
 	pthread_mutex_unlock(&rt_pqueue_descr[q_index].mutex);
 	return OK;
     }
-    REPORT("invalid queue specifier %ld\n", mq);	
+    REPORT("invalid queue specifier %d\n", mq);	
     return -EBADF;
 
 }  // End function - mq_setattr
@@ -1385,7 +1410,7 @@ int rtn;
 	if (notification != NULL) {
 	    //Set up a notification request for this task
 	    if (rt_pqueue_descr[q_index].notify.task != NULL) {
-	        rt_pqueue_descr[q_index].notify.task = rt_whoami();
+	        rt_pqueue_descr[q_index].notify.task = _rt_whoami();
 	        rt_pqueue_descr[q_index].notify.data = *notification;
 	        rtn = OK;
 	    }
@@ -1396,7 +1421,7 @@ int rtn;
 	}
 	else {
 	    //Clear this task's notification request
-	    if (rt_pqueue_descr[q_index].notify.task == rt_whoami() ) {
+	    if (rt_pqueue_descr[q_index].notify.task == _rt_whoami()) {
 		rt_pqueue_descr[q_index].notify.task = NULL;
 		rtn = OK;
 	    }
@@ -1408,7 +1433,7 @@ int rtn;
 	pthread_mutex_unlock(&rt_pqueue_descr[q_index].mutex);
 	return rtn;
     }
-    REPORT("invalid queue specifier %ld\n", mq);	
+    REPORT("invalid queue specifier %d\n", mq);	
     return -EBADF;
 
 }  // End function - mq_notify
@@ -1526,43 +1551,63 @@ static int pqueue_proc_unregister(void)
 //#include <rtai_lxrt.h>
 
 struct rt_native_fun_entry rt_pqueue_entries[] = {
-	{ { UR1(1, 5) | UR2(4, 6), mq_open },      	          MQ_OPEN },
-        { { UW1(2, 3) | UW2(4, 0), mq_receive },                  MQ_RECEIVE },
-        { { UR1(2, 3), mq_send },                                 MQ_SEND },
-        { { 1, mq_close },                                        MQ_CLOSE },
-        { { UW1(2, 3), mq_getattr },                              MQ_GETATTR },
-        { { UR1(2, 4) | UW1(3, 4), mq_setattr },                  MQ_SETATTR },
-        { { UR1(2, 3), mq_notify },                               MQ_NOTIFY },
-        { { UR1(1, 2), mq_unlink },                               MQ_UNLINK },      
-        { { UW1(2, 3) | UW2(4, 0) | UR1(5, 6), mq_timedreceive }, MQ_TIMEDRECEIVE },
-        { { UR1(2, 3) | UR2(5, 6), mq_timedsend },                MQ_TIMEDSEND },
-	{ { 0, 0 },  		      	       			  000 }
+	{ { UR1(1, 5) | UR2(4, 6), mq_open },  	        MQ_OPEN },
+        { { 1, _mq_receive },  		                MQ_RECEIVE },
+        { { 1, _mq_send },    		                MQ_SEND },
+        { { 1, mq_close },                              MQ_CLOSE },
+        { { UW1(2, 3), mq_getattr },                    MQ_GETATTR },
+        { { UR1(2, 4) | UW1(3, 4), mq_setattr },	MQ_SETATTR },
+        { { UR1(2, 3), mq_notify },                     MQ_NOTIFY },
+        { { UR1(1, 2), mq_unlink },                     MQ_UNLINK },      
+        { { 1, _mq_timedreceive },		  	MQ_TIMEDRECEIVE },
+        { { 1, _mq_timedsend }, 	       		MQ_TIMEDSEND },
+	{ { 0, 0 },  		      	       		000 }
 };
 
 extern int set_rt_fun_entries(struct rt_native_fun_entry *entry);
 extern void reset_rt_fun_entries(struct rt_native_fun_entry *entry);
 
 /* +++++++++++++++++++++++++++ END MAIL BOXES +++++++++++++++++++++++++++++++ */
-int MQ_INIT_MODULE(void) 
+int __rtai_mq_init(void) 
 {
 	num_pqueues = 0;
 	pthread_mutex_init(&pqueue_mutex, NULL);
 #ifdef CONFIG_PROC_FS
 	pqueue_proc_register();
 #endif
-	printk("\n==== RTAI MQ API v%s (%s, %s) Loaded ====\n", rtai_pqueue_version, __TIME__, __DATE__);
+	printk(KERN_INFO "RTAI[mq]: loaded.\n");
 	return set_rt_fun_entries(rt_pqueue_entries);
 	return OK;
 }  // End function - init_module
 
 // ----------------------------------------------------------------------------
-void MQ_CLEANUP_MODULE(void) 
+void __rtai_mq_exit(void) 
 {
 	pthread_mutex_destroy(&pqueue_mutex);
 	reset_rt_fun_entries(rt_pqueue_entries);
 #ifdef CONFIG_PROC_FS
 	pqueue_proc_unregister();
 #endif
-	printk("\n==== RTAI MQ API v%s Unloaded ====\n", rtai_pqueue_version);
+	printk(KERN_INFO "RTAI[mq]: unloaded.\n");
 }  // End function - cleanup_module
 // ---------------------------------< eof >------------------------------------
+
+#ifndef CONFIG_RTAI_MQ_BUILTIN
+module_init(__rtai_mq_init);
+module_exit(__rtai_mq_exit);
+#endif /* !CONFIG_RTAI_MQ_BUILTIN */
+
+#ifdef CONFIG_KBUILD
+EXPORT_SYMBOL(mq_open);
+EXPORT_SYMBOL(_mq_receive);
+EXPORT_SYMBOL(_mq_timedreceive);
+EXPORT_SYMBOL(_mq_send);
+EXPORT_SYMBOL(_mq_timedsend);
+EXPORT_SYMBOL(mq_close);
+EXPORT_SYMBOL(mq_getattr);
+EXPORT_SYMBOL(mq_setattr);
+EXPORT_SYMBOL(mq_notify);
+EXPORT_SYMBOL(mq_unlink);
+EXPORT_SYMBOL(init_z_apps);
+EXPORT_SYMBOL(free_z_apps);
+#endif /* CONFIG_KBUILD */

@@ -19,8 +19,8 @@
  * the Minute Virtual Machine.
  */
 
-#ifndef _nslib_include_asm_rtai_xeno_h
-#define _nslib_include_asm_rtai_xeno_h
+#ifndef _mvm_include_asm_rtai_xeno_h
+#define _mvm_include_asm_rtai_xeno_h
 
 #include <errno.h>
 #include <malloc.h>
@@ -61,7 +61,10 @@ typedef int spl_t;
 #define splexit(x)    mvm_set_irqmask(x)
 #define splnone(x)    mvm_set_irqmask(0)
 
-#define XNARCH_DEFAULT_TICK       10000000 /* ns, i.e. 10ms */
+#define XNARCH_DEFAULT_TICK   10000000 /* ns, i.e. 10ms */
+#define XNARCH_HOST_TICK      0 /* No host ticking service. */
+#define XNARCH_APERIODIC_PREC 1	/* 1ns, aperiodic precision. */
+#define XNARCH_SCHED_LATENCY  0	/* No latency in simulation. */
 
 #define XNARCH_THREAD_COOKIE NULL
 #define XNARCH_THREAD_STACKSZ 0 /* Let the simulator choose. */
@@ -73,7 +76,9 @@ typedef int spl_t;
 #define xnarch_imuldiv(i,m,d)      ((int)(i) * (int)(m) / (int)(d))
 #define xnarch_ulldiv(ull,uld,rem) (((*rem) = ((ull) % (uld))), (ull) / (uld))
 #define xnarch_ullmod(ull,uld,rem) ((*rem) = ((ull) % (uld)))
+
 #define xnarch_stack_size(tcb)     ((tcb)->stacksize)
+#define xnarch_fpu_ptr(tcb)        (NULL)
 
 /* Under the MVM, preemption only occurs at the C-source line level,
    so we just need plain C bitops and counter support. */
@@ -128,13 +133,8 @@ xnarch_read_environ (const char *name, const char **ptype, void *pvar)
 
 /* Nullify other kernel macros */
 #define EXPORT_SYMBOL(sym);
-
-#define MAIN_INIT_MODULE     mvm_init_nanokernel
-#define MAIN_CLEANUP_MODULE  mvm_cleanup_nanokernel
-#define SKIN_INIT_MODULE     mvm_init_skin
-#define SKIN_CLEANUP_MODULE  mvm_cleanup_skin
-#define USER_INIT_MODULE     mvm_init_application
-#define USER_CLEANUP_MODULE  mvm_cleanup_application
+#define module_init(sym);
+#define module_exit(sym);
 
 #ifdef __cplusplus
 extern "C" {
@@ -168,6 +168,8 @@ int mvm_set_irqmask(int level);
 void mvm_start_timer(unsigned long nstick,
 		     void (*tickhandler)(void));
 
+void mvm_program_timer(unsigned long long delay);
+
 void mvm_stop_timer(void);
 
 void *mvm_create_callback(void (*handler)(void *),
@@ -195,7 +197,7 @@ void mvm_restart_thread(struct XenoThread *thread);
 struct XenoThread *mvm_thread_self(void);
 
 void __mvm_breakable(mvm_switch_threads)(struct XenoThread *out,
-					   struct XenoThread *in);
+					 struct XenoThread *in);
 
 void mvm_finalize_switch_threads(struct XenoThread *dead,
 				 struct XenoThread *in);
@@ -221,7 +223,7 @@ void mvm_send_display(struct mvm_displayctx *ctx,
 		      const char *s);
 
 void __mvm_breakable(mvm_post_graph)(struct mvm_displayctx *ctx,
-				       int state);
+				     int state);
 
 void mvm_tcl_init_list(mvm_tcl_listobj_t *tclist);
 
@@ -284,7 +286,33 @@ static inline void xnarch_isr_enable_irq (unsigned irq) {
 
 #endif /* XENO_INTR_MODULE */
 
+#ifdef XENO_TIMER_MODULE
+
+static void xnarch_program_timer_shot (unsigned long long delay) {
+
+    /* 1 tsc unit of the virtual CPU == 1 ns. */
+    mvm_program_timer(delay);
+}
+
+static inline void xnarch_stop_timer (void) {
+    mvm_stop_timer();
+}
+
+#endif /* XENO_TIMER_MODULE */
+
 #ifdef XENO_MAIN_MODULE
+
+int __xeno_main_init(void);
+
+void __xeno_main_exit(void);
+
+int __xeno_skin_init(void);
+
+void __xeno_skin_exit(void);
+
+int __xeno_user_init(void);
+
+void __xeno_user_exit(void);
 
 static inline int xnarch_init (void) {
     return 0;
@@ -293,34 +321,27 @@ static inline int xnarch_init (void) {
 static inline void xnarch_exit (void) {
 }
 
-int mvm_init_nanokernel(void);
-void mvm_cleanup_nanokernel(void);
-int mvm_init_skin(void);
-void mvm_cleanup_skin(void);
-int mvm_init_application(void);
-void mvm_cleanup_application(void);
-
 void mvm_root (void *cookie)
 
 {
     int err;
 
-    err = mvm_init_skin();
+    err = __xeno_skin_init();
 
     if (err)
-	__mvm_breakable(mvm_fatal)("init_skin() failed, err=%x\n",err);
+	__mvm_breakable(mvm_fatal)("skin_init() failed, err=%x\n",err);
 
-    err = mvm_init_application();
+    err = __xeno_user_init();
 
     if (err)
-	__mvm_breakable(mvm_fatal)("init_application() failed, err=%x\n",err);
+	__mvm_breakable(mvm_fatal)("user_init() failed, err=%x\n",err);
 
     /* Wait for all RT-threads to finish */
     __mvm_breakable(mvm_join_threads)();
 
-    mvm_cleanup_application();
-    mvm_cleanup_skin();
-    mvm_cleanup_nanokernel();
+    __xeno_user_exit();
+    __xeno_skin_exit();
+    __xeno_main_exit();
 
     __mvm_breakable(mvm_terminate)(0);
 }
@@ -331,10 +352,10 @@ int main (int argc, char *argv[])
     xnarchtcb_t tcb;
     int err;
 
-    err = mvm_init_nanokernel();
+    err = __xeno_main_init();
 
     if (err)
-	__mvm_breakable(mvm_fatal)("init_nanokernel() failed, err=%x\n",err);
+	__mvm_breakable(mvm_fatal)("main_init() failed, err=%x\n",err);
 
     mvm_init(argc,argv);
 
@@ -372,13 +393,11 @@ void xnarch_sysfree(void *chunk,
 
 #ifdef XENO_POD_MODULE
 
+#define xnarch_relay_tick()  /* Nullified. */
+
 static inline void xnarch_start_timer (unsigned long nstick,
 				       void (*tickhandler)(void)) {
     mvm_start_timer(nstick,tickhandler);
-}
-
-static inline void xnarch_stop_timer (void) {
-    mvm_stop_timer();
 }
 
 static inline void xnarch_leave_root(xnarchtcb_t *rootcb) {
@@ -455,14 +474,16 @@ int xnarch_setimask (int imask) {
     return mvm_set_irqmask(imask);
 }
 
-#define xnarch_announce_tick() /* Nullified */
-
 #define xnarch_notify_ready() mvm_finalize_init()
 
 #endif /* XENO_POD_MODULE */
 
 static inline unsigned long long xnarch_tsc_to_ns (unsigned long long ts) {
     return ts;
+}
+
+static inline unsigned long long xnarch_ns_to_tsc (unsigned long long ns) {
+    return ns;
 }
 
 static inline unsigned long long xnarch_get_cpu_time (void) {
@@ -545,4 +566,4 @@ if (cond) \
 __mvm_breakable(mvm_post_graph)(&(obj)->__mvm_display_context,state); \
 while(0)
 
-#endif /* !_nslib_include_asm_rtai_xeno_h */
+#endif /* !_mvm_include_asm_rtai_xeno_h */

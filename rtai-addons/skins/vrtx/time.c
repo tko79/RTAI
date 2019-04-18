@@ -51,8 +51,7 @@
 #define TEN_POW_9 1000000000ULL
 
 void ui_timer (void) {
-    nkclock.hits = 1;
-    xnpod_announce_tick(&nkclock);
+    xnpod_announce_tick(&nkclock,1);
 }
 
 void sc_gclock (struct timespec *timep, unsigned long *nsp, int *errp)

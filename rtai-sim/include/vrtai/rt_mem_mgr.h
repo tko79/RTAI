@@ -11,7 +11,7 @@
 //
 // Original date:       Mon 14 Feb 2000
 //
-// Id:                  @(#)$Id: rt_mem_mgr.h,v 1.1 2003/10/31 15:37:26 pgerum Exp $
+// Id:                  @(#)$Id: rt_mem_mgr.h,v 1.1.1.1 2004/06/06 14:15:44 rpm Exp $
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public

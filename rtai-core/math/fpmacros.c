@@ -20,7 +20,7 @@
 **            
 ***********************************************************************/
 
-#include     "fp_private.h"
+#include     "fpP.h"
 
 #define SIGN_MASK 0x80000000
 #define NSIGN_MASK 0x7fffffff

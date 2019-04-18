@@ -54,6 +54,12 @@
  *
  * Nanokernel mutex services.
  *
+ ********************************************************************
+ * [WARNING] Mutex services are deprecated in newer versions of the
+ * Xenomai nucleus, basically due to design and performance issues. Do
+ * not use this facility if you plan to port to RTAI/fusion.
+ ********************************************************************
+ *
  * Mutexes are internal synchronization objects that do NOT rely on
  * the standard nanokernel scheduling routines to operate.  However,
  * they share the same protocol inheritance scheme with the regular
@@ -235,3 +241,7 @@ void xnmutex_wakeup_inner (xnmutex_t *mutex, int flags)
 }
 
 /*@{*/
+
+EXPORT_SYMBOL(xnmutex_init);
+EXPORT_SYMBOL(xnmutex_sleepon_inner);
+EXPORT_SYMBOL(xnmutex_wakeup_inner);

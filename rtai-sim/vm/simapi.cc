@@ -46,8 +46,6 @@ static MvmIrq *mvmirqs[MVM_IRQ_LEVELS];
 
 static MvmIrq *mvmtimer;
 
-unsigned long mvmtick;
-
 extern "C" {
 
 static void dummy_dinsn (int) {
@@ -205,10 +203,16 @@ void mvm_start_timer (unsigned long nstick,
 {
     mvmtimer = new MvmIrq(1,(void (*)(int,void *))tickhandler,NULL,"MvmTimer");
 
-    mvmtimer->configure(CfEventPeriodical,
-			CString().format("%f usc",(double)nstick / 1000.0));
+    if (nstick > 0)
+	/* Periodic time source, arm it now. */
+	mvmtimer->configure(CfEventPeriodical,
+			    CString().format("%f usc",(double)nstick / 1000.0));
+}
 
-    mvmtick = nstick;
+void mvm_program_timer (unsigned long long delay) {
+
+    mvmtimer->configure(CfEventTimer,
+			CString().format("%f usc",(double)MvmClock + (double)delay / 1000.0));
 }
 
 void mvm_stop_timer (void)

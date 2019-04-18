@@ -93,7 +93,6 @@ typedef struct xnsynch {
 
 } xnsynch_t;
 
-#define xnsynch_name(synch)              ((synch)->name)
 #define xnsynch_test_flags(synch,flags)  testbits((synch)->status,flags)
 #define xnsynch_set_flags(synch,flags)   setbits((synch)->status,flags)
 #define xnsynch_clear_flags(synch,flags) clrbits((synch)->status,flags)

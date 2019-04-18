@@ -112,8 +112,8 @@ typedef struct xnheap {
            pageshift,
 	   hdrsize,
 	   npages,	/* Number of pages per extent */
-          ubytes,
-          maxcont;
+	   ubytes,
+           maxcont;
 
     xnqueue_t extents;
 
@@ -128,13 +128,6 @@ extern xnheap_t kheap;
 #define xnheap_page_size(heap)      ((heap)->pagesize)
 #define xnheap_page_count(heap)     ((heap)->npages)
 #define xnheap_used_mem(heap)       ((heap)->ubytes)
-
-/* Error codes thrown by the heap management routines */
-#define XNHEAP_ERRBASE      0xffff2000
-#define XNERR_HEAP_PARAM    (XNHEAP_ERRBASE)
-#define XNERR_HEAP_NOMEM    (XNHEAP_ERRBASE + 1)
-#define XNERR_HEAP_NOTINH   (XNHEAP_ERRBASE + 2)
-#define XNERR_HEAP_BADBLK   (XNHEAP_ERRBASE + 3)
 
 #ifdef __cplusplus
 extern "C" {

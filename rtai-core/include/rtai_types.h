@@ -20,6 +20,7 @@
 #define _RTAI_TYPES_H
 
 #include <rtai_config.h>
+#include <rtai_wrappers.h>
 
 #define PRIO_Q    0 
 #define FIFO_Q    4 

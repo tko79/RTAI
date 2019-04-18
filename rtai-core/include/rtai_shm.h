@@ -6,8 +6,7 @@
  *
  * @author Paolo Mantegazza
  *
- * @note Copyright &copy; 1999-2003  Paolo Mantegazza <mantegazza@aero.polimi.it>
- * \n Copyright &copy; 2001  Lineo Inc. (Author: <bkuhn@lineo.com>)
+ * @note Copyright &copy; 1999-2004 Paolo Mantegazza <mantegazza@aero.polimi.it>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -36,66 +35,111 @@ ACKNOWLEDGMENTS:
 /** @addtogroup shm
  *@{*/
 
-#ifdef CONFIG_RTAI_SHM_BUILTIN
-#define SHM_INIT_MODULE     shm_init_module
-#define SHM_CLEANUP_MODULE  shm_cleanup_module
-#else /* !CONFIG_RTAI_SHM_BUILTIN */
-#define SHM_INIT_MODULE     init_module
-#define SHM_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_SHM_BUILTIN */
+#define GLOBAL_HEAP_ID  0x9ac6d9e5  // nam2num("RTGLBH");
 
-#ifdef CONFIG_RTAI_MALLOC_VMALLOC
-#define USE_RT_MALLOC   1
-#else
-#define USE_RT_MALLOC  -1
-#endif
-#define USE_NOT_SHARD   0
-#define USE_RTAI_SHM   -1
+#define USE_VMALLOC     0
+#define USE_GFP_KERNEL  1
+#define USE_GFP_ATOMIC  2
+#define USE_GFP_DMA     3
+
+/**
+ * Allocate a chunk of memory to be shared inter-intra kernel modules and 
+ * Linux processes.
+ *
+ * @internal
+ * 
+ * rtai_kalloc is used to allocate shared memory from kernel space.
+ * 
+ * @param name is an unsigned long identifier;
+ * 
+ * @param size is the amount of required shared memory;
+ * 
+ * rtai_kmalloc is a legacy helper macro, the real job is carried out by a
+ * call to rt_shm_alloc() with the same name, size and with vmalloc support.
+ * This function should not be used in newly developed applications. See 
+ * rt_shm_alloc for more details.
+ *
+ * @returns a valid address on succes, 0 on failure.
+ *
+ */
+
+#define rtai_kmalloc(name, size) \
+	rt_shm_alloc(name, size, USE_VMALLOC)  // legacy
+
+/**
+ * Free a chunk of shared memory being shared inter-intra kernel modules and 
+ * Linux processes.
+ *
+ * rtai_kfree is used to free a shared memory chunk from kernel space.
+ *
+ * @param name is the unsigned long identifier used when the memory was
+ * allocated;
+ *
+ * rtai_kfree is a legacy helper macro, the real job is carried out by a
+ * call to rt_shm_free with the same name. This function should not be used 
+ * in newly developed applications. See rt_shm_free for more details.
+ *
+ * @returns the size of the succesfully freed memory, 0 on failure.
+ *
+ */
+
+#define rtai_kfree(name) \
+	rt_shm_free(name)  // legacy
 
 #if defined(__KERNEL__)
 
 #include <linux/module.h>
 #include <linux/version.h>
-#include <linux/wrapper.h>
 #include <linux/vmalloc.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+#include <linux/wrapper.h>
+#else /* >= 2.6.0 */
+#include <linux/mm.h>
+#define mem_map_reserve(p)   SetPageReserved(p)
+#define mem_map_unreserve(p) ClearPageReserved(p)
+#endif /* < 2.6.0 */
+
+#include <rtai_malloc.h>
 
 #include <asm/rtai_shm.h>
-
-/**
- * Allocate a chunk of memory to be shared inter-intra kernel modules and Linux
- * processes.
- *
- * rtai_kmalloc is a helper macro. rt_named_malloc() does the real job.
- */
-#define rtai_kmalloc(name, size) \
-	rt_named_malloc(name, size, USE_RTAI_SHM)  // legacy
-
-/**
- * Free a chunk of shared memory being shared inter-intra kernel modules and
- * Linux processes.
- *
- * rtai_kfree is a helper macro. rt_named_free() does the real job.
- */
-#define rtai_kfree(name) \
-	rt_named_free(name, 0)  // legacy
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-int SHM_INIT_MODULE(void);
+int __rtai_shm_init(void);
 
-void SHM_CLEANUP_MODULE(void);
+void __rtai_shm_exit(void);
+
+void *rt_shm_alloc(unsigned long name,
+		   int size,
+		   int suprt);
+
+#define rt_shm_alloc_adr(adr, name, size) \
+	rt_shm_alloc(name, size, suprt)
+
+int rt_shm_free(unsigned long name);
+
+void *rt_heap_open(unsigned long name,
+		   int size,
+		   int suprt);
+
+#define rt_heap_open_adr(adr, name, size, suprt) \
+	rt_heap_open(name, size, suprt)
+
+void *rt_halloc(int size);
+
+void rt_hfree(void *addr);
+
+void *rt_named_halloc(unsigned long name,
+		      int size);
+
+void rt_named_hfree(void *addr);
 
 void *rt_named_malloc(unsigned long name,
-		      int size,
-		      int suprt);
+		      int size);
 
-#define rt_named_malloc_adr(adr, name, size, suprt) \
-	rt_named_malloc(name, size, suprt)
-
-int rt_named_free(unsigned long name, 
-		    void *addr);
+void rt_named_free(void *addr);
 
 void *rvmalloc(unsigned long size);
 
@@ -106,44 +150,60 @@ int rvmmap(void *mem,
 	   unsigned long memsize,
 	   struct vm_area_struct *vma);
 
+void *rkmalloc(int *size,
+	       int suprt);
+
+void rkfree(void *mem,
+	    unsigned long size);
+
+int rkmmap(void *mem,
+	   unsigned long memsize,
+	   struct vm_area_struct *vma);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
 #else /* !__KERNEL__ */
 
-#include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
-
+#include <sys/mman.h>
 #include <sys/ioctl.h>
-
 #include <rtai_lxrt.h>
-
-#define RTAI_SHM_DEV  "/dev/rtai_shm"
 
 //#define SHM_USE_LXRT
 
-static inline void *_rt_named_malloc(void *start, unsigned long name, int size, int suprt)
+#define RTAI_SHM_DEV  "/dev/rtai_shm"
+
+static inline void *_rt_shm_alloc(void *start, unsigned long name, int size, int suprt, int isheap)
 {
 	int hook;
 	void *adr;
 	if ((hook = open(RTAI_SHM_DEV, O_RDWR)) <= 0) {
 		return 0;
 	} else {
-		struct { unsigned long name, size; int suprt; } arg = { name, size, suprt };
-#ifndef _SHM_USE_LXRT
-		if ((size = ioctl(hook, NAMED_MALLOC, (unsigned long)(&arg)))) {
+		struct { unsigned long name, arg, suprt; } arg = { name, size, suprt };
+#ifdef SHM_USE_LXRT
+		if ((size = rtai_lxrt(BIDX, SIZARG, SHM_ALLOC, &arg).i[LOW])) {
 #else
-		if ((size = rtai_lxrt(BIDX, SIZARG, NAMED_MALLOC, &arg).i[LOW])) {
+		if ((size = ioctl(hook, SHM_ALLOC, (unsigned long)(&arg)))) {
 #endif
-			if ((adr = mmap(start, size, PROT_WRITE | PROT_READ, MAP_SHARED | MAP_FILE, hook, 0)) == (void *)-1) {;
-#ifndef SHM_USE_LXRT
-				ioctl(hook, NAMED_FREE, name);
+			if ((adr = mmap(start, size, PROT_WRITE | PROT_READ, MAP_SHARED | MAP_LOCKED, hook, 0)) == (void *)-1) {;
+#ifdef SHM_USE_LXRT
+				rtai_lxrt(BIDX, sizeof(name), SHM_FREE, &name);
 #else
-				rtai_lxrt(BIDX, sizeof(name), NAMED_FREE, &name);
+				ioctl(hook, SHM_FREE, &name);
 #endif
 				adr = 0;
+			} 
+			if (isheap) {
+				arg.arg = (unsigned long)adr;
+#ifdef SHM_USE_LXRT
+				rtai_lxrt(BIDX, SIZARG, HEAP_SET, &arg);
+#else
+				ioctl(hook, HEAP_SET, &arg);
+#endif
 			}
 		} else {
 			adr = 0;
@@ -153,63 +213,68 @@ static inline void *_rt_named_malloc(void *start, unsigned long name, int size, 
 	return adr;
 }
 
+#define rt_shm_alloc(name, size, suprt)  \
+	_rt_shm_alloc(0, name, size, suprt, 0)
+
+#define rt_heap_open(name, size, suprt)  \
+	_rt_shm_alloc(0, name, size, suprt, 1)
+
 /**
- * Allocate a chunk of memory to be shared inter-intra kernel modules and Linux
- * processes.
+ * Allocate a chunk of memory to be shared inter-intra kernel modules and 
+ * Linux processes.
  *
- * rt_named_malloc/rtai_malloc are used to allocate in user space.
- *
+ * @internal
+ * 
+ * rtai_malloc is used to allocate shared memory from user space.
+ * 
  * @param name is an unsigned long identifier;
- *
- * @param size is the amount of required shared memory.
- *
- * @param suprt is the alloc/free support to use: USE_RT_MALLOC/USE_RTAI_SHM
- *
- * Since @c name can be a clumsy identifier, services are provided to
- * convert 6 characters identifiers to unsigned long, and vice versa.
- *
- * @see the functions nam2num() and num2nam().
- *
- * It must be remarked that the first allocation does a real allocation, any
- * subsequent call to allocate with the same name from Linux processes just maps * the area to the user space, or return the related pointer to the already
- * allocated space in kernel space.  The functions return a pointer to the
- * allocated memory, appropriately mapped to the memory space in use.
+ * 
+ * @param size is the amount of required shared memory;
+ * 
+ * rtai_malloc is a legacy helper macro, the real job is carried out by a
+ * call to rt_shm_alloc() with the same name, size and with vmalloc support.
+ * This function should not be used in newly developed applications. See
+ * rt_shm_alloc fro more details.
  *
  * @returns a valid address on succes, 0 on failure.
  *
- * @note If the same process calls rtai_malloc_adr() and rtai_malloc twice in
- * the same process it get a zero return value on the second call.
- *
  */
-#define rt_named_malloc(name, size, suprt)  \
-	_rt_named_malloc(0, name, size, suprt)
+
 #define rtai_malloc(name, size)  \
-	_rt_named_malloc(0, name, size, USE_RTAI_SHM)  // legacy
+	_rt_shm_alloc(0, name, size, USE_VMALLOC, 0)  // legacy
 
 /**
  * Allocate a chunk of memory to be shared inter-intra kernel modules and Linux
  * processes.
  *
- * rt_named_malloc_adr/rtai_malloc_adr are used to allocate in user space.
+ * rt_shm_alloc_adr is used to allocate in user space.
  *
  * @param start_address is a user desired address where the allocated memory
  * should be mapped in user space;
  *
  * @param name is an unsigned long identifier;
- *
+ * 
  * @param size is the amount of required shared memory.
  *
- * @param suprt is the alloc/free support to use: USE_RT_MALLOC/USE_RTAI_SHM
+ * @param suprt is the kernel allocation method to be used, it can be:
+ * - USE_VMALLOC, use vmalloc;
+ * - USE_GFP_KERNEL, use kmalloc with GFP_KERNEL;
+ * - USE_GFP_ATOMIC, use kmalloc with GFP_ATOMIC;
+ * - USE_GFP_DMA, use kmalloc with GFP_DMA.
  *
  * Since @c name can be a clumsy identifier, services are provided to
  * convert 6 characters identifiers to unsigned long, and vice versa.
  *
  * @see the functions nam2num() and num2nam().
  *
- * It must be remarked that the first allocation does a real allocation, any
- * subsequent call to allocate with the same name from Linux processes just maps * the area to the user space, or return the related pointer to the already
- * allocated space in kernel space.  The functions return a pointer to the
- * allocated memory, appropriately mapped to the memory space in use.
+ * It must be remarked that only the very first call does a real allocation, 
+ * any subsequent call to allocate with the same name from anywhere will just
+ * increase the usage count and map the area to user space, or return the
+ * related pointer to the already allocated space in kernel space. The function 
+ * returns a pointer to the allocated memory, appropriately mapped to the memory
+ * space in use. So if one is really sure that the named shared memory has been 
+ * allocated already parameters size and suprt are not used and can be 
+ * assigned any value.
  *
  * @note If the same process calls rtai_malloc_adr and rtai_malloc() twice in
  * the same process it get a zero return value on the second call.
@@ -217,56 +282,204 @@ static inline void *_rt_named_malloc(void *start, unsigned long name, int size, 
  * @returns a valid address on succes, 0 on failure.
  *
  */
-#define rt_named_malloc_adr(start_address, name, size, suprt)  \
-	_rt_named_malloc(start_address, name, size, suprt)
-#define rtai_malloc_adr(start_address, name, size)  \
-	_rt_named_malloc(start_address, name, size, USE_RTAI_SHM)  // legacy
+
+#define rt_shm_alloc_adr(start_address, name, size, suprt)  \
+	_rt_shm_alloc(start_address, name, size, suprt, 0)
+
+#define rt_heap_open_adr(start, name, size, suprt)  \
+	_rt_shm_alloc(start, name, size, suprt, 1)
 
 /**
- * Free a chunk of shared memory being shared inter-intra kernel modules and
+ * Allocate a chunk of memory to be shared inter-intra kernel modules and 
  * Linux processes.
  *
- * rt_named_free/rtai_free are used to free from the user space a previously 
- * allocated shared
- * memory.
+ * @internal
+ * 
+ * rtai_malloc_adr is used to allocate shared memory from user space.
+ *
+ * @param start_address is the adr were the shared memory should be mapped.
+ * 
+ * @param name is an unsigned long identifier;
+ * 
+ * @param size is the amount of required shared memory;
+ * 
+ * rtai_malloc_adr is a legacy helper macro, the real job is carried out by a
+ * call to rt_shm_alloc_adr() with the same name, size and with vmalloc support.
+ * This function should not be used in newly developed applications. See
+ * rt_shm_alloc_adr for more details.
+ *
+ * @returns a valid address on succes, 0 on failure.
+ *
+ */
+
+#define rtai_malloc_adr(start_address, name, size)  \
+	_rt_shm_alloc(start_address, name, size, USE_VMALLOC, 0)  // legacy
+
+static inline int rt_shm_free(unsigned long name) 
+{
+	int hook, size;
+	struct { void *nameadr; } arg = { &name };
+	if ((hook = open(RTAI_SHM_DEV, O_RDWR)) <= 0) {
+		return 0;
+	}
+// no SHM_FREE needed, we release it all and munmap will do it through 
+// the vma close operation provided by shm.c
+#ifdef SHM_USE_LXRT
+	if ((size = rtai_lxrt(BIDX, SIZARG, SHM_SIZE, &arg).i[LOW])) {
+#else
+	if ((size = ioctl(hook, SHM_SIZE, (unsigned long)&arg))) {
+#endif
+		if (munmap((void *)name, size)) {
+			size = 0;
+		}
+	}
+	close(hook);
+	return size;
+}
+
+/**
+ * Free a chunk of shared memory being shared inter-intra 
+ * kernel modules and Linux processes.
+ *
+ * rtai_free is used to free a shared memory chunk from user space.
  *
  * @param name is the unsigned long identifier used when the memory was
  * allocated;
  *
- * @param adr is the related address.
+ * @param adr is not used.
  *
- * Analogously to what done by the allocation functions the freeing calls have
- * just the effect of unmapping any user space shared memory being freed till 
- * the last is done, as that is the one the really frees any allocated memory.
+ * rtai_free is a legacy helper macro, the real job is carried out by a
+ * call to rt_shm_free with the same name. This function should not be used 
+ * in newly developed applications. See rt_shm_alloc_adr for more details.
  *
  * @returns the size of the succesfully freed memory, 0 on failure.
  *
  */
 
-static inline int rt_named_free(unsigned long name, void *adr)
-{
-	int hook, size;
-	if (!adr || (hook = open(RTAI_SHM_DEV, O_RDWR)) <= 0) {
-		return 0;
-	}
-// no RT_NAMED_FREE needed, we release it all and munmap will do it through 
-// the vma close operation provided by shm.c
-#ifndef SHM_USE_LXRT
-	if ((size = ioctl(hook, NAMED_SIZE, name))) {
-#else
-	if ((size = rtai_lxrt(BIDX, sizeof(name), NAMED_SIZE, &name).i[LOW])) {
-#endif
-		if (munmap(adr, size)) {
-			size = 0;
-		}	
-	}
-	close(hook);
-	return size;
-}
 #define rtai_free(name, adr)  \
-	rt_named_free(name, adr)  // legacy
+	rt_shm_free(name)  // legacy
+
+RTAI_PROTO(void *, rt_halloc, (int size))
+{
+	struct { int size; } arg = { size };
+	return rtai_lxrt(BIDX, SIZARG, HEAP_ALLOC, &arg).v[LOW];
+}
+
+RTAI_PROTO(void, rt_hfree, (void *addr))
+{
+	struct { void *addr; } arg = { addr };
+	rtai_lxrt(BIDX, SIZARG, HEAP_FREE, &arg);
+}
+
+RTAI_PROTO(void *, rt_named_halloc, (unsigned long name, int size))
+{
+	struct { unsigned long name; int size; } arg = { name, size };
+	return rtai_lxrt(BIDX, SIZARG, HEAP_NAMED_ALLOC, &arg).v[LOW];
+}
+
+RTAI_PROTO(void, rt_named_hfree, (void *addr))
+{
+	struct { void *addr; } arg = { addr };
+	rtai_lxrt(BIDX, SIZARG, HEAP_NAMED_FREE, &arg);
+}
+
+RTAI_PROTO(void *, rt_malloc, (int size))
+{
+	struct { int size; } arg = { size };
+	return rtai_lxrt(BIDX, SIZARG, MALLOC, &arg).v[LOW];
+}
+
+RTAI_PROTO(void, rt_free, (void *addr))
+{
+	struct { void *addr; } arg = { addr };
+	rtai_lxrt(BIDX, SIZARG, FREE, &arg);
+}
+
+RTAI_PROTO(void *, rt_named_malloc, (unsigned long name, int size))
+{
+	struct { unsigned long name; int size; } arg = { name, size };
+	return rtai_lxrt(BIDX, SIZARG, NAMED_MALLOC, &arg).v[LOW];
+}
+
+RTAI_PROTO(void, rt_named_free, (void *addr))
+{
+	struct { void *addr; } arg = { addr };
+	rtai_lxrt(BIDX, SIZARG, NAMED_FREE, &arg);
+}
 
 #endif /* __KERNEL__ */
+
+/**
+ * Close a real time group heap being shared inter-intra kernel modules and
+ * Linux processes.
+ *
+ * @internal
+ * 
+ * rt_heap_close is used to close a previously opened real time group heap.
+ *
+ * @param name is the unsigned long identifier used to identify the heap.
+ *
+ * @param adr is not used.
+ *
+ * Analogously to what done by any allocation function this group real time
+ * heap closing call have just the effect of decrementing a usage count, 
+ * unmapping any user space heap being closed, till the last is done, as that 
+ * is the one the really closes the group heap, freeing any allocated memory.
+ *
+ * @returns the size of the succesfully freed heap, 0 on failure.
+ *
+ */
+
+#define rt_heap_close(name, adr)  rt_shm_free(name)
+
+// aliases in use already, different heads different choices
+#define rt_heap_init         rt_heap_open
+#define rt_heap_create       rt_heap_open
+#define rt_heap_acquire      rt_heap_open
+#define rt_heap_init_adr     rt_heap_open_adr
+#define rt_heap_create_adr   rt_heap_open_adr
+#define rt_heap_acquire_adr  rt_heap_open_adr
+
+#define rt_heap_delete       rt_heap_close
+#define rt_heap_destroy      rt_heap_close
+#define rt_heap_release      rt_heap_close
+
+// these have no aliases, and never will
+
+/**
+ * Open the global real time heap to be shared inter-intra kernel modules and 
+ * Linux processes.
+ *
+ * @internal
+ * 
+ * rt_global_heap_open is used to open the global real time heap.
+ * 
+ * The global heap is created by the shared memory module and its opening is
+ * needed in user space to map it to the process address space. In kernel
+ * space opening the global heap in a task is not required but should be done
+ * anyhow, both for symmetry and to register its usage.
+ *
+ */
+
+#define rt_global_heap_open()  rt_heap_open(GLOBAL_HEAP_ID, 0, 0)
+
+/**
+ * Close the global real time heap being shared inter-intra kernel modules and 
+ * Linux processes.
+ *
+ * @internal
+ * 
+ * rt_global_heap_close is used to close the global real time heap.
+ * 
+ * Closing a global heap in user space has just the effect of deregistering
+ * its use and unmapping the related memory from a process address space.
+ * In kernel tasks just the deregistration is performed.
+ * The global real time heap is destroyed just a the rmmoding of the shared
+ * memory module.
+ *
+ */
+
+#define rt_global_heap_close()  rt_heap_close(GLOBAL_HEAP_ID, 0)
 
 /*@}*/
 

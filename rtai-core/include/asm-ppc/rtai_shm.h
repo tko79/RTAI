@@ -17,9 +17,11 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 */
 
 
-#ifndef RTAI_SHM_ASM_H
-#define RTAI_SHM_ASM_H
+#ifndef _RTAI_ASM_PPC_SHM_H
+#define _RTAI_ASM_PPC_SHM_H
 
+#include <asm/pgtable.h>
+#include <asm/io.h>
 #include <asm/rtai_vectors.h>
 
 #undef __SHM_USE_VECTOR
@@ -47,7 +49,7 @@ static inline long long rtai_shmrq(unsigned long srq, unsigned long whatever)
 	return retval;
 }
 
-#else
+#else  /* __KERNEL__ */
 
 #define RTAI_SHM_HANDLER shm_handler
 
@@ -55,6 +57,61 @@ static inline long long rtai_shmrq(unsigned long srq, unsigned long whatever)
 
 #endif /* __SHM_USE_VECTOR */
 
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 
-#endif /* !RTAI_SHM_ASM_H */
+/* convert virtual user memory address to physical address */
+/* (virt_to_phys only works for kmalloced kernel memory) */
+
+static inline unsigned long uvirt_to_kva(pgd_t *pgd, unsigned long adr)
+{
+	unsigned long ret = 0UL;
+	pmd_t *pmd;
+	pte_t *ptep, pte;
+
+	if(!pgd_none(*pgd)) {
+		pmd = pmd_offset(pgd, adr);
+		if (!pmd_none(*pmd)) {
+			ptep = pte_offset(pmd, adr);
+			pte = *ptep;
+			if(pte_present(pte)){
+				ret = (unsigned long) page_address(pte_page(pte));
+				ret |= (adr&(PAGE_SIZE-1));
+			}
+		}
+	}
+	return ret;
+}
+
+static inline unsigned long uvirt_to_bus(unsigned long adr)
+{
+	unsigned long kva, ret;
+
+	kva = uvirt_to_kva(pgd_offset(current->mm, adr), adr);
+	ret = virt_to_bus((void *)kva);
+
+	return ret;
+}
+
+static inline unsigned long kvirt_to_bus(unsigned long adr)
+{
+	unsigned long va, kva, ret;
+
+	va = VMALLOC_VMADDR(adr);
+	kva = uvirt_to_kva(pgd_offset_k(va), va);
+	ret = virt_to_bus((void *)kva);
+
+	return ret;
+}
+
+static inline unsigned long kvirt_to_pa(unsigned long adr)
+{
+	unsigned long va, kva, ret;
+
+	va = VMALLOC_VMADDR(adr);
+	kva = uvirt_to_kva(pgd_offset_k(va), va);
+	ret = __pa(kva);
+
+	return ret;
+}
+
+#endif /* !_RTAI_ASM_PPC_SHM_H */

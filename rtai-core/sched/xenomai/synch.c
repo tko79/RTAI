@@ -85,7 +85,7 @@
  * valid flags are:
  *
  * - XNSYNCH_PRIO causes the threads waiting for the resource to pend
- * in priority order. Otherwise, FIFO ordering is used (XNSYNCH_PRIO).
+ * in priority order. Otherwise, FIFO ordering is used (XNSYNCH_FIFO).
  *
  * - XNSYNCH_PIP causes the priority inheritance mechanism to be
  * automatically activated when a priority inversion is detected among
@@ -131,6 +131,9 @@ static inline void xnsynch_renice_thread (xnthread_t *thread, int prio)
 	/* xnpod_resume_thread() must be called for runnable threads
 	   but the running one. */
 	xnpod_resume_thread(thread,0);
+    else /* In case of a shadow, we do not attempt to renice the
+	    mated Linux task if we did not renice the former. */
+	return;
 
 #ifdef __KERNEL__
     if (testbits(thread->status,XNSHADOW))
@@ -582,3 +585,12 @@ void xnsynch_release_all_ownerships (xnthread_t *thread) /* INTERNAL */
 }
 
 /*@}*/
+
+EXPORT_SYMBOL(xnsynch_flush);
+EXPORT_SYMBOL(xnsynch_forget_sleeper);
+EXPORT_SYMBOL(xnsynch_init);
+EXPORT_SYMBOL(xnsynch_release_all_ownerships);
+EXPORT_SYMBOL(xnsynch_renice_sleeper);
+EXPORT_SYMBOL(xnsynch_sleep_on);
+EXPORT_SYMBOL(xnsynch_wakeup_one_sleeper);
+EXPORT_SYMBOL(xnsynch_wakeup_this_sleeper);

@@ -1,1302 +1,1257 @@
-2004-01-12  Philippe Gerum  <rpm@xenomai.org>
+2004-09-20  Philippe Gerum  <rpm@xenomai.org>
 
-	* RELEASE: rtai-3.0 final (phewww...)
+ 	* RELEASE: rtai-3.1 final.
 
-	* rtai-core/arch/*: Fix defconfigs.
+2004-09-17  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-core/arch/i386/patches: Add legacy RTHAL support for
-	2.4.24.
+	* rtai-core/arch/i386/patches: Upgrade to 2.4/hal16 and 2.6/hal7
+	final.
 
-2004-01-12  Peter Soetens <peter.soetens@mech.kuleuven.ac.be>
+2004-09-13 Roberto Bucher  <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab: Code generator for Scilab/Scicos supports now only
+	Scicos blocks from RTAI-Lib. Configure of other sensors and actuators
+	is possible only by hand. "xgenconfig" is no more supported.
+
+2004-09-13  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/Kconfig: Set default ELFTK and COMEDI dirs
+	to /usr/local.
+
+2004-09-11  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Hold back hal7c1-2.6.8.1 until we
+	are sure that the patch is safe.
+
+2004-09-09  Evgeny Sinelnikov <linux4sin@mail.ru>
+
+	* configure.in, makefile, rtai-core/scripts/rtai-config.in:
+	Correctly handle the --with-linux-dir configure option.
+
+2004-09-07  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/sched/rtai/sched_lxrt.c: revised oneshot timing, nomore
+	including preempt_always used no more, Linux timing accounted nomore
+	on SMP. Cleaned macros for the pseudo locking of a switched off 
+	Linux task to its current cpu.
+
+2004-09-06  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Upgrade to hal7c1-2.6.8.1.
+
+2004-09-03  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/include/rtai_schedcore.h: moved arch dependent part of 
+	the scheduling IPI to asm-i386/rtai_hal.h
+        * rtai-core/include/asm-i386/rtai_hal.h: added a macro for the
+        arch dependent part of the scheduling IPI.
+
+2004-08-31  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/include/rtai_wrappers.h: added macros to support 
+	Linux cpumask_t, without changing RTAI API.
+
+        * rtai-core/arch/i386/hal/hal.c: adapted to use Linux cpumask_t
+	without without changing RTAI API.
+
+        * rtai-core/sched/rtai/sched_lxrt.c-sched_mup.c-sched_smp.c: adapted
+	to use Linux cpumask_t.
+
+2004-08-30  Philippe Gerum  <rpm@xenomai.org>
+
+ 	* RELEASE: rtai-3.1 test #5
+
+2004-08-29  Malte Cornils <mcornils@fzi.de>
+
+	* rtai-addons/cpp/rtai_cpp.h: Export missing declarations.
+
+2004-08-28  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/asm/rtai_hal.h: Re-enable back a minimalistic
+	cpu relaxation, or we will badly lockup on some SMP boxen with old
+	flaky hardware.
+
+2004-27-08  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/include/asm/rtai_hal.h: disabled CPU_RELAX.
+
+        * rtai-core/ipc/sem/sem.c: fixed qtype assignement and inverted
+	global lock relaxation in broadcast. 
+
+2004-08-25  Ignacio García Pérez <iggarpe@terra.es>
+
+	* rtai-core/ipc/sem/sem.c: Dead code removal.
+
+2004-08-25  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-addons/cpp/GNUmakefile.am: Make rtai_cpp.h an installable
+	file.
+
+2004-08-16  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in: Allow for assembly files in 2.6 targets.
+
+2004-25-08  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/sched/rtai/sched_lxrt.c: on 2.6.x stealing from linux 
+	uses Linux default wake up function to insure syncing with 
+	kthread_b.
+
+2004-22-08  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/sched/rtai/sched_lxrt.c: 
+	- avoid using a useless function pointer in handling signals.
+	- added a support function for forcing a task soft from another task.
+	- improved forcing a task soft from another task.
+
+        * rtai-core/sched/rtai/sys_lxrt.c: 
+	- forcing a task soft from another task is done immediately using a
+	  forcing support function from sched_lxrt.c.
+
+2004-08-19  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/include/asm/rtai_lxrt.h: redefinition of the arch
+	dependent lxrt_context_switch into _lxrt_context_switch, to be 
+	used in the static, non inlined, general lxrt_context_switch in 
+	sched_lxrt.c.
+
+        * rtai-core/include/asm/rtai_hal.h: just some cleanup.
+
+        * rtai-core/include/asm/rtai_vectores.h: wrapped RTAI_DO_TRAP 
+	macro with a do { } while (0).
+
+        * rtai-core/sched/rtai/sched_lxrt.c: 
+	- got rid of STAGGER, use CPU_RELAX directly;
+	- staticalised lxrt_context_switch, using the arch dependent 
+	_lxrt_context_switch; no inline to avoid weird gcc optimisation 
+	problems.
+
+2004-08-18  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/include/asm/rtai_lxrt.h: "switch_to" Linux release 
+	dependent, for 2.6.x the Linux one is used.
+
+        * rtai-core/sched/rtai/sys_lxrt.c: added a check to force a task to
+	soft before deleting its real time extension, just in case ...
+
+        * rtai-core/sched/rtai/sched_lxrt.c: 
+	- fixed force soft from another task, missed 
+	  __adeos_schedule_back_root.
+	- the current task to be switched off is specifically determined 
+	  according to it being soft/hard.
+	- traps and syscalls intercepts need no more to recall "current".
+	- restoring the fpu context immediately, to avoid the dev not 
+	  available trap, done for hard tasks only.
+	- added LxrtMode for managing syscalls done while in hard mode:
+		- 0  (single mode) makes the task soft and never returns 
+		  it to hard,
+		- !0 (dual mode) switches all tasks to soft/hard mode
+		  according to the API they want to use;
+	  can be set at insmod.
+
+        * rtai-core/ipc/netrpc/netrpc.c: force LxrtMode to zero, till
+	dual mode is tested for metrpc also.
+
+2004-08-15  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Upgrade to 2.4/hal14 and 2.6/hal6
+	final.
+
+2004-08-14  Malte Cornils <mcornils@fzi.de>
+
+	* rtai-addons/cpp/rtai_wrapper.h: Fix conflicting declarations of
+	RT_TASK.
 	
-	* rtai-core/include/rtai_posix.h: POSIX-fying the API for
-	userspace LXRT.
+2004-08-08  Paolo Mantegazza  <mantegazza@aero.polimi.it>
 
-	* rtai-core/sched/rtai/liblxrt/Makefile.am: Added -D_GNU_SOURCE
-	for all-in compilation of functions.
+        * rtai-core/include/asm/rtai_vectors.h: added "memory" clobbering
+	to RTAI_DO_TRAP, this allows using a single truly static inline
+	for calling LXRT fuctions.
 
-2004-01-12  Ralf Roesch  <ralf.roesch@rw-gmbh.de>
+        * rtai-core/include/asm/rtai_lxrt.h: rtai_lxrt rewritten as a 
+	single static inline.
 
-	* configure.in: Update mips selector to accept mipsel-*.
+        * rtai-core/ipc/netrpc/netrpc.c: added asmlinkage to kernel syscalls,
+	it allows using static inlines for _syscall?.
 
-2004-01-11  Philippe Gerum  <rpm@xenomai.org>
+        * rtai-core/sched/rtai/sched_lxrt.c: improved checking that making
+	hard is really done only after the task has left Linux; partial 
+	rewrite of fast_schedule, without change of functionality.
 
-	* rtai-core/arch/i386/patches: Upgrade to hal10 final, adding
-	support for 2.4.24.
+2004-08-06  Paolo Mantegazza  <mantegazza@aero.polimi.it>
 
-	* rtai-core/arch/i386/patches: Add combo patch
-	hal10-fusion-2.4.23 (Adeos + kpreempt + lolat).
+        * rtai-core/include/rtai_sched.h: added a specific status bit for
+	readied soft tasks.
 
-2004-01-11  Panagiotis Issaris <panagiotis.issaris@mech.kuleuven.ac.be>
+        * rtai-core/include/rtai_schedcore.h: use the above state bit when
+	enqueuing a ready soft task.
 
-	* rtai-core/include/asm-i386/rtai_atomic.h: Namespace depollution
-	in user-mode case.
+        * rtai-core/sched/rtai/sched_lxrt.c: reworked making hard, to do it
+	at the proper time, syscall trap handler, all scheduling functions
+	hard disable interrupts, eliminated schedule_soft hard disable of
+	interrupts, rt_schedule resumes a soft re-scheduled task 
+	unconditionally.
 
-2004-01-11  Philippe Gerum  <rpm@xenomai.org>
+        * rtai-core/sched/rtai/sys_lxrt.c: wrapped the restate to hard with
+	a double diagnostic message.
 
-	* rtai-core/arch/i386/hal/hal.c (arti_install_archdep,
-	arti_uninstall_archdep): Protect IDT manipulations using the
-	super-lock.
+2004-08-05  Marius Groeger <mgroeger@sysgo.com>
 
-	* configure.in: Make sure Xenomai is unavailable to SMP
-	configurations.
+	* rtai-testsuite/kern/*/Makefile.am: $(CROSS_COMPILE)ld.
 
-	* rtai-core/sched/xenomai/shadow.c (xnshadow_schedule_tail):
-	Disable preemption while dropping the mm contexts
-	(CONFIG_PREEMPT).
+2004-08-04  Malte Cornils <mcornils@fzi.de>
 
-	* rtai-core/include/asm-i386/rtai_xeno.h (xnarch_enter_root,
-	xnarch_leave_root): Do not uselessly stall/unstall the shield
-	domain.
+	* rtai-addons/cpp: Fix compilation and runtime support issues.
 
-2004-01-09  Philippe Gerum  <rpm@xenomai.org>
+2004-08-04  Marius Groeger <mgroeger@sysgo.com>
 
-	* rtai-core/scripts/rtai-config.in: Add RTAI/fusion switches for
-	native Linux applications (--fusion-cflags, --fusion-ldflags).
+	* rtai-core/arch/arm/patches/updates/clps711x-init_irq_flush.patch:
+	Properly flush to Linux the pending IRQs that have been caught
+	while initializing RTAI.
 
-	* rtai-core/arch/i386/patches: Upgrade to hal10c4 series.
+	* rtai-core/arch/arm/patches/updates/clps711x-compile.patch: Fix
+	compilation issues.
 
-2004-01-08  Philippe Gerum  <rpm@xenomai.org>
+2004-08-02  Philippe Gerum  <rpm@xenomai.org>
 
-	* INSTALL: Add instructions to select alternate compiler
-	toolchains.
+	* rtai-core/arch/i386/patches: Upgrade the x86 patch to
+	2.6.7r6c5.
 
-2004-01-06  Philippe Gerum  <rpm@xenomai.org>
+2004-07-28  Paolo Mantegazza  <mantegazza@aero.polimi.it>
 
-	* rtai-core/arch/i386/patches: Upgrade to hal10c3 series. This
-	fixes a serious random bug that used to plague LXRT over Adeos.
+        * rtai-core/include/asm-i386/rtai_hal.h: optimised interrupt
+	disabling/enabling and related flags management for UP. 
 
-	* configure.in: Load the kernel configuration a bit earlier so
-	that all config symbols can be tested properly (e.g. CONFIG_SMP).
+        * rtai-core/sched/rtai/sched_up.c, rtai-core/sched/rtai/sched_mup.c
+	rtai-core/sched/rtai/sched_smp.c, rtai-core/sched/rtai/sched_lxrt.c:
+	avoid changing sign to zero in time conversions.
 
-2004-01-05  Marc Kleine-Budde <kleine-budde@gmx.de>
+2004-07-25  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-core/scripts/rtai-config.in: Behave correctly whenever
-	--includedir or --datadir options are passed when
-	configuring. Also added the --config switch which returns the
-	path to the configuration file in a sane way.
+ 	* RELEASE: rtai-3.1 test #4
+
+2004-07-24  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in, rtai-core/arch/*/Kconfig: Make RTAI_USI depend on
+	RTAI_SEM && RTAI_TASKLETS.
 	
-2004-01-05  Philippe Gerum  <rpm@xenomai.org>
+	* rtai-core/ipc/fifos/fifos.c (mbx_sem_wait): Remove spurious
+	rtf_restore_flags(); this bug used to wreck the preemption count
+	with a preemptible kernel, and forcibly release a non-held
+	spinlock in any case, which is always a bad idea...
 
-	* RELEASE: rtai-3.0-test3.
+	* configure.in: Allow CONFIG_FRAME_POINTER in kernel.
 
-	* rtai-core/arch/i386/patches: Upgrade to hal10c2 series.
+2004-07-23  Philippe Gerum  <rpm@xenomai.org>
 
-2004-01-05  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+	* rtai-core/arch/i386/hal/hal.c (rtai_trap_fault): Fix the
+	conditional section mess.
 
-	* rtai-core/ipc/shm/shm.c: rewritten so that it can either work as 
-	before or be integrated with the standard RTAI memory management. 
-	The related APIs can be used from user space either with ioctl or 
-	with LXRT support. The shared memory specific interrupt is used no 
-	more.
-	* rtai-core/ipc/kvmem.c: "embellished" during the new shared memory 
-	rewrites.
-	* rtai-core/ipc/README: should explain it all.
-	* rtai-core/malloc/malloc.c: added a mixing mem_map_reserve for the
-	initial vmalloc(ed) memory initialization. It broke the integrated
-	shared memory support.
-	* rtai-core/sched/rtai/common/common.c: added new registry functions
-	to support integrated shared memory and the display of shared memory
-	infos in the proc file.
-	* rtai-core/include/rtai_shm.h: rewritten for the new support while
-	keeping full legacy with previous APIs.
+2004-07-20  Philippe Gerum  <rpm@xenomai.org>
 
-2004-01-04  Marc Kleine-Budde <kleine-budde@gmx.de>
+	* rtai-core/arch/i386/patches: Upgrade the x86 patch to
+	2.6.7r6c4.
 
-	* configure.in: Fix handling of rtai-sim/ selection.
+2004-07-19  Philippe Gerum  <rpm@xenomai.org>
 
-2004-01-04  Philippe Gerum  <rpm@xenomai.org>
+	* rtai-core/sched/rtai/sched_lxrt.c: Do not escalate the
+	rescheduling requests for LXRT; this breaks.
 
-	* rtai-core/ipc/mq/mq.c, rtai-core/include/rtai_mq.h: Replace
-	clashing BOOL type with mq_bool_t.
+	* rtai-core/arch/i386/patches: Upgrade the x86 patch to
+	2.6.7r6c3.
 
-2004-01-02  Philippe Gerum  <rpm@xenomai.org>
+	* rtai-core/sched/rtai/sched_lxrt.c (rt_schedule_soft,
+	give_back_to_linux, lxrt_migration_handler, kthread_m): Rework
+	interrupt masking and critical sections.
 
-	* configure.in: Allow absence of rtai-sim/.
+2004-07-17  Philippe Gerum  <rpm@xenomai.org>
 
-	* Makefile.am: Fix dist rule. Again...
+	* rtai-core/sched/rtai/sched_mup.c: Fix compilation.
 
-	* rtai-core/include/rtai_netrpc.h (RT_typed_named_mbx_init): Cast
-	return value properly.
+	* rtai-core/sched/rtai/sched_*.c: Always escalate the rescheduling
+	requests to the RTAI domain as needed; this closes a long-standing
+	race window where Linux interrupts might be served on a non-Linux
+	stack.
 
-	* rtai-lab/scilab/devices/Makefile.am: Add missing include path.
+	* rtai-core/sched/rtai/sched_lxrt.c (put_current_on_cpu): Use the
+	direct kernel interface (set_cpus_allowed()) for setting the
+	scheduling affinity of the current task. Do _not_ mess anymore with the
+	'cpus_allowed' member of the Linux task struct with v2.6.
 
-	* rtai-lab/scilab/utility/Makefile.am: Fix install rule.
+2004-07-14  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-core/scripts/rtai-config.in: Add Xenomai VM switches
-	(--vm-cflags, --vm-ldflags).
+	* rtai-core/sched/rtai/sched_lxrt.c (intr_get_current): Iron the
+	Adeos-aware code retrieving the current linux task.
 
-	* rtai-testsuite/user/preempt/display.c: Always signal the hard RT
-	helper upon exit instead of doing this conditionally. Not removing
-	the kernel support makes no sense when using rtai-load to
-	start/stop apps.
-
-	* rtai-core/arch/i386/calibration/runinfo: Run interrupt latency
-	test by default.
-
-	* rtai-core/arch/i386/calibration/calibrate.c: Postpone module
-	loading and SRQs so that we can invoke "calibrate -h" and exit
-	without triggering any kernel support.
-
-2004-01-01  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/{mips,cris}: Port existing support from stromboli
-	to kilauea.
-
-	* rtai-core/ipc/fifos/fifos.c, rtai-core/ipc/sem/sem.c: Use RTAI
-	wrappers to atomic ops so that all ports can use their own
-	implementation.
-
-2003-12-31  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/usi/usi.c: Do not include linux/irq.h directly since
-	it breaks on ARM. Rely on the system headers to do this properly.
-
-	* configure.in: Make sure CONFIG_MODULES is set.
-
-	* rtai-core/include/asm-{arm,ppc}/rtai_lxrt.h: Provide clean
-	stubs until LXRT is finally implemented on these archs.
-
-2003-12-31  Roberto Bucher  <roberto.bucher@supsi.ch>
-	* rtai-lab/scilab/rtmain.c, rtai-lab/scilab/utility/genconf_io.c,
-	rtai-lab/scilab/utility/scilab-howto.pdf,
-	rtai-lab/scilab/macros/CodeGeneration_.sci : added handling of the
-	sampling time in the configuration file.
-
-2003-12-30  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-testsuite/kern/*/Makefile.am: Remove useless dependency on
-	libpthread.
-
-	* rtai-core/include/asm-arm/rtai.h, rtai-core/arch/arm: Fix
-	inclusion of subarch-dependent files. Reading from asm-arm/arch
-	instead of asm/arch is mandatory with the autoconf-iscated tree,
-	because asm/ is a link to the source tree, and we can't require
-	write access to it for the sole purpose of creating the arch/
-	link into it.
-
-	* rtai-core/include/rtai_netrpc.h: Include <stdlib.h> in
-	the user-space portion (needed by abs()).
-
-	* rtai-core/include/rtai_sem.h: Rearrange forward decls.
-
-2003-12-30  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* rtai-core/ipc/netrpc.c, all the parameters that can be 
-	changed at insmoding are now consistently taken into account 
-	everywhere by: allocating at runtime, imposing MaxStubs to be 
-	power of 2 anyhow; kernel space funcalls stripped off and poured
-	into static inlines in rtai_netrpc.h.
-	* rtai-core/include/rtai_netrpc.h, all netrpc funcalls appear
-	symmetrically in this file now, as for all the rest in 3.x.
-
-2003-12-28  Guennadi Liakhovetski
-
-	* rtai-core/arch/arm, rtai-core/include/asm-arm: ARM (PXA + SA) works
-	now. Still have to fix the lxrt header. StrongARM latencies observed
-	up to 160us, PXA up to 95us.
-
-2003-12-28  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* Makefile.am (ACLOCAL_AMFLAGS): moved acinclude.m4 to the
-	subdirectory rtai-core/config/autoconf.
-
-2003-12-22  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* rtai-core/ipc/sem/sem.c: a partial rewrite of condvars following
-	suggestions from users.
-	* rtai-core/ipc/mq/mq.c: a small change reflecting changes in error
-	returns after the partial rewrite of condvars.
-	* rtai-core/include/rtai_sem.h, rtai_posix.h: updated to the new
-	returns of rewritten condvars.
-	* rtai-core/ipc/fifos/fifos.c: added rtf_named_create, allowing to
-	specify creation sized for named fifos directly. Rtf_reset now
-	does not reinizializes evrything but just the mail box pointers.
-	Appropriate changes for the new function to rtai_fifos.h also.
-
-2003-12-22  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* rtai-core/sched/xenomai/heap.c (xnheap_alloc): Fix allocator
-	behaviour when asking a size bigger than the extent size.
-
-2003-12-17  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/scripts/rtai-load.in: Fix cleanup actions on SIGINT.
-
-2003-12-15  Philippe Gerum  <rpm@xenomai.org>
-
-	* RELEASE: rtai-3.0-test2.
-
-	* configure.in: Emergency fix to have the default LXRT inlining
-	mode set to conditional.
-
-	* rtai-lab/scilab: Fix make dist.
-
-2003-12-12  Marc Kleine-Budde <kleine-budde@gmx.de>
-
-	* rtai-doc/services/posix.tex : Beautification of code and ascii
-	drawings.
-
-2003-12-12  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* rtai-doc/RTAI-RefGuide.tex : Suppressed reference to the
-	listings.sty LaTeX package, as this package is missing on
-	modern distributions.
-
-2003-12-12  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/patches: Add hal10c1 series.
-
-	* configure.in: Take CC override into account when determining
-	KMOD_CFLAGS.
-
-2003-12-11  Abramo Bagnara <abramo.bagnara@tin.it>
-
-	* rtai-core/include/rtai_fifos.h: Fix return codes for user-space
-	calls.
-
-	* rtai-core/ipc/fifos/fifos.c (rtf_resize): Fix crash situation.
-
-2003-12-10  Roberto Bucher  <roberto.bucher@supsi.ch>
-
-	* rtai-lab/scilab: Added the possibility to modify the IO Block
-	parameters during the realtime task execution, Modified the IO
-	device structure in devstruct.h.
-
-2003-12-10  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* rtai-doc/Makefile.am: Replaced TEXINPUTS with RTAIDOC_TEXINPUTS to
-	avoid the reference of TEXINPUTS to itself.
-
-2003-12-09  Philippe Gerum  <rpm@xenomai.org>
-
-	* INSTALL: Add details concerning non-interactive configuration.
-
-	* rtai-core/include/rtai_serial.h: Move to rtai-addons/serial
-	since it is not a core header.
-
-2003-12-07  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-testsuite/kern/preempt/Makefile.am: Remove LXRT dependency
-	for the display helper. This is not an option for non-x86 archs.
-
-2003-12-04  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/config/kconfig: Move .rtai_config to toplevel.
-
-2003-12-04  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* configure.in, Makefile.am, rtai-doc/Makefile.am : Correctly
-	handle building, installing and distributing doc in the 3 cases :
-	- no rtai-doc dir in source tree ;
-	- rtai-doc in source tree, but getting doc from the generated dir ;
-	- rtai-doc in source tree, and building the documentation.
-
-	* rtai-doc/Doxyfile.in, rtai-doc/generated : Generate the html
-	documentation in the html subdir and take it from there.
-
-2003-12-03  Guennadi Liakhovetski  <g.liakhovetski@gmx.de>
-
-	* rtai-core/trace/trace.c: Add ARM-specific conditionals.
+	* rtai-core/sched/rtai/sched_lxrt.c (rt_timer_handler,
+	rt_schedule, rt_schedule_on_schedule_ipi): Mask interrupts at
+	hardware-level during core scheduling operations.
 	
-	* configure.in: Add support for PXA arch selection.
-	
-2003-12-03  Philippe Gerum  <rpm@xenomai.org>
+2004-07-12  Roberto Bucher <roberto.bucher@supsi.ch>
 
-	* rtai-core/include/rtai_schedcore.h: Get rid of x86-dependent
-	includes.
+	* rtai-lab/scilab/*: Directory files modified for Scilab-3.0
 
-2003-12-02  Abramo Bagnara <abramo.bagnara@tin.it>
+2004-07-12  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-core/include/*.h: Add missing linkage directives for C++ in
-	user-space sections.
+	* rtai-core/arch/i386/patches: Upgrade the x86 patch to
+	2.6.7r6c2.
 
-2003-12-02  Philippe Gerum  <rpm@xenomai.org>
+2004-07-07  Wolfgang Grandegger  <wolfgang.grandegger@bluewin.ch>
 
-	* rtai-core/config/kconfig/gconf.c: Fix missing symbol.
+	* rtai-core: A first version of RTAI over ADEOS on PowerPC
+	has been added. The legacy RTAI (RTHAL) is still available.
 
-	* configure.in: Define RTAI_PROTO_ALWAYS/NEVER_INLINE() for proper
-	use in the various user-space headers.
+2004-07-07  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-testsuite/kern/latency/Makefile.am: Remove LXRT dependency
-	for the display helper. This is not an option for non-x86 archs.
+	* rtai-core/scripts/rtai-load.in: Use "ls" instead of "file" to
+	work around busybox's shortcomings.
 
-2003-12-01  Philippe Gerum  <rpm@xenomai.org>
+2004-07-05  Philippe Gerum  <rpm@xenomai.org>
 
-	* RELEASE: rtai-3.0-test1.
+	* rtai-core/arch/i386/Kconfig: Make RTAI_MATH depend on
+	RTAI_FPU_SUPPORT.
 
-	* rtai-doc/Makefile.am: Ensure that (pre-)built docs are always
-	copied to the installation directory even if CONFIG_RTAI_DOC is
-	false.
+	* configure.in: Kludge:: Allow for configuration of 8254 and PIC
+	latency figures in non-x86 mode, since we need them for non-UP
+	scheds.
 
-2003-11-30  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+2004-07-01  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-doc: added/updated doxygen documentation blocks to obtain a
-	doxygen equivalent to the RTAI manual.
+	* rtai-core/malloc/malloc.c (rtheap_destroy): Kludge:: make sure
+	the global heap memory is properly released.
 
-2003-11-29  Philippe Gerum  <rpm@xenomai.org>
+2004-06-30  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-core/arch/i386/patches/hal9-2.4.23.patch: Add Adeos patch
-	for the latest 2.4 kernel release.
+	* rtai-core/sched_rtai/sched_lxrt.c (lxrt_intercept_syscall): Fix
+	the domain migration handler (do not reset the RT_TASK state to
+	2).
 
-	* rtai-core/scripts/rtai-load.in: Fix loading of required non-RTAI
+2004-06-28  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/ipc/mbx/mbx.c: all inlines eliminated, module size
+        reduced to less than half, performances not worsened (likely the
+        opposite).
+
+2004-06-28  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Upgrade the x86 patch to
+	2.6.7r6c1. Discard older r5 patches since critical fixes are
+	brought by this one, Linux-wise and Adeos-wise.
+
+	* rtai-core/arch/i386/hal/hal.c (rtai_trap_fault): Handle
+	RTAI-originated faults in kernel space caused by on-demand virtual
+	memory mappings.
+
+	* configure.in, rtai-core/arch/*/Kconfig: Make the global heap
+	size a configurable parameter.
+
+2004-06-28  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/malloc/malloc.c: renamed global heap variable and added
+	a few lines to allow integrating shared memory.
+
+	* rtai-core/rtai_core/ipc/shm.c: cleanup and changes to integrate 
+	with malloc.
+
+	* rtai-core/rtai_core/include/rtai_shm.h: cleanup and changes to 
+	integrate with malloc.
+
+2004-06-25  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in: Add back SUBDIRS= in KBUILD_CMD.
+
+2004-06-23  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-testsuite/kern: Pass RTAI_FP_CFLAGS when compiling 2.6
 	modules.
 
-	* kilauea: Fix "make dist" issues in various places.
+	* configure.in: Do not pass SUBDIRS to the kernel builder anymore;
+	only rely on M=.
 
-2003-11-28  Philippe Gerum  <rpm@xenomai.org>
+2004-06-23  Paolo Mantegazza  <mantegazza@aero.polimi.it>
 
-	* rtai-core/arch/i386/calibration: Spontaneously load/unload
-	kernel mode helper.
+	* rtai-core/arch/i386/hal.c: use USER_DS in trapping Linux traps.
 
-2003-11-27  Philippe Gerum  <rpm@xenomai.org>
+2004-06-23  Philippe Gerum  <rpm@xenomai.org>
 
-	* configure.in: Define devfs-aware template string for
-	transparently accessing fifo devices.
+        * rtai-core/include/asm-i386/rtai_lxrt.h: Make
+	lxrt_switch_context() mostly look like kilauea's version.
 
-	* rtai-core/arch/i386/calibration: Fix helper invocation.
+	* rtai-core/sched/rtai: Force regparm(0) for all task trampolines
+	so that we are still safe if CONFIG_REGPARM is enabled. Need same
+	fix from Adeos >= 2.6r6c1.
 
-2003-11-27  Wolfgang Grandegger <wolfgang.grandegger@bluewin.ch>
+2004-06-22  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-testsuite/kern/latency/Makefile.am: Pass RTAI_FP_CFLAGS.
+	* rtai-core/sched/rtai/sys_lxrt.c: Have prototypes using
+	asmlinkage in sync between definition and declaration.
+
+2004-06-22  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/sched_rtai/sched_lxrt.c: modified (UN)LOCK_LINUX to
+	  take into account that rtai_pcu_lxrt flags are used no more; 
+	  simplified checking of the state of a switched in soft task 
+	  after changes in rtai_schedmod.h.
+        * rtai-core/sched_rtai/sys_lxrt.c: modified rtai_lxrt_fastpath to
+	  take into account that rtai_pcu_lxrt flags are used no more.
+        * rtai-core/include/asm-i386/rtai_hal.h: nomore rtai_cpu_lxrt,
+	  cleaned unused functions, modified switching to realtime/linux
+	  and related data for nested use.
+        * rtai-core/include/asm-i386/rtai_lxrt.h: added a prudential saving
+	  of all registers in task switching.
+        * rtai-core/include/rtai_schedcore.h: set to zero ready soft task 
+	  state and omitted the redundant setting of Linux state in timed
+	  enquieing.
+	* rtai-core/arch/i386/hal.c: cancelled rtai_cpu_lxrt.
+
+2004-06-21  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+
+	* configure.in, GNUmakefile.am: handle correctly the "all" and "dist"
+	targets, whether or not the doc and sim directories are present in
+	the source tree.
+
+2004-06-18  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Add support for 2.6.7.
+
+2004-06-17  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in: Clobber *.o in RTAI_KBUILD_CLEAN.
+
+2004-06-17  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/sched_rtai/sched_lxrt.c: set a barrier() after context 
+	  switching, no need for lxrt_context_switch return, fast_schedule
+	  uses internal enq_soft_ready_task so that stealing from Linux can 
+	  can be simplified.
+
+2004-06-16  Philippe Gerum  <rpm@xenomai.org>
+
+ 	* RELEASE: rtai-3.1 test #3
+
+2004-06-16  Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-addons/comedi/rtai_comedi.h: added the patch from
+	Jonathan Bettencourt <jbetten@bu.edu>
+	* rtai-lab/xrtailab.cpp: Added support for modules without
+	parameters
+	* rtai-lab/xrtailab.h: Version changed
+	* rtai-lab/matlab/rtmain.c: Added support for modules without 
+	RTAI S-Functions	
+
+2004-06-15  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/sched_lxrt.c (lxrt_switch_context):
+	Reinstate former assembly code for switching tasks. Remove last
+	kludge on enq_soft_ready_task() since the latter change makes it
+	useless.
+
+2004-06-14  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+
+	* rtai-core/scripts/generate-doc-and-commit (abs_srcdir): Add a
+	script to generate documentation and update the generated doc in
+	the cvs repository.
+
+	* rtai-doc/GNUmakefile.am (generate-doc-and-commit): Add a
+	makefile rule to run the forementioned script with correct
+	arguments.
+
+2004-06-13  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Upgrade the x86 patches to 2.6r5
+	final. Add support for 2.6.6.
+
+	* rtai-core/scripts/rtai-load.in: Use modprobe instead of insmod
+	for modules from /lib/modules.
+
+	* rtai-core/ipc/mq: Kludge to resolve conflicts with 2.6.6. This
+	component is deprecated.
+
+	* rtai-core/sched/rtai/sched_lxrt.c (enq_soft_ready_task): Attempt
+	a quick fix to prevent the enqueuing from entering an infinite
+	loop. Needs to be confirmed by Paolo.
+	(rt_schedule): Re-instate the use of rtai_get_current() to fetch
+	the current Linux task for safety.
+
+2004-06-13  Panagiotis Issaris <panagiotis.issaris@mech.kuleuven.ac.be>
+
+	* rtai-core/include/rtai_posix.h (pthread_rwlock_open_rt): Make depend on
+	-D__USE_UNIX98.
+
+	* rtai-core/include/rtai_posix.h: Include <stdlib.h> in user-space
+	to satisfy references to malloc()/free().
+
+2004-06-11  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/include/asm-i386/rtai_lxrt.h: Set __USER_DS when
+	entering a 2.6 kernel (instead of __KERNEL_DS with 2.4). This
+	fixes the random SEGVs experienced by user-space apps while LXRT
+	apps were running. This bug was due to data segment register
+	corruption and was specifically triggered by libc6 using the new
+	sysenter/sysexit support.
+
+2004-06-10  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in: Pass ARCH in RTAI_KBUILD_CMD for 2.6.
+
+2004-06-11  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/sched/rtai/sched_lxrt.c: forced keeping Linux tasks 
+	preempted by RTAI on the CPU they are. Affecting just SMP.
+
+2004-06-09  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/sched_lxrt.c (lxrt_context_switch): Use
+	arch-independent context switch routine.
+
+	* rtai-core/include/asm-i386/rtai_xeno.h (xnarch_switch_to):
+	Inline mm switch code.
+
+	* rtai-core/arch/i386/hal/hal.c: Discard rtai_linux_switch_mm().
+
+2004-06-07  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Intercept Linux syscalls
+	through the adeos_catch_event_facility() facility, so that this
+	works indifferently with both int80/sysenter ways of syscalling.
+
+	* rtai-core/include/asm-i386/rtai_lxrt.h: Discard deprecated LXRT
+	call stub.
+
+	* rtai-core/scripts/rtai-load.in: Use modprobe -n instead of
+	insmod -nq, so that we remain compatible with both insmod.modutils
+	and newer module-init-tools.
+
+2004-06-05  Philippe Gerum  <rpm@xenomai.org>
+
+	* Move to GNA (http://www.gna.org/projects/rtai/).
+
+2004-06-04  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/mutex.c: Add blinking warning about
+	kernel mutex support being deprecated in newer versions of the
+	Xenomai nanokernel.
+
+	* rtai-core/sched/xenomai/shadow.c (xnshadow_linux_sysexit):
+	Always propagate sysexits whenever a signal is pending for the
+	current task.
+
+2004-06-01  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/pod.c (xnpod_start_timer): Make sure the
+	user cannot specify a host tick shorter than the timer precision.
+
+2004-06-02  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+        * rtai-core/ipc/msg.c: fixed missing enqueuing on the return list
+        for RPCing tasks that, finding the sent task ready to receive, go
+        directly to RT_SCHED_RETURN state. 
+
+2004-05-29  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/intr.c: Add blinking warning about IST
+	support being deprecated in newer versions of the Xenomai
+	nanokernel.
+
+	* rtai-core/sched/xenomai: Backport aperiodic timer fixes from the
+	fusion branch.
+
+2004-05-28  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/pod.c (xnpod_init_thread): Make sure we
+	don't accept extraneous flags for the thread.
+
+2004-05-28  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c (disengage_irq_shield): Add
+	missing adeos_declare_cpuid.
+
+2004-05-28  Peter Soetens <peter.soetens@mech.kuleuven.ac.be>
 	
-	* rtai-core/arch/ppc/hal/cswitch.S: Include rtai_config.h as
-	required.
-
-	* rtai-core/arch/ppc/Kconfig: Fix FPU support option.
+	* rtai-core/include/rtai_posix.h: Added patch of Jan Kitszka
+	to allow pthread_join_rt in kernel and rtai context
+	* rtai-core/include/rtai_posix.h: Fix sem, mutex and rwlock not
+	being deleted.
 	
-2003-11-27  Philippe Gerum  <rpm@xenomai.org>
+2004-05-27  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-core/arch/ppc/hal/Makefile.am: Fix include path.
+	* rtai-core/include/rtai_wrappers.h: Do not include linux/module.h
+	when parsing C++.
+
+2004-05-27  Malte Cornils <malte@cornils.net>
+
+	* rtai-addons/cpp/rtai_wrapper.c: Add missing wrappers for task
+	creation/deletion.
+
+	* rtai-addons/cpp/rtai_wrapper.h: Add missing type definitions.
+
+2004-05-26  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/pod.c: Remove the obsolete and
+	unfinished debugger support and xnpod_freeze()/unfreeze() routines
+	which are definitely lethal in a mutex-enabled system, since one
+	could accidentally suspend a thread owning a mutex without
+	competing for the said mutex first.
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Do not run the Linux
+	scheduling tail over the RTAI domain.
+
+2004-05-25  Philippe Gerum  <rpm@xenomai.org>
+
+	* nucleus/intr.c (xnintr_svc_thread): Ensure nested interrupts are
+	never lost.
+
+2004-05-25  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/asm-i386/rtai_xeno.h (xnarch_program_timer_shot): 
+	Make sure we do not set the timer for an elapse time shorter than
+	the calibrated value for programming it.
+
+2004-05-24  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c (xnshadow_substitute_syscall):
+	Fix for aperiodic timing along with time conversion routines.
+
+	* rtai-core/arch/i386/patches: Upgrade the x86 patch to 2.6r5c3
+	which fixes the boot problem with systems using the
+	sysenter-enabled libc6 (e.g. libc6-i686 on Debian).
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Reinstate the escalation
+	service for kthread_b() requests to fast_schedule(). Running the
+	latter in the RTAI domain is definitely mandatory, especially when
+	CONFIG_PREEMPT is enabled.
+
+2004-05-23  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/asm-i386/rtai_xeno.h: Properly scale the CPU
+	frequency-based input value to a PIT frequency-based one.
+
+2004-05-22  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c (xnshadow_linux_taskexit):
+	Always relax exiting shadows.
+
+2004-05-21  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c (xnshadow_realtime_sysentry):
+	Always propagate regular Linux syscalls to the low domain stage
+	handler if we are running over the root thread.
+
+2004-05-21  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/include/rtai_schedcore.h: in renq_ready_task, avoid 
+	spurious re-enqueing of RTAI soft tasks that are RTAI ready but 
+	not scheduled back from Linux to RTAI yet.
+
+	* rtai-core/sched/rtai/sched_lxrt.c: 
+	- revised lazy oneshot firing according to what found in RTAI
+	  24.1.13.
+	- added a specific IPI scheduling function for MP. Soft real time
+	  RTAI tasks, i.e. Linux tasks using RTAI, should be granted a 
+	  safe Linux schedule() always, i.e. either on a valid process or 
+	  on the Linux return path from the kernel.
+	- further cleaned up the soft-hard interaction so that spurious
+ 	  unreadying of Linux only tasks in 2.6.x should not happen any 
+	  more.
+	- forced passing to hard mode within kthread_b again, i.e. not in
+	  a virq; it is the best way to have it: directly and immediately,
+	  in a known place, on the CPU to which the task is bound.
+
+	Because of all what above any test to avoid spurious manipulations 
+	of the ready tasks lists in sched_lxrt.c has disappeared.
+
+2004-05-19  Ulrich Marx <um@emlix.com>
 	
-	* Makefile.am: Add distclean-local rule.
+	* rtai-core/sched/rtai/sched_mup.c: Fix module_exit() directive.
 
-	* rtai-core/sched/rtai: Add compiler stamp to the boot message of
+2004-05-18  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+
+	* rtai-doc/install-dist.rules, rtai-doc/docbook/docbook.rules :
+	suppressed empty 'for' loops to avoid a bug occuring with versions
+	of bash before 2.05a. For details, see :
+	http://www.unixguide.net/unix/bash/E7.shtml
+
+2004-05-13  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/rtai_wrappers.h (MODULE_LICENSE): Add
+	placeholder aimed at old 2.4 kernels which do not define this
+	macro.
+
+2004-05-10  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/malloc: Remove deprecated README.
+
+2004-05-09  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/ipc/shm/shm.c: adapted and unified to the newly 
+	available malloc services.
+
+	* rtai-core/include/rtai_shm.h: cleaned from spinlock size 
+	references.
+
+2004-05-08  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/sched/rtai/sched_lxrt.c: forced reassertion to 
+	RT_SCHED_READY for any interrupted Linux process/kthread when it
+	is suspended/resumed by any, soft/hard, RTAI process/kthread. 
+	Mangling of such a state appears mostly in stress tests with 
+	Linux 2.6, but stable RTAI 3.0 seems also affected. Older RTAI 
+	24.1.xxes appear much more immune, but the new changes have been 
+	validated back to RTAI 24.1.13 anyway.
+
+2004-05-08  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+
+	* configure.in: Refuse to generate doxygen documentation with
+	version prior to 1.3.4.
+
+	* rtai-core/scripts/bootstrap: Force the version of aclocal and
+	automake to 1.7 in order to avoid problems when several versions
+	of automake are installed.
+
+2004-05-05  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/malloc: Rewrite based on Xenomai's heap manager.
+
+2004-05-04  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/scripts/rtai-config.in: Add --module-ext option.
+
+2004-05-03  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/heap.c (xnheap_free): Fix a potential
+	race upon concurrent release of the same block.
+
+2004-05-04  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/include/rtai_bits.h, rtai-core/ipc/bits/bits.c: no
+	more double copies of masks in returning to user space.
+
+2004-05-03  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/include/rtai_mbx.h and 
+	* rtai-core/include/rtai_mq.h: avoided double copies from/to user
+	space in all send/receive functions.
+
+	* rtai-core/ipc/mbx/mbx.c and
+	* rtai-core/ipc/mq/mq.c: avoided double copies from/to user
+        space in all send/receive functions.
+
+2004-05-02  Philippe Gerum  <rpm@xenomai.org>
+
+	* RELEASE: rtai-3.1 test #2
+
+2004-05-01  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/sched/rtai/sched_lxrt.c and 
+
+	* rtai-core/include/rtai_schedcore.h: got rid of any use of Linux 
+	rt_priority, for whatever Linux version. So in 2.4.xx maintaining
+	consistency of RTAI and Linux real time priorities is in users'
+	hands completely.
+
+	* rtai-core/ipc/netrpc/netrpc.c: fixed a few inconsistencies in the
+	use of alternate ids.
+
+2004-05-01  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in: Ensure that rtai_srctree and rtai_srcdir are
+	always absolute paths. This fixes out-of-tree builds when
+	executing the configure script by hand.
+
+2004-04-30  Peter Soetens <peter.soetens@mech.kuleuven.ac.be>
+
+	* configure.in, rtai-core/include/rtai_registry.h: Allow
+	configuring the maximum number of LXRT slots.
+
+2004-04-30  Roberto Bucher  <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/devices/GNUmakefile.am: Added mbx_send_if.c
+	
+	* rtai-lab/scilab/devices : Added mbx_send_if.c
+	
+	* rtai-lab/scilab/devices : Added #include <stdio.h> to
+	rtai_led.c, rtai_meter.c, rtai_scope.c, template.c
+	
+	* rtai-lab/scilab/devices: Modified mbx_receive.c,
+	mbx_receive_if.c, mbx_ovrwr_send.c to solve a RT_mbx_delete
+	problem linked to remote mbx
+	  	
+2004-04-29  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch: Fix glitches with non-x86 builds.
+
+2004-04-29  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in: Remove preemption check. CONFIG_PREEMPT is now
+	fully supported, UP and SMP, including by LXRT.
+
+2004-04-28  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/GNUmakefile.am: Do not split the LXRT
+	scheduler in apic/noapic builds for UP configuration. Since
+	apic-only mode does not work, we must always use the 8254 mode,
+	regardless of the current setting for CONFIG_X86_LOCAL_APIC.
+
+2004-04-27  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Fix priority conflict between
+	helper threads and LXRT tasks. LXRT now works with a preemptible
+	kernel.
+
+2004-04-26  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/sched_lxrt.c (lxrt_init): Make sure the
+	migration service is enabled before using it when instantiating
+	the reservoir threads.
+
+2004-04-25  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Modified "set_linux_task_priority"
+	to a macro. Restored previous kthread_b code, ADEOS propagation with
+	a virtual irq breaks the things reported with comments. Changed 
+	warnings related to Linux rt_priority, but kept the related coding.
+
+	* rtai-core/include/rtai_schedcore.h: Changed warnings related to 
+	Linux rt_priority, but kept the related coding.
+
+	* Verified that it works MP with testsuites (except user task 
+	switches) and most "showroom" examples, kernel and user space.
+
+2004-04-24  Philippe Gerum  <rpm@xenomai.org>
+
+	* INSTALL: Renamed to README.INSTALL, so that people needing
+	installation information might care reading this file,
+	eventually...
+
+2004-04-23  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/sched/rtai/sched_lxrt.c (put_current_on_cpu): Updated
+	to use 2.6.x sched_setaffinity, MP critical.
+
+2004-04-23  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Upgrade to candidate 2.4.26-r13c2.
+
+	* rtai-core/include/asm-i386/rtai_vectors.h (__rtai_do_trap):
+	Comply with the latest ANSI standard (as of today...).
+
+2004-04-22  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/liblxrt/services.c: Drain rtai_serial.h if
+	the serial support has been enabled.
+
+	* rtai-core/sched/rtai/liblxrt/GNUmakefile.am: Add the proper
+	include directive when CONFIG_RTAI_SERIAL is enabled.
+
+	* configure.in: AC_DEFINE(CONFIG_RTAI_SERIAL).
+
+	* rtai-core/sched/xenomai/fusion/dbridge.c (dbridge_init): Discard
+	DEVFS support. We will go for udev some day.
+
+	* rtai-core/ipc/fifos/fifos.c (__rtai_fifo_init): Fix DEVFS
+	support for 2.6.
+
+2004-04-21  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/timer.c (xntimer_do_timers): Do not scan
+	the timer list beyond what is strictly necessary in aperiodic
+	mode.
+
+	* rtai-core/scripts/rtai-config.in: Add --comedi-dir and
+	--elftk-dir options.
+
+	* rtai-core/arch/i386/patches: Upgrade patches to 2.6r5c2. Add
+	support for 2.6.5.
+	
+	* rtai-core/sched/xenomai, rtai-core/include/xenomai/errno.h:
+	Cleanup and gather error code definitions into a single file.
+
+	* rtai-core/sched/xenomai/timer.c: Use quad to represent CPU tick
+	count in delays.
+
+2004-04-20  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/math/Makefile.kbuild: Add missing extra CFLAGS, most
+	notably -D_IEEE_LIBM -D_ISOC99_SOURCE and -D_SVID_SOURCE.
+
+2004-04-19  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai: Add aperiodic (i.e. "oneshot") timer
+	source support.
+
+2004-04-18  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/asm-arm/Makefile.am (install-data-local): Add
+	missing link to arch dir under asm-arm/ when installing.
+
+	* rtai-core/scripts/rtai-config.in, configure.in: Fix exit code
+	upon usage() and provide for --linux-version request.
+
+2004-04-18  Rolf Offermanns <roffermanns@sysgo.com>
+
+	* rtai-core/include/asm-arm/arch-sa1100/rtai_timer.h: Add missing
+	volatile qualifier to rtai_tsc.
+
+2004-04-18  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Add missing exports.
+
+	* rtai-core/ipc/netrpc.c (cleanup_softrtnet): Make sure the reaped
+	thread can receive our signal.
+
+2004-04-17  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/asm-arm/GNUmakefile.am: Add missing nobase_
+	prefix.
+
+2004-04-09  Philippe Gerum  <rpm@xenomai.org>
+
+	* RELEASE: rtai-3.1 test #1
+
+	* rtai-lab/scilab/devices: Include <stdio.h> where it was missing.
+
+	* rtai-core/sched/xenomai/pod.c,
+	rtai-core/include/asm-i386/rtai_xeno.h: Partially rewrite the FPU
+	management code so that it properly works with shadow threads.
+
+2004-04-07  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/asm-i386/rtai_xeno.h: Fix rampant FPU
+	corruption upon shadow tasks migrations.
+
+2004-04-07  Steven Seeger <steve@stellartec.com>
+
+	* rtai-core/arch/i386/hal/hal.c: Do not clobber return values of
+	registered user SRQ handlers.
+
+2004-04-05  Philippe Gerum  <rpm@xenomai.org>
+
+	* configure.in: Pass $(CC) to Kbuild Makefiles.
+
+	* vesuvio: Fix make dist.
+
+2004-04-04  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-addons/skins/pse51/rtai_pse51.h: Make sure we include
+	<linux/version.h> before testing the kernel version stamp.
+
+	* rtai-addons/comedi: Add missing link to Makefile.kbuild.
+
+	* magma: Move to testing tree codenamed "vesuvio".
+
+	* rtai-core/arch/i386/patches: Upgrades patches to 2.4r13c1 and
+	2.6r5c1.
+
+	* magma: Rename Makefile.am to GNUmakefile.am as required by
+	automake's dependency rules.
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Almost make LXRT work in
+	2.6/UP configuration. Having it properly working over 2.6 will
+	require deep surgery in the Linux task priority handling code.
+
+2004-04-03  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/include/asm-i386/rtai_oldnames.h: Discard obsoleted
+	send_ipi_shorthand() and send_ipi_logical().
+
+	* rtai-core/sched/rtai/sched_smp.c (start_rt_timer_cpuid):
+	Provided as a wrapper to start_rt_timer() in APIC-less build.
+
+	* rtai-core/sched/rtai/common.c: Export missing symbols for SMP
+	build.
+
+	* rtai-core/include/asm-i386/rtai_hal.h: Properly declare
+	rtai_broadcast_to_local_timers() inside the SMP section.
+
+	* rtai-core/include/rtai_sem.h: Fix rt_psem_post() and
+	rt_pmutex_lock().
+
+2004-04-03  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+
+	* rtai-core/arch/*/(def|K)config: integrated the DocBook
+	configuration options. DocBook, LaTeX and Doxygen are now
+	separated options, since they require different tool suites.
+
+	* rtai-core/scripts/bootstrap: Removed the -f flag from libtoolize
+	and added the -a and -c flags to automake so that "bootstrap" run
+	on a tree without autotools generated files will generate them
+	but will not override files when useless.
+
+2004-04-02  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/scripts/bootstrap: Make libtoolize copy the files from
+	the data directory instead of creating symlinks.
+
+	* rtai-core/sched/rtai/sched_lxrt.c (give_back_to_linux): Run
+	Linux's scheduling tail code right after wake up.
+
+2004-03-31  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/hal/hal.c (rt_ack_irq): Call ->enable()
+	handler instead of ->end(); this way, pre-3.x ISRs won't have to
+	be updated.
+
+2004-03-30  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/ipc/fifos/fifos.c: Fix stupid DEVFS template bug.
+
+2004-03-29  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c: Some improvements over
+	latency.
+
+2004-03-29  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+
+	* rtai-core/scripts/bootstrap: Added a call to libtoolize in the
+	bootstrap script. It is mandatory since automake 1.6.
+
+	* rtai-core/config/autoconf/docbook.m4:  Added the "framework"
+	to compile DocBook XML documentation and moved a few files around: 
+	the doxygen documentation is now generated in rtai-doc/doxygen and
+	the latex documentaion in rtai-doc/latex.
+
+2004-03-27  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/malloc, rtai-core/ipc/mq, rtai-core/ipc/sem: Fix
+	deprecated casts on lvalues.
+
+2004-03-26  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/hal/hal.c (rtai_usrq_trampoline): Keep this
+	routine extern. Having it static fools some GCC revs causing this
+	routine to be spuriously optimized out, even if it is indeed
+	referenced from a piece of inline assembly code from the same
+	compilation unit.
+
+2004-03-25  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/ipc/netrpc/netrpc.c (set_linux_task_priority):
+	Portable helper to change a Linux task priority.
+
+	* rtai-core/math/libm.c: Add missing declarations and exports for
+	gamma_r, rinttol, roundtol and cabs.
+
+2004-03-25  Wolfgang Grandegger <wolfgang.grandegger@bluewin.ch>
+
+	* rtai-core/include/asm-ppc/rtai_fpu.h,
+	rtai-core/include/asm-ppc/rtai.h: Fix compilation with FP support
+	enabled.
+	
+2004-03-23  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c (xnshadow_schedule_tail):
+	Reactivate the scheduling tail even for 2.6: we still need to
+	abort the operation for the RTAI domain.
+
+2004-03-22  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/ipc/mbx (rt_named_mbx_delete): Fix cut and paste typo.
+
+	* configure.in: Ask autoconf to generate "GNUmakefile" from
+	Makefile.in templates, so that kbuild Makefiles can be named
+	"Makefile".
+
+	* rtai-core/sched/rtai/sched_smp/mup.c: Add missing calls to
+	built-in feature init/cleanup code (!).
+
+2004-03-21  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/scripts/rtai-load.in: Use modprobe instead of insmod
+	for loading the Adeos module when applicable.
+
+2004-03-18  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/heap.c (xnheap_alloc): Keep the mutex
+	locked while getting a free range so that two or more concurrent
+	threads running this code won't lead to a multiple heap extension
+	(even if harmless).
+
+2004-02-18  Roberto Bucher  <roberto.bucher@supsi.ch>
+	* rtai-lab/scilab/utility/xgenconfig.cpp : Solved a problem by
+	reading the old config file
+	
+	* rtai-lab/xrtailab.cpp : Added the "quit" icon to the toolbar
+
+2004-03-17  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c (__set_linux_task_priority):
+	Use a sound default value when no shadow is attached to the
+	reniced task.
+
+2004-03-16  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai: Preliminary port of FUSION to 2.6. To
+	this end, the shadow priority management has been heavily
+	reworked.
+
+2004-03-13  Wolfgang Grandegger <wolfgang.grandegger@bluewin.ch>
+
+	* rtai-core/arch/ppc/hal/rthal-5g-2.4.22-yd2f.patch: Add support
+	for Yellow Dog's kernel 2.4.22-2f.
+
+2004-03-12  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/xenomai/shadow.c: Delegate Linux task renicing
+	to a VIRQ handler from the root domain.
+
+2004-03-10  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Normalization of various
+	names.
+
+	* rtai-core/arch/i386/hal/hal.c: Move Linux event interposition
+	code to LXRT.
+
+2004-03-09  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Upgrade to hal4c3-2.6.3.
+
+	* rtai-core/arch/i386/hal/hal.c (rtai_linux_schedule_tail): Do not
+	attempt to drop the mm log upon transition to hard LXRT mode.
+
+2004-03-08  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/hal: Add escalation service to run a handler
+	on behalf of the RTAI domain.
+
+	* rtai-core/sched/rtai/sched_lxrt.c: Use the escalation service
+	for running fast_schedule() over the RTAI domain only. This is
+	mandatory over 2.6 to prevent the stolen task from spuriously
+	re-entering schedule() on the long return path from interrupt.
+
+	* rtai-core/arch/i386/patches: Add hal4c2-2.6.3 (needed for
+	implementing the escalation service).
+
+2004-03-08  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
+
+	* rtai-addons/skins/pse51/rtai_pse51.h: Conditionnaly compile the 
+	clockid_t definition with 2.6 kernels, since these kernels already
+	provide one.
+
+2004-03-07  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-addons/comedi: Add support for the compiling kernel module
+	against 2.6 + Normalize source names + Upgrade license banner LGPL
+	-> GPL for the kernel module.
+
+	* rtai-core/ipc/fifos/fifos.c: Fix compilation with devfs.
+
+	* configure.in: Prevent conflicts when rtai_config.h is included
+	by foreign auto-confiscated packages.
+
+	* configure.in: Help external packages relying on the directory
+	layout from legacy 24.1.x to find the 3.x configuration header by
+	setting a symlink from $(top_builddir)/rtai_config.h to
+	$(top_builddir)/rtai-core/include/rtai_config.h (old-fashioned
+	build mode only).
+
+	* rtai-core/sched/rtai/sched_up/smp/mup.c (rt_schedule): Close the
+	interrupt race window between the call to rt_switch_to_linux()
+	re-enabling the Linux stage and the actual task switch.
+
+2004-03-05  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core: Finish exporting the various module interfaces.
+
+	* rtai-core/include/asm-i386/rtai_hal.h (rtai_get_current): Add
+	2.6 compliance.
+
+	* rtai-core/ipc/*/Makefile.am (all-local): Make sure we test the
+	appropriate BUILTIN flag.
+	
+	* rtai-core/ipc/sem: Export the module interface explicitely using
+	EXPORT_SYMBOL().
+	
+2004-03-04  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/arch/i386/patches: Add hal4c1-2.6.3 which allows us to
+	fiddle with the PIT without conflicting with the Linux kernel
+	under normal operations.
+
+	* rtai-core/sched/xenomai, rtai-sim: Bulk change renaming module
+	init/exit points.
+
+	* rtai-core/sched/rtai: Use rt_set_timer_delay() directly instead
+	of uselessly redirecting through set_timer_chip().
+
+	* rtai-core/sched/rtai: Properly test ALLOW_RR.
+
+2004-03-03  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/scripts/rtai-load.in: Fix various issues with new
+	modutils.
+
+	* rtai-core/arch/i386/calibration/Makefile.am: Fix calibration
+	kernel helper path to use the proper module extension.
+
+	* configure.in: Do not attempt to make Makefile.kbuild links when
+	building in the source tree (CONFIG_RTAI_OLD_FASHIONED_BUILD=y).
+
+2004-03-02  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/ipc/fifos: Cleanup devfs handling.
+
+	* rtai-core/wd: Suppress option for builtin mode: watchdog support
+	sets the timer for its own purpose, so having it always in the
+	scheduler conflicts with apps which need to control the timer
+	too. Additionally, this is a module aimed at debugging, so having
+	it bound to the core system makes little sense.
+
+2004-03-01  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-core/sched/rtai/sys_lxrt.c (__task_init): The syscall table
+	is no more exported in 2.6, so we cannot call the mlockall service
+	through it. Since the user is expected to invoke mlockall() from
+	user-space, remove this operation for 2.4 also. This could be
+	better done in rt_task_init_schmod() for instance.
+
+	* rtai-core/arch/i386/hal, rtai-core/sched/rtai: Export the module
+	interfaces explicitely using EXPORT_SYMBOL().
+	
+	* rtai-core/arch/i386/patches: Upgrade to 2.4r11 and 2.6r3 final.
+
+	* rtai-core/scripts/rtai-load.in: Substitute RTAI_MODULE_EXT.
+
+	* rtai-testsuite: Port to 2.6.
+
+2004-02-27  Philippe Gerum  <rpm@xenomai.org>
+
+	* rtai-addons/skins, rtai-addons/serial: Port to 2.6.
+
+	* rtai-core/arch/i386/patches: Add hal11c3 support for 2.4.25.
+
+	* rtai-core/sched/xenomai: Preliminary port to 2.6.
+
+	* rtai-core/sched/rtai: Add support for builtin features in base
 	schedulers.
 
-	* rtai-lab/mathlab/Makefile.am: Remove devices/ from SUBDIRS.
+2004-02-26  Philippe Gerum  <rpm@xenomai.org>
 
-2003-11-26  Philippe Gerum  <rpm@xenomai.org>
+	* rtai-core/sched/rtai: Finalize compilation support of base
+	schedulers for 2.6.
 
-	* configure.in, rtai-sim/configure.in: Follow consistent naming
-	convention for --enable- switches.
+	* rtai-core: Use module_init/exit() convention.
 
-	* rtai-core/include/asm-i386/rtai_atomic.h: Use our own dummy type
-	to fool GCC in xchg() ops.
+2004-02-25  Philippe Gerum  <rpm@xenomai.org>
 
-2003-11-25  Philippe Gerum  <rpm@xenomai.org>
+	* rtai-core/arch/i386/patches: Upgrade to 2.4r11c3 and 2.6r3c3
+	series.
 
-	* rtai-core/ipc/netrpc/netrpc.c: Fix exec of usermode helper
-	(urtnet).
+2004-02-22  Philippe Gerum  <rpm@xenomai.org>
 
-	* rtai-core/sched/xenomai/fusion: Add domain bridge support.
+	* rtai-core/*: Finalize preliminary compilation support for 2.6.
 
-2003-11-24  Paolo Mantegazza  <mantegazza@aero.polimi.it>
+2004-02-18  Philippe Gerum  <rpm@xenomai.org>
 
-	* netrpc: adapted to integrate the real RTNet and interoperate 
-	it with Linux networking. Related changes documented in the 
-	netrpc README.
+	* rtai-core/arch/i386/hal, rtai-core/ipc/bits: Port to 2.6.
 
-2003-11-24  Philippe Gerum  <rpm@xenomai.org>
+2004-02-15  Philippe Gerum  <rpm@xenomai.org>
 
-	* configure.in: Fix RTAI_COMPAT_CPPFLAGS so that rtai-config
-	properly uses the staging directory path.
+	* rtai-core/arch/i386/patches: Add hal3c2 patch for 2.6.0.
 
-	* rtai-core/scripts/rtai-config: Prefix RTAI_MODULE_DIR with the
-	staging directory path.
-	
-2003-11-23  Philippe Gerum  <rpm@xenomai.org>
+	* rtai-core/arch/i386/hal/hal.c: Load cpuid explicitely after
+	declaration as per Adeos 2.4-r11c2.
 
-	* rtai-core/include/asm-i386/rtai_sched.h: Increase default task
-	stack size if LTT support is on.
+	* rtai-core: Remove RTHAL/x86 support.
 
-2003-11-21  Philippe Gerum  <rpm@xenomai.org>
-
-	* kilauea: Allow using DESTDIR at runtime in order to execute
-	staged objects in place on the host system.
-
-	* configure.in: The trace support cannot be statically bound to
-	the scheduler since the HAL depends on it. Remove this option.
-
-	* rtai-core/scripts/rtai-config: Force load of trace support
-	module if present.
-
-	* rtai-core/include/asm-*: Fix missing support for DESTDIR.
-
-	* Makefile.am: Do not attempt to create fifos nodes when the
-	installation goes to a staging directory (i.e. DESTDIR is set).
-
-2003-11-20  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/rtai_nam2num.h: Force static inlining of
-	nam2num/num2nam.
-
-2003-11-19  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Do not rely on installed kernel headers when
-	cross-compiling, or when those are unavailable to userland
-	programs.
-	
-	* rtai-core/include/rtai_posix.h: Decouple arch-dependent atomic
-	ops by using rtai_atomic.h.
-
-	* rtai-core/include/asm-i386/rtai_atomic.h: Add for userland
-	access of arch-dependent atomic services.
-
-	* configure.in: x86 platforms must have CONFIG_X86_CMPXCHG and
-	CONFIG_X86_WP_WORKS_OK (Xenomai-only).
-
-2003-11-18  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/Kconfig: Add no inlining mode. Move inlining
-	switches to the General options menu.
-	
-	* rtai-core/include, rtai-addons/comedi: Use RTAI_PROTO() instead
-	of deprecated __RTAI_INLINE__.
-
-2003-11-17  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/rtai/liblxrt/services.c: Add contents of
-	rtai_posix.h to the out-of-line services.
-
-	* rtai-core/scripts/rtai-config.in: Fix option names for
-	consistency purposes.
-
-	* rtai-testsuite/user/latency/runinfo.in: Add missing msg module
-	dependency.
-
-2003-11-16  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/hal/hal.c (arti_linux_signal_process): Do
-	not relay any other signal than SIGKILL to the RTAI handler. This
-	workaround nearly conforms to the legacy HAL behaviour.
-
-	* rtai-core/scripts/rtai-config.in: Output preprocessor flags
-	involved when source compatibility mode has been selected. Also
-	add missing include path in compilation flags.
-
-2003-11-15  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/ipc/fifo.c: Discard module count update until we find
-	a way to properly handle LXRT apps opening fifo channels without
-	destroying them before exiting.
-
-2003-11-14  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/scripts/rtai-load: Fix background process handling.
-
-	* rtai-core/sched/xenomai: Fix assembly portions for building with
-	GCC 3.3.2.
-
-	* rtai-compat/include/rtai_sched.h: Add wrappers from various
-	scheduler-related old macros to their new (normalized) names.
-
-	* rtai-core/arch/i386/hal (rt_request_timer_cpuid,
-	rt_request_apic_timers): Fix race condition spotted by Juergen
-	Stohr <juergen.stohr@lpr.e-technik.tu-muenchen.de>.
-	
-	* configure.in: Make -smp label appear along with the selected
-	kernel version when applicable.
-
-2003-11-13  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/scripts/rtai-load: Be verbose upon insmod error. Also
-	probe for the adeos module and load it as a preamble if found.
-
-2003-11-12  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/scripts/rtai-load: Kill warning on kill.
-
-	* rtai-addons/cpp/Makefile.am: Dissociate compilation flags for
-	C/C++ to kill -fno-rtti warning with GCC 3.x.
-
-	* configure.in, rtai-core/include/rtai_version.h: Automatically
-	generate the proper version stamps.
-
-2003-11-11  Philippe Gerum  <rpm@xenomai.org>
-
-	* acinclude.m4: Removed -fpcc-struct-return from CXXFLAGS. We
-	won't link with libraries compiled using non-GCC exotic compilers.
-
-2003-11-10  Philippe Gerum  <rpm@xenomai.org>
-
-	* Makefile.am: Force reconfig if Linux configuration has changed.
-
-	* rtai-core/arch/i386/calibration: Fix inclusions for RTHAL.
-
-	* rtai-core/arch/i386/patches: Upgrade HAL patches to Adeos-r9.
-
-	* rtai-core/arch/i386/hal/hal.c: Add arti_calibrate_8254()
-	service.
-
-2003-11-09  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Restore CONFIG_RTAI_KMOD_DEBUG switch. Add
-	CONFIG_RTAI_USER_DEBUG to control debug symbol generation in
-	user-space programs.
-
-	* rtai-testsuite: Craft "run" script on install-data-local.
-
-	* rtai-core/arch/i386/calibration: Autoconfiscate.
-
-2003-11-08  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/config/modules/Makefile: Force making of
-	include/linux/modversions.h.
-
-	* Makefile.am: Add missing dev[ices] rule to build SHM and FIFO
-	character devices. Hooked to install-exec-local so this rule is
-	implicitely run when installing the result of a full build.
-
-2003-11-05  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/ipc/shm/shm.c (rtai_kmalloc_f): Raise MAX_SLOTS to 64
-	and whine verbosely when no more slots are available.
-
-	* rtai-addons/comedi/Makefile.am (libkcomedilxrt_a_CFLAGS): Use
-	CONFIG_RTAI_LXRT_INLINE=0 for non-inline inclusion of LXRT
-	routines and fix inclusion path in flags.
-
-	* configure.in, rtai-core/arch/i386/Kconfig: Add RTAI_COMEDI_DIR
-	installation parameter.
-
-	* rtai-core/include/asm-*: Add arch-dependent default tick
-	(RTAI_DEFAULT_TICK) and default stack size (RTAI_DEFAULT_STACKSZ)
-	defines to be used by example code.
-
-2003-11-04  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/xenomai/module.c (xnpod_read_proc): Remove debug
-	code.
-
-	* rtai-doc/Makefile.am: Fix docdir.
-
-2003-11-02  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Don't catch simulator options uselessly.
-
-	* rtai-core/include/rtai_posix.h: Add dual-space POSIX
-	wrapper. Remove in-kernel POSIX configuration switch.
-
-	* rtai-core/include/rtai_comedi.h: Move to rtai-addons/comedi
-	since it is not a core header.
-
-2003-11-02  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* rtai-core/scripts/rtai-config.in: rtai-config, second attempt.
-
-2003-10-31  Panagiotis Issaris <panagiotis.issaris@mech.kuleuven.ac.be>
-
-	* rtai-core/sched/xenomai/module.c (xnpod_read_proc): Prevent oops
-	if no skin is loaded.
-
-2003-10-31  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-sim: Added as a semi-standalone package (used to be
-	rtai-tools/mvm). The simulator package can be built as part of the
-	standard RTAI distro, or outside provided rtai-core/ and
-	rtai-addons/ are accessible somewhere.
-
-	* rtai-*: Check and fix distclean appropriately.
-
-	* bootstrap: Move to rtai-core/scripts so that it would be less
-	likely run mistakenly.
-
-	* rtai-core/config/kconfig/lex.zconf.c_shipped: Don't trash
-	zconfin upon failed opening attempt.
-
-2003-10-31  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* configure.in, Makefile.am, acinclude.m4: Added support for an
-	rtai-config script.
-
-2003-10-30  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Add component control for sub-packages.
-
-	* rtai-tools/rtailab: Moved to toplevel as rtai-lab. rtai-tools
-	removed.
-
-	* rtai-core/config/kconfig/lex.zconf.c_shipped: Allow "source"
-	statement to be used with stale files.
-
-	* makefile: Pre-set CC := gcc.
-
-2003-10-30  Peter Soetens <peter.soetens@mech.kuleuven.ac.be>
-	* configure.in, rtai-addons/comedi, rtai-core/arch/i386/KConfig: 
-	Added kcomedilib support for LXRT
-
-2003-10-30  Wolfgang Grandegger <wolfgang.grandegger@bluewin.ch>
-	
-	* rtai-testsuite/kern/latency/rt_process.c: Fix for configurations
-	without FPU support.
-
-2003-10-30  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-tools/mvm: Complete removal. The RTAI simulator is now
-	available from the "simulator" toplevel package.
-
-2003-10-29  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in, rtai-core/config/modules/Makefile: Retrieve
-	compilation flags for kernel modules out of Linux's build setup.
-
-	* rtai-examples: Complete removal. Examples are now available from
-	the "showroom" toplevel package.
-
-	* configure.in, rtai-core/include/asm-i386/rtai_vectors.h:
-	Discontinue support for 2.2 kernels. Remove CONFIG_RTAI_LINUX22
-	and CONFIG_RTAI_LINUX24.
-
-2003-10-28  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Define __CONFIG_RTAI_LXRT_SUPPORT for archs that
-	have LXRT support.
-
-	* configure.in: Always output the Makefiles for every package
-	available, even for the ones that have been configured out. We
-	really can't do this conditionally to save configuration time due
-	to Automake's distXXX rules. *Sigh*
-
-	* rtai-core/scripts/rtai_load: Moved to rtai-load.
-
-	* rtai-core/scripts/rtai_info: Moved to rtai-info.
-
-2003-10-28  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* rtai-core/arch/i386/calibration: added an alpha menu driven 
-	calibration and bus interrupt latency checked for ix86s.
-
-2003-10-26  Philippe Gerum  <rpm@xenomai.org>
-
-	* makefile: Fix implicit reconfiguration logic.
-
-	* rtai-core/config/kconfig: Upgrade Kconfig engine to 2.6.0-test9.
-
-	* configure.in: Turn CONFIG_RTAI_MAKE_DOC into CONFIG_RTAI_DOC for
-	consistency purpose.
-
-	* rtai-core/skins: Moved to rtai-addons. Xenomai/VM support has
-	been largely reorganized (directory-wise only). The rationale is
-	to alleviate the core system from stuff users of the native RTAI
-	API won't use, and better integrate the user-space VM support
-	directly into the skin-related Makefiles.
-
-2003-10-26  Gilles Chanteperdrix  <gilles.chanteperdrix@laposte.net>
-
-	* configure.in, rtai-doc/Makefile.am: Make LaTeX mode
-	configurable, and fix some build issues.
-
-2003-10-25  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-config: Moved to rtai-core/config.
-
-	* rtai-scripts: Moved to rtai-core/scripts.
-
-	* rtai-drivers/serial: Moved to rtai-addons. rtai-drivers removed.
-
-2003-10-24  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Allow for better componentization of the RTAI
-	sub-systems.
-
-	* rtai-scripts/rtai-load: Fix module unloading.
-
-	* configure.in: Do not output Makefiles for disabled
-	features/packages (time saving trick). A new configuration option
-	allows to force the Makefile generation whatever the configuration
-	status is, mainly for distribution purpose
-	(CONFIG_MAINTAINER_DIST_MODE).
-
-	* configure.in, Makefile.am, makefile: Fix cleanup and
-	installation issues regarding old fashioned builds (i.e. srcdir ==
-	builddir).
-
-2003-10-23  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/Kconfig: Add RTAI_EFLTK_DIR configuration
-	for RTAILab.
-
-	* rtai-core/arch/i386/Kconfig: Allow for selecting inlining mode
-	of LXRT services. Defaults to "extern inline". Depends on
-	RTAI_EXTENDED configuration mode.
-	
-	* configure.in: Have sanity checks output an explicit 'forced'
-	status when they need to change preposterous scheduler settings
-	(e.g. UP sched with SMP kernel).
-
-2003-10-23  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-        * rtai-testing: completed and symmetrised testing of user and kernel 
-	space base tests (latency/preept/switches).
-
-        * rtai/examples/kern/ipc/netrpc: validation of basic netrpc services
-        in kernel space.
-
-        * rtai/examples/user/ipc/netrpc: added and validated netrpc services
-        in user space.
-
-2003-06-16  Bruno Rouchouse  <br@jacow.fdn.fr>
-
-	* rtai-core: Merge initial inline documentation.
-	
-2003-06-19  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* rtai-testsuite/user: Add preempt and switches tests in user-space.
-
-2003-10-19  Robert Schwebel <robert@pengutronix.de>
-
-	* rtai-doc: Add RTAI Reference guide.
-
-2003-10-19  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in, arch/*/Kconfig: Enforce dependencies between SEM
-	<- MQ/MBX/TBX and MSG <- NETRPC.
-
-2003-10-17  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-tools/rtailab: Forward port from stromboli.
-
-	* rtai-compat: Have the compatibility headers installed.
-
-2003-10-14  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/rtmem: Renamed malloc/ so we can later add a heap
-	manager with O(1) capability.
-
-	* configure.in: Generate a Kconfig-type file with the current
-	configuration if none has been provided.
-	
-	* rtai-core/usi: Fix LXRT services registration.
-	
-	* rtai-core/ipc/shm: Use SHM naming uniformly. Remove the nommu
-	support until it is properly fixed.
-
-	* rtai-core/math: Fix uninitialized variables used in C99 mode.
-
-	* rtai-core/math: Fix errno and printk() handling.
-
-2003-10-12  Edelhard Becker <ebecker@software-manufaktur.de>
-
-	* all Makefiles: Debianization work.
-
-2003-10-09  Philippe Gerum  <rpm@xenomai.org>
-
-	* makefile: Add clean, distclean and help targets.
-
-2003-10-08  Philippe Gerum  <rpm@xenomai.org>
-
-	* everywhere: Upgrade to automake 1.7.8.
-
-	* rtai-tools/mvm/nslib: Have all personalities compiled using the
-	--with-gcic-compiler flag, so that we can safely build RTAI with
-	GCC 3.x while retaining a backward compatibility with the
-	2.9x-based simulation instrumenter.
-
-2003-10-07  Philippe Gerum  <rpm@xenomai.org>
-
-	* makefile: Allow for passing the CC and CXX variables through the
-	environment.
-
-	* rtai-core/arch/*/Kconfig: Make maintainer mode switches depend
-	on extended configuration mode.
-
-	* rtai-core/leds: Add leds-based debugging support.
-
-2003-10-04  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/asm-i386: Rename base headers to have the
-	RTHAL-related files appear as legacy support.
-
-	* rtai-core/arch/i386/patches: Rename patches to have the
-	RTHAL-related files appear as legacy support.
-
-	* rtai-core/arch/i386/hal: Rename HALs to have the RTHAL-related
-	file appear as legacy support.
-
-	* rtai-core/configure.in: Make 8254 and APIC tuning latencies
-	configurable for x86 platforms.
-
-	* rtai-core/include/asm-i386/arti_fpu.h: Do not include
-	asm/processor.h when compiling C++ code. This file has become
-	C++-unfriendly with Linux 2.4.22.
-
-	* rtai-core/sched/xeno: Use long long for representing CPU
-	frequencies.
-
-2003-10-02  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/asm-i386/arti.h (arti_ulldiv, arti_imuldiv):
-	Fix overflow in computations involving high CPU frequencies (>
-	2Ghz).
-
-2003-09-24  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Add toggle for building Doxygen-based
-	documentation.
-
-	* rtai-doc/Doxygen.in: Add initial Doxygen template.
-
-2003-09-21  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-tools/mvm/vm/thread.h (MvmThread::restart): Use xraise() to
-	restart a thread instead of restoreContext().
-
-	* rtai-core/sched/xeno: Replace the nanokernel's private mutex
-	(kmutex) by interrupt-free sections.
-
-2003-09-20  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/xeno/pod.c (xnpod_delete_thread,
-	xnpod_suspend_thread): Test the XNREADY bit to check for linkage
-	to the ready queue (and nothing else).
-
-2003-09-18  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/xeno/pod.c (xnpod_suspend_thread): Fix serious
-	bug when suspending a re-readied running thread (i.e. XNREADY bit
-	set for the running thread due to a priority change for instance).
-
-	* rtai-core/sched/xeno/pod.c: Add procfs support in kernel mode.
-
-2003-09-10  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/skins/vmlib: Add a user-space based virtual machine
-	library for each RTOS skin. Applications can run into these
-	virtual machines, based on user-space shadow threads controlled by
-	the in-kernel Xenomai core. This replaces the former attempt to
-	export a per-skin user -> kernel interface to applications. This
-	ends the Xenomai sub-system integration phase.
-
-2003-08-28  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/xeno/shadow.c: Implement lazy migration model.
-
-2003-08-25  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/skins/*: Make all sysentries arch-independent
-	(i.e. moved from syslib/<arch> to the common API).
-
-2003-08-24  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/skins/fusion: Add the baseline of the Fusion API. A
-	Xenomai-based extension moving the native POSIX interface into the
-	RTAI realm.
-
-2003-08-24  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/xeno/shadow.c: Add real-time replacement for
-	nanosleep(), setitimer() and getitimer() syscalls when issued on
-	behalf of a shadow thread. This provides hi-resolution timers
-	depending on Xenomai's clock instead of Linux's.
-
-2003-08-05  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/asm-i386/arti.h: Fix in LTT-enabled case.
-
-2003-08-01  Philippe Gerum  <rpm@xenomai.org>
-
-	* Makefile.am: Use ld's --whole-archive option everywhere to
-	produce kernel modules from libraries.
-
-2003-07-20  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/xeno/pod.c, rtai-core/sched/xeno/shadow.c: More
-	work on mutable root priority. Two shadow threads can now relax
-	while keeping their priority order across the Linux transition.
-
-2003-07-19  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/patches: Upgrade to final
-	adeos-r8-2.4.{19,20,21} patches. Removed adeos-r8c2-* patches.
-
-	* rtai-core/sched/xeno/pod.c: Remove obsolete services
-	xnpod_force/release_idle_state().
-
-2003-07-17  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/xeno/shadow.c: Provide user-driven mode switch
-	between Linux and real-time contexts (__xn_sys_switch).
-
-	* rtai-core/skin/psos/syslib: Use mode switch to allow task
-	creation from RT space.
-	
-2003-07-13  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/patches: Upgrade to
-	adeos-r8c2-2.4.{19,20,21} patches. Removed adeos-r8c1-* patches.
-
-2003-07-12  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/xenomai/thread.h: Add a magic field to
-	identify the originating skin. All calls to xnpod_init_thread()
-	and xnthread_init() changed accordingly.
-
-2003-07-10  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/asm-i386/rtai_xeno.h (__switch_threads):
-	Use safer register allocation.
-
-2003-07-09  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/skin/psos/syslib: Implement initial services
-	t_create(), t_start(), tm_wkafter() for real-time shadows.
-
-	* rtai-core/sched/xeno/shadow.c: Stabilize the shadow
-	infrastructure code exported to the skin's syslibs.
-
-2003-07-05  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/asm-i386/rtai_xeno.h: Rewrite thread switching
-	code and fix FPU support for shadow threads.
-
-2003-07-02  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/hal/arti.c (arti_trap_fault): Handle BUG()
-	assertions.
-
-2003-06-27  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/include/asm-i386/arti.h: Define rt_printk() for both C
-	and C++ kernel-space readers.
-
-2003-06-25  Philippe Gerum  <rpm@xenomai.org>
-
-	* MILESTONE 1.
-	
-	* rtai-doc: Add GPL and LGPL copies.
-	
-	* rtai-core/arch/i386/patches: Add adeos-r8c1-2.4.{19,20,21}
-	patches. Removed adeos-r7-* patches.
-
-2003-06-24  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Do not override configure's $VERSION variable when
-	parsing the kernel Makefile.
-
-	* rtai-core/arch/i386/hal/{arti,rtai}.c: Rework SCHED_ISR_LOCK
-	support.
-
-2003-06-23  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/hal/arti.c,
-	rtai-core/sched/rtai/sched_lxrt.c: Forward port the current()
-	determination fix from stromboli.
-
-2003-06-22  Philippe Gerum  <rpm@xenomai.org>
-
-	* Makefile.am: Fix install-data-local.
-
-2003-06-19  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* rtai-core/arch/i386/hal, rtai-core/sched/rtai: support for 
-	deferring task scheduling at return from interrupt handlers,
-	optionally configurable at config (SCHED_ISR_LOCK).
-
-2003-06-18  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/rtai: Produce -noapic versions of MUP and LXRT
-	schedulers for x86.
-
-2003-06-17  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai: Remove RTAI_COMPAT_CFLAGS from all Makefiles (but rtailab
-	which is about to undergo a major evolution). These are useless
-	now that the whole tree has been adapted to the new headers.
-
-2003-06-16  Bruno Rouchouse  <br@jacow.fdn.fr>
-	
-	* rtai-core/arch/i386/Kconfig: Add some minor corrections to help
-	messages (e.g. suppression of some wordy explanations, wrong
-	module names.)
-	
-2003-06-16  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-scripts/rtai_info: Add information dump script lifted "as
-	is" from the Linux source tree (linux/ver_linux).
-	
-	* Makefile.am: Install rtai configuration file (dumped by Kconfig)
-	as share/rtai/config-rtai-$VERSION.
-	
-	* rtai-config: Add per-developer profiles.
-	
-	* rtai-core/ipc/fifo.c: Merge fifo_lxrt.c into fifo.c and remove
-	it.
-	
-	* rtai-core/sched/rtai/sched_lxrt.c: Remove obsolete
-	implementation of restore_fpenv_lxrt() used in pre-24.1.9
-	releases.
-
-2003-06-16  Bruno Rouchouse  <br@jacow.fdn.fr>
-	
-	* rtai-core/arch/i386/Kconfig: Add help messages.
-	
-2003-06-14  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/i386/patches: Add adeos-r7-2.4.{19,20,21} and
-	rthal5g-2.4.21 patches. Removed adeos-r6-* patches.
-
-2003-06-13  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/rtai/Makefile.am: Don't build liblxrt on archs
-	which do not support LXRT in the first place.
-	
-	* rtai-core/include/asm-ppc/rtai.h: Move inclusion of all kernel
-	files to the kernel-only section.
-
-	* rtai-core/include/rtai_netrpc.h: Hard-code integer abs() so we
-	don't need to include any support header to define it on non-x86
-	archs.
-	
-	* rtai-core/sched/rtai/liblxrt/touchall.c: Include asm/page.h to
-	ensure that PAGE_SIZE is defined on all archs.
-	
-2003-06-11  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Handle CONFIG_RTAI_NETRPC_RTNET for NetRPC
-	emulation of RTNet.
-
-	* rtai-core/ipc/netrpc/rtnet: Finalize netrpc over rtnet-like
-	interface support.
-	
-	* rtai-examples/user: Merge in (most of) the user-space examples
-	from the [examples] branch.
-
-2003-06-10  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/rtai/Makefile.am: Fix rtai_lxrt target
-	dependencies.
-
-2003-06-07  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* rtai-core/sched/rtai: all schedulers aligned to use common.c;
-	extensive stress testing, cleaning and tuning apart, the core of
-	the streamlining and unification of the various RTAI schedulers
-	should be done.
-
-	* rtai-core/sched/rtai: substituted the RUNNING bit in tasks state
-	with a specific variable; it affects just the SMP scheduler and
-	should allow avoiding charging UP/MUP/LXRT with useless testing,
-	just because we have a common code for almost all of the available
-	services.  preliminary tests are OK, but not enough yet.
-
-2003-06-05  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-compat/include/rtai_pqueue.h: Add this wrapper to
-	rtai_mq.h.
-
-2003-06-04  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/rtai: Merge former kern & user schedulers
-	codebases.
-
-	* rtai-core: Merge in most of Paolo's changes from the [examples]
-	branch.
-
-2003-06-03  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Add missing AC_DEFINEs for enabled features.
-
-2003-06-02  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-examples/user: Add exported Makefiles.
-
-2003-05-31  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* [examples-branch]/rtai-core/ipc/netrpc: Both the code and the
-	related header file now have no specific function indexing, all
-	indexes are the same as those used in rtai_lxrt.  No more
-	duplications of named init/delete. Different calls still to be
-	made conditional on the configured IPCs.
-
-	Kernel schedulers: Added function registration, needed in case of
-	use of netrpc; still to be made conditional on having netrpc
-	configured.
-
-	LXRT scheduler: Some core functionalities, usable across all
-	schedulers, have been passed to the file concorfun.c.
-
-2003-05-30  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* [examples-branch]/rtai-core/sched: All kernel and LXRT
-	schedulers fixed and tested with all of the examples. No show
-	stopper running kernel space examples with sched_up, in UP mode,
-	and with sched_smp/mup, both in UP and MP mode. User space
-	examples run fine UP/MP under LXRT.
-
-2003-05-29  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-examples/kern: Add exported Makefiles.
-
-2003-05-29  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* [examples-branch]/rtai-examples: Examples port completed. The
-	related Makefiles and run scripts of the "brute force"
-	type. Harmonization with mainstream making left for the merge with
-	the main "magma" branch. EXAMPLE.INDEX contains a list and a
-	description of the examples.
-
-2003-05-28  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/math/k_standard.c: Remove stdio refs. Other crap
-	remains though.
-	
-	* rtai-core/wd/wd.c: Fix init/cleanup routine names.
-	
-	* configure.in: Whine when kernel is Adeos-patched but Adeos
-	support is configured out. Do not use kernel Makefile's
-	EXTRAVERSION value to determine the patch type anymore. It
-	happened that some people change this value before configuring...
-
-	* rtai-core/include/asm-i386/rtai_xeno.h: Remove useless TSC
-	emulation code. We only use the periodic mode anyway.
-
-	* rtai-core/include/rtai_sched.h: Force inclusion of linux/sched.h
-	in kernel space (C-only section).
-	
-	* rtai-core/include/rtai_netrpc.h: Remove definitions for LOW and
-	HIGH. Leave this to asm/rtai_lxrt.h since this is arch-dependent.
-	
-	* rtai-config/kconfig/Makefile.kc: Consider /usr/share/qt*3* as a
-	candidate Qt root among others.
-	
-2003-05-28  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* [examples-branch]/rtai-core/ipc/pqueue: Ported pqueue from
-	"stromboli" to "magma" "examples" branch and adapted it to the new
-	modularised structure.
-
-2003-05-27  Paolo Mantegazza  <mantegazza@aero.polimi.it>
-
-	* [examples-branch]/rtai-examples: Completing the port of the most
-	significant user and kernel space examples from "stromboli" in the
-	new "example" branch of "magma". Single examples go directly in
-	directories "kern" and "user". Multiple examples realted to a
-	single feature, e.g. netrpc go in a subdirectory "kern"/"user".
-
-2003-05-25  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai: Fix "make dist".
-	
-	* rtai-config/kconfig: Add "config" and "oldconfig" targets for
-	text-based configuration.
-	
-	* rtai: Fix "make distclean" and MVM compilation in non-VPATH mode.
-	
-	* makefile: Avoid redundant "all" rule match when the configurator
-	must be kicked off upon empty make goal.
-	
-	* rtai-drivers/serial: Fix and reactivate.
-
-2003-05-24  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-config/kconfig: _Really_ upgrade Kconfig engine to 2.5.69 +
-	Zippel patch.
-
-	* rtai-core/include/rtai_schedcore.h,
-	rtai-core/include/rtai_tbx.h, rtai-core/include/rtai_tasklets.h,
-	rtai-core/include/rtai_msg.h: Fix for inclusion from user space
-	programs.
-
-	o rtai-core/include/rtai_msg.h: Move pid2rttask() and rttask2pid()
-	to rtai_lxrt.h.
-	
-	o rtai-core/sched/user/lib/services.c: Include rtai_schedcore.h to
-	make sure that all RTAI inlines are instantiated.
-
-	* rtai-testsuite/kern/switches: Added.
-
-	* rtai-examples/user: Add more examples.
-
-	* rtai-scripts/rtai-load: Handle built-in modules case.
-
-2003-05-23  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core: Finalize feature modularization in the source tree.
-
-	* rtai-core/include/rtai_wd.h: Prefix watchdog policy names with
-	WD_ to solve namespace clash with RTAI's schedulers.
-
-	* rtai-core/include/rtai_sched.h, rtai-core/include/rtai_lxrt.h:
-	Put those on diet. SEM, MBX, MSG, RWL and SPL declarations have
-	been moved to their respective feature-specific headers.
-
-	* rtai-core/include/rtai_sem.h, rtai-core/include/rtai_mbx.h
-	rtai-core/include/rtai_rwl.h, rtai-core/include/rtai_spl.h:
-	Created.
-	
-2003-05-22  Philippe Gerum  <rpm@xenomai.org>
-
-	* magma: Merge with Paolo's "newsched" branch. Mainly concerns
-	sched/kern and sched/user refactoring. As a result of this,
-	generic IPC features have moved to rtai-core/ipc, thus became
-	optional and modular.
-
-2003-05-18  Philippe Gerum  <rpm@xenomai.org>
-
-	* configure.in: Update AC_CONFIG_FILES() incrementally, depending
-	on the selected packages.
-
-	* rtai-tools/rtailab/Makefile.am: Add missing user-space flags.
-
-2003-05-13  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-config/kconfig: Upgrade Kconfig engine + add GTK-based
-	GUI support.
-
-2003-05-11  Wolfgang Grandegger <wg@denx.de>
-	
-	* configure.in: Fix PPC section.
-	
-2003-05-07  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/cris: Add missing Kconfig/defconfig.
-
-	* configure.in: Add CONFIG_RTAI_KMOD_DEBUG switch.
-
-2003-05-05  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/cris, rtai-core/include/asm-cris: Add CRIS/ETRAX
-	support, extracted from stromboli(magma-diff-1)
-
-2003-05-04  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/arch/ppc, rtai-core/include/asm-ppc: Add PPC support,
-	extracted from stromboli(magma-diff-1)
-
-	* rtai-core/arch/mips, rtai-core/include/asm-mips: Add preliminary
-	MIPS support, extracted from stromboli(magma-diff-1). Still
-	missing the kernel patch though since idtmips-rthal6.20011113
-	does not apply smoothly.
-
-2003-05-02  Philippe Gerum  <rpm@xenomai.org>
-
-	* rtai-core/sched/user, rtai-core/include/rtai_lxrt.h: Merge
-	stromboli changes up to tag magma-diff-1.
-
-	* rtai-core/arch/arm, rtai-core/include/asm-arm: Add ARM support,
-	extracted from stromboli(magma-diff-1). Sub-arch support for
-	clps-711x is still incomplete though.
-
-	* rtai-core/sched/user/lxrt.c (__task_init): Fix a potential bug
-	by moving RT_TASK field inits _after_ the allocated task struct
-	pointer has been checked for validity.
-
-	* rtai-core/sched/user/sched.c: Fix RTMEM init.
-
-	* rtai-core/tasklets/tasklets.c (rt_timers_manager): Use
-	DEFINE_LINUX_CR0 instead of a hard-coded variable.
-
-	* configure.in, Makefiles.am: Finalize cross-compilation support.
-
-	* rtai-core/include/asm-i386/rtai_lxrt_sup.h: Removed. Contents
-	merged into asm-i386/rtai_lxrt.h.
-
-	* rtai-tools/mvm/examples: Added.
-
-2003-05-01  Philippe Gerum  <rpm@xenomai.org>
-
-	* Started.
-
-	* rtai-scripts/rtai-load: Add sudo switch and background mode to
-	the run action syntax.
+	* Started: baseline from 3.0r2.

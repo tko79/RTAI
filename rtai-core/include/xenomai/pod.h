@@ -63,9 +63,10 @@
 #define XNRPRIO  0x00000002	/* Reverse priority scheme */
 #define XNTIMED  0x00000004	/* Timer started */
 #define XNTMSET  0x00000008	/* Pod time has been set */
-#define XNSCHED  0x00000010	/* Pod needs rescheduling */
-#define XNFATAL  0x00000020	/* Pod encountered a fatal error */
-#define XNKCOUT  0x00000040	/* Kernel callout context */
+#define XNTMPER  0x00000010	/* Periodic timing */
+#define XNSCHED  0x00000020	/* Pod needs rescheduling */
+#define XNFATAL  0x00000040	/* Pod encountered a fatal error */
+#define XNKCOUT  0x00000080	/* Kernel callout context */
 
 /* These flags are available to the real-time interfaces */
 #define XNPOD_SPARE0  0x01000000
@@ -85,15 +86,7 @@
 #define XNPOD_NORMAL_EXIT  0x0
 #define XNPOD_FATAL_EXIT   0x1
 
-/* Error codes thrown by the POD management routines */
-#define XNPOD_ERRBASE  0xffff1000
-
-#define XNERR_POD_NOMEM   (XNPOD_ERRBASE + 1)
-#define XNERR_POD_BUSY    (XNPOD_ERRBASE + 2)
-#define XNERR_POD_UNINIT  (XNPOD_ERRBASE + 3)
-#define XNERR_POD_NOHOOK  (XNPOD_ERRBASE + 4)
-
-#define XNPOD_DEFAULT_TICK         0  /* i.e. Use XNARCH_DEFAULT_TICK */
+#define XNPOD_DEFAULT_TICK         XNARCH_DEFAULT_TICK
 #define XNPOD_DEFAULT_TICKHANDLER  (&xnpod_announce_tick)
 
 #define XNPOD_HEAPSIZE  (128 * 1024)
@@ -107,9 +100,6 @@
 
 /* Normal root thread priority == min_std_prio - 1 */
 #define XNPOD_ROOT_PRIO_BASE   ((nkpod)->root_prio_base)
-
-/* Kernel debugger priority == max_std_prio + 999 */
-#define XNPOD_KDEBUG_PRIO_BASE ((nkpod)->kdbg_prio_base)
 
 /* Idle svc thread priority == min_std_prio - 2 */
 #define XNPOD_ISVC_PRIO_IDLE     ((nkpod)->isvc_prio_idle)
@@ -134,7 +124,9 @@ typedef struct xnsched {
 
     xnthread_t *usrthread;	/*!< Last regular real-time thread scheduled. */
 
+#ifdef CONFIG_RTAI_FPU_SUPPORT
     xnthread_t *fpuholder;	/*!< Thread owning the current FPU context. */
+#endif /* CONFIG_RTAI_FPU_SUPPORT */
 
     unsigned inesting;		/*!< Interrupt nesting level. */
 
@@ -174,15 +166,16 @@ typedef struct xnpod {
         maxpri;			/*!< Maximum priority value. */
 
     int root_prio_base,		/*!< ROOT thread standard base priority. */
-	isvc_prio_idle,		/*!< ISVC thread idle priority. */
-	kdbg_prio_base;		/*!< Debugger thread standard base priority. */
+	isvc_prio_idle;		/*!< ISVC thread idle priority. */
 
-    u_long tickvalue;		/*!< Tick duration (ns). */
+    u_long tickvalue;		/*!< Tick duration (ns, 1 if aperiodic). */
 
-    xnticks_t ticks2sec;	/*!< Number of ticks per second. */
+    xnticks_t ticks2sec;	/*!< Number of ticks per second (0 if aperiodic). */
+
+    xntimer_t htimer;		/*!< Host timer. */
 
     struct {
-	void (*tickhandler)(struct xnintr *); /*!< Periodic tick handler. */
+	void (*tickhandler)(struct xnintr *, int hits); /*!< Periodic tick handler. */
 	void (*shutdown)(int xtype); /*!< Shutdown hook. */
 	void (*settime)(xnticks_t newtime); /*!< Clock setting hook. */
 	int (*faulthandler)(xnarch_fltinfo_t *fltinfo); /*!< Trap/exception handler. */
@@ -191,6 +184,8 @@ typedef struct xnpod {
     void (*schedhook)(xnthread_t *thread,
 		      xnflags_t mask); /*!< Internal scheduling hook. */
 
+    u_long latency;	/* !< Mean scheduling latency (in CPU ticks,
+			   aperiodic timing only). */
 } xnpod_t;
 
 extern xnpod_t *nkpod;
@@ -205,6 +200,14 @@ extern "C" {
 
 void xnpod_schedule_runnable(xnthread_t *thread,
 			     int flags);
+
+void xnpod_renice_thread_inner(xnthread_t *thread,
+			       int prio,
+			       int propagate);
+
+#ifdef CONFIG_RTAI_FPU_SUPPORT
+void xnpod_switch_fpu(void);
+#endif /* CONFIG_RTAI_FPU_SUPPORT */
 
 static inline int xnpod_get_qdir (xnpod_t *pod) {
     /* Returns the queuing direction of threads for a given pod */
@@ -221,24 +224,6 @@ static inline int xnpod_get_maxprio (xnpod_t *pod, int incr) {
     return xnpod_get_qdir(pod) == xnqueue_up ?
 	pod->maxpri - incr :
 	pod->maxpri + incr;
-}
-
-static inline int xnpod_get_relprio (int aprio) {
-    /* Returns a normalized 0-based relative priority value computed
-       from a skin-based absolute priority level. */
-    int delta = aprio - nkpod->minpri;
-    return testbits(nkpod->status,XNRPRIO) ? -delta : delta;
-}
-
-static inline int xnpod_get_absprio (int rprio) {
-    /* Returns a normalized absolute skin-based priority value
-       computed from a relative 0-based priority level. */
-    int aprio = xnpod_get_minprio(nkpod,rprio);
-
-    if (testbits(nkpod->status,XNRPRIO))
-	return aprio < nkpod->maxpri ? nkpod->maxpri : aprio;
-
-    return aprio > nkpod->maxpri ? nkpod->maxpri : aprio;
 }
 
 static inline int xnpod_priocompare (int inprio, int outprio) {
@@ -271,28 +256,31 @@ static inline void xnpod_renice_root (int prio) {
     /* -- Beginning of the exported interface */
 
 #define xnpod_current_sched() \
-(&nkpod->sched)
+    (&nkpod->sched)
 
 #define xnpod_interrupt_p() \
-(xnpod_current_sched()->inesting > 0)
+    (xnpod_current_sched()->inesting > 0)
 
 #define xnpod_callout_p() \
-(!!testbits(nkpod->status,XNKCOUT))
+    (!!testbits(nkpod->status,XNKCOUT))
 
 #define xnpod_asynch_p() \
-(xnpod_interrupt_p() || xnpod_callout_p())
+    (xnpod_interrupt_p() || xnpod_callout_p())
 
 #define xnpod_current_thread() \
-(xnpod_current_sched()->runthread)
+    (xnpod_current_sched()->runthread)
 
 #define xnpod_current_root() \
-(&xnpod_current_sched()->rootcb)
+    (&xnpod_current_sched()->rootcb)
+
+#define xnpod_current_p(thread) \
+    (xnpod_current_thread() == (thread))
 
 #define xnpod_locked_p() \
-(!!testbits(xnpod_current_thread()->status,XNLOCK))
+    (!!testbits(xnpod_current_thread()->status,XNLOCK))
 
 #define xnpod_pendable_p() \
-(!(xnpod_asynch_p() || testbits(xnpod_current_thread()->status,XNLOCK)))
+    (!(xnpod_asynch_p() || testbits(xnpod_current_thread()->status,XNLOCK)))
 
 #define xnpod_root_p() \
     (!!testbits(xnpod_current_thread()->status,XNROOT))
@@ -306,7 +294,7 @@ static inline void xnpod_renice_root (int prio) {
 #define xnpod_idle_p() xnpod_root_p()
 
 #define xnpod_timeset_p() \
-(!!testbits(nkpod->status,XNTMSET))
+    (!!testbits(nkpod->status,XNTMSET))
 
 static inline xnticks_t xnpod_get_ticks2sec (void) {
     return nkpod->ticks2sec;
@@ -333,13 +321,10 @@ int xnpod_init(xnpod_t *pod,
 	       xnflags_t flags);
 
 int xnpod_start_timer(u_long nstick,
-		      void (*handler)(struct xnintr *));
+		      void (*handler)(struct xnintr *,
+				      int hits));
 
 void xnpod_stop_timer(void);
-
-void xnpod_freeze(void);
-
-void xnpod_unfreeze(void);
 
 void xnpod_shutdown(int xtype);
 
@@ -403,7 +388,8 @@ static inline void xnpod_unlock_sched (void) {
 	}
 }
 
-void xnpod_announce_tick(struct xnintr *intr);
+void xnpod_announce_tick(struct xnintr *intr,
+			 int hits);
 
 void xnpod_activate_rr(xnticks_t quantum);
 
@@ -424,13 +410,6 @@ int xnpod_remove_hook(int type,
 		      void (*routine)(xnthread_t *));
 
 void xnpod_check_context(int mask);
-
-int xnpod_register_debugger(xnthread_t *thread,
-			    unsigned stacksize,
-			    void (*fentry)(void *cookie),
-			    void (*fexit)(void));
-
-void xnpod_unregister_debugger(void);
 
 static inline void xnpod_yield (void) {
     xnpod_resume_thread(xnpod_current_thread(),0);
@@ -453,6 +432,6 @@ static inline void xnpod_delete_self (struct xnmutex *imutex) {
 }
 #endif
 
-/*@{*/
+/*@}*/
 
 #endif /* !_xenomai_pod_h */

@@ -36,14 +36,6 @@ ACKNOWLEDGEMENTS:
   (abramo.bagnara@tin.it).
 */
 
-/* 
-ACKNOWLEDGEMENT NOTE: besides naming conventions and the idea of a fifo handler
-function, the only remaining code from RTL original fifos, as written and 
-copyrighted by Michael Barabanov, should be the function "check_blocked" 
-(modified to suite my style). However I like to remark that I owe to that code 
-my first understanding of Linux devices drivers (Paolo Mantegazza).
-*/
-
 /**
  * @defgroup fifos RTAI FIFO module
  *
@@ -145,12 +137,14 @@ my first understanding of Linux devices drivers (Paolo Mantegazza).
 
 
 #include <linux/module.h>
+#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/version.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
 #include <linux/poll.h>
+#include <linux/termios.h>
 #include <linux/tty_driver.h>
 #include <linux/console.h>
 #include <linux/config.h>
@@ -239,22 +233,6 @@ static struct { int in, out; FIFO *fifo[MAXREQS]; } pol_asyn_q;
 static RT_TASK *rt_base_linux_task;
 
 static int do_nothing(unsigned int arg) { return 0; }
-
-static inline int check_current_blocked(void)
-{
-	int i;
-	sigset_t signal, blocked;
-
-	signal = current->pending.signal;
-	blocked = current->blocked;
-
-	for (i = 0; i < _NSIG_WORDS; i++) {
-		if (signal.sig[i] & ~blocked.sig[i]) {
-			return 1;
-		}
-	}
-	return 0;
-}
 
 static inline void enqueue_blocked(LX_TASK *task, F_QUEUE *queue, int qtype, int priority)
 {
@@ -348,7 +326,7 @@ static inline int mbx_sem_wait(F_SEM *sem)
 		rtf_restore_flags(flags);
 		current->state = TASK_INTERRUPTIBLE;
 		schedule();
-		if (check_current_blocked()) {
+		if (signal_pending(current)) {
 			ret = -ERESTARTSYS;
 		}
 		rtf_save_flags_and_cli(flags);
@@ -357,7 +335,6 @@ static inline int mbx_sem_wait(F_SEM *sem)
 			if (!(sem->queue.next)->task) {
 				sem->free = 1;
 			}
-			rtf_restore_flags(flags);
 			if (!ret) {
 				ret = -1;
 			}
@@ -379,7 +356,7 @@ static inline int mbx_wait(F_MBX *mbx, int *fravbs)
 		current->state = TASK_INTERRUPTIBLE;
 		rtf_restore_flags(flags);
 		schedule();
-		if (check_current_blocked()) {
+		if (signal_pending(current)) {
 			return -ERESTARTSYS;
 		}
 		rtf_save_flags_and_cli(flags);
@@ -407,7 +384,7 @@ static inline int mbx_sem_wait_timed(F_SEM *sem, int delay)
 		rtf_restore_flags(flags);
 		current->state = TASK_INTERRUPTIBLE;
 		schedule_timeout(delay);
-		if (check_current_blocked()) {
+		if (signal_pending(current)) {
 			return -ERESTARTSYS;
 		}
 		rtf_save_flags_and_cli(flags);
@@ -436,7 +413,7 @@ static inline int mbx_wait_timed(F_MBX *mbx, int *fravbs, int delay)
 		rtf_restore_flags(flags);
 		current->state = TASK_INTERRUPTIBLE;
 		schedule_timeout(delay);
-		if (check_current_blocked()) {
+		if (signal_pending(current)) {
 			return -ERESTARTSYS;
 		}
 		rtf_save_flags_and_cli(flags);
@@ -823,7 +800,7 @@ static void rtf_sysrq_handler(void)
 		}
 		pol_asyn_q.out = (pol_asyn_q.out + 1) & (MAXREQS - 1);
 	}
-	current->need_resched = 1;
+	set_tsk_need_resched(current);
 }
 
 #define VALID_FIFO	if (minor >= MAX_FIFOS) { return -ENODEV; } \
@@ -1366,7 +1343,7 @@ static int rtf_release(struct inode *inode, struct file *filp)
 		wake_up_interruptible(&(fifo[minor].pollq));
 	}
 	rtf_fasync(-1, filp, 0);
-	current->need_resched = 1;
+	set_tsk_need_resched(current);
 	return rtf_destroy(minor);
 }
 
@@ -1392,9 +1369,7 @@ static ssize_t rtf_read(struct file *filp, char *buf, size_t count, loff_t* ppos
 		if ((handler_ret = ((int (*)(int, ...))(fifo[minor].handler))(minor, 'r')) < 0) {
 			return handler_ret;
 		}
-		return count;
 	}
-	return 0;
 
 	return count;
 }
@@ -1446,7 +1421,7 @@ static int rtf_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, u
 			TRACE_RTAI_FIFO(TRACE_RTAI_EV_FIFO_SUSPEND_TIMED, DELAY(arg), 0);
 			current->state = TASK_INTERRUPTIBLE;
 			schedule_timeout(DELAY(arg));
-			if (check_current_blocked()) {
+			if (signal_pending(current)) {
 				return -ERESTARTSYS;
 			}
 			return 0;
@@ -1681,7 +1656,10 @@ static struct file_operations rtf_fops =
 };
 
 #ifdef CONFIG_DEVFS_FS
+#include <linux/devfs_fs_kernel.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 static devfs_handle_t devfs_handle;
+#endif
 #endif
 
 static int MaxFifos = MAX_FIFOS;
@@ -1725,25 +1703,55 @@ static void unregister_lxrt_fifos_support(void)
 	}
 }
 
-int FIFOS_INIT_MODULE(void)
+int __rtai_fifos_init(void)
 {
 	int minor;
-#ifdef CONFIG_DEVFS_FS
-	char name[16];
-#endif
 
-#ifdef CONFIG_DEVFS_FS
-	devfs_handle = devfs_mk_dir(NULL, "rtf", NULL);
-	if(!devfs_handle)
-	{
-		printk("RTAI-FIFO: cannot create devfs dir entry.\n");
-		return -EIO;
-	}
-#endif
-	if (devfs_register_chrdev(RTAI_FIFOS_MAJOR, "rtai_fifo", &rtf_fops)) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) || !CONFIG_DEVFS_FS
+	if (register_chrdev(RTAI_FIFOS_MAJOR,"rtai_fifo",&rtf_fops)) {
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) && CONFIG_DEVFS_FS */
+	if (devfs_register_chrdev(RTAI_FIFOS_MAJOR,"rtai_fifo",&rtf_fops)) {
+#endif  /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) || !CONFIG_DEVFS_FS */
 		printk("RTAI-FIFO: cannot register major %d.\n", RTAI_FIFOS_MAJOR);
 		return -EIO;
 	}
+
+#ifdef CONFIG_DEVFS_FS
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	for (minor = 0; minor < MAX_FIFOS; minor++)
+	    if (devfs_mk_cdev(MKDEV(RTAI_FIFOS_MAJOR,minor),
+			      S_IFCHR|S_IRUSR|S_IWUSR,
+			      "rtf/%u",
+			      minor) < 0)
+		{
+		printk("RTAI-FIFO: cannot create devfs entry rtf/%u.\n",minor);
+		devfs_remove("rtf");
+		unregister_chrdev(RTAI_FIFOS_MAJOR,"rtai_fifo");
+		return -EIO;
+		}
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) */
+	devfs_handle = devfs_mk_dir(NULL, "rtf", NULL);
+
+	if(!devfs_handle)
+	    {
+	    printk("RTAI-FIFO: cannot create devfs dir entry.\n");
+	    return -EIO;
+	    }
+
+	devfs_register_series(devfs_handle,
+			      "%u",
+			      MAX_FIFOS,
+			      DEVFS_FL_DEFAULT,
+			      RTAI_FIFOS_MAJOR,
+			      0,
+			      S_IFCHR|S_IRUGO|S_IWUGO,
+			      &rtf_fops,
+			      NULL);
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) */
+
+#endif /* CONFIG_DEVFS_FS */
+
 	if ((fifo_srq = rtf_request_srq(rtf_sysrq_handler)) < 0) {
 		printk("RTAI-FIFO: no srq available in rtai.\n");
 		return fifo_srq;
@@ -1758,11 +1766,6 @@ int FIFOS_INIT_MODULE(void)
 	memset(fifo, 0, MaxFifos*sizeof(FIFO));
 
 	for (minor = 0; minor < MAX_FIFOS; minor++) {
-#ifdef CONFIG_DEVFS_FS
-		sprintf(name, "%d", minor);
-		devfs_register(devfs_handle, name, DEVFS_FL_DEFAULT,
-			RTAI_FIFOS_MAJOR, minor, 0660 | S_IFCHR, &rtf_fops, NULL);
-#endif
 		fifo[minor].opncnt = fifo[minor].pol_asyn_pended = 0;
 		init_waitqueue_head(&fifo[minor].pollq);
 		fifo[minor].asynq = 0;;
@@ -1774,34 +1777,35 @@ int FIFOS_INIT_MODULE(void)
 	return register_lxrt_fifos_support();
 }
 
-void FIFOS_CLEANUP_MODULE(void)
+void __rtai_fifos_exit(void)
 {
-#ifdef CONFIG_DEVFS_FS
-	int minor;
-	char name[16];
-#endif
-
 	unregister_lxrt_fifos_support();
+
+#if CONFIG_DEVFS_FS
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+	devfs_remove("rtf");
+	unregister_chrdev(RTAI_FIFOS_MAJOR,"rtai_fifo");
+#else /* LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0) */
+	devfs_unregister(devfs_handle);
+	devfs_unregister_chrdev(RTAI_FIFOS_MAJOR,"rtai_fifo");
+#endif  /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) || !CONFIG_DEVFS_FS */
+#else /* !CONFIG_DEVFS_FS */
+	unregister_chrdev(RTAI_FIFOS_MAJOR,"rtai_fifo");
+#endif /* CONFIG_DEVFS_FS */
 
 	if (rtf_free_srq(fifo_srq) < 0) {
 		printk("RTAI-FIFO: rtai srq %d illegal or already free.\n", fifo_srq);
 	}
-#ifdef CONFIG_DEVFS_FS
-	for (minor = 0; minor < MAX_FIFOS; minor++) {
-		sprintf(name, "%d", minor);
-		devfs_unregister(devfs_find_handle(devfs_handle, name, RTAI_FIFOS_MAJOR, 
-			minor, DEVFS_SPECIAL_CHR, 0));
-	}
-#endif
 #ifdef CONFIG_PROC_FS
         rtai_proc_fifo_unregister();
 #endif
-	devfs_unregister_chrdev(RTAI_FIFOS_MAJOR, "rtai_fifo");
-#ifdef CONFIG_DEVFS_FS
-	devfs_unregister(devfs_handle);
-#endif
 	kfree(fifo);
 }
+
+#ifndef CONFIG_RTAI_FIFOS_BUILTIN
+module_init(__rtai_fifos_init);
+module_exit(__rtai_fifos_exit);
+#endif /* !CONFIG_RTAI_FIFOS_BUILTIN */
 
 #ifdef CONFIG_PROC_FS
 /* ----------------------< proc filesystem section >----------------------*/
@@ -1928,20 +1932,23 @@ int rtf_getfifobyname(const char *name)
 	return -ENODEV;
 }
 
+#ifdef CONFIG_KBUILD
 EXPORT_SYMBOL(rtf_create);
 EXPORT_SYMBOL(rtf_create_handler);
-EXPORT_SYMBOL(rtf_destroy);
-EXPORT_SYMBOL(rtf_get);
-EXPORT_SYMBOL(rtf_evdrp);
-EXPORT_SYMBOL(rtf_put);
-EXPORT_SYMBOL(rtf_reset);
-EXPORT_SYMBOL(rtf_resize);
-EXPORT_SYMBOL(rtf_sem_init);
-EXPORT_SYMBOL(rtf_sem_delete);
-EXPORT_SYMBOL(rtf_sem_post);
-EXPORT_SYMBOL(rtf_sem_trywait);
 EXPORT_SYMBOL(rtf_create_named);
+EXPORT_SYMBOL(rtf_destroy);
+EXPORT_SYMBOL(rtf_evdrp);
+EXPORT_SYMBOL(rtf_get);
+EXPORT_SYMBOL(rtf_get_if);
 EXPORT_SYMBOL(rtf_getfifobyname);
 EXPORT_SYMBOL(rtf_ovrwr_put);
+EXPORT_SYMBOL(rtf_put);
 EXPORT_SYMBOL(rtf_put_if);
-EXPORT_SYMBOL(rtf_get_if);
+EXPORT_SYMBOL(rtf_reset);
+EXPORT_SYMBOL(rtf_resize);
+EXPORT_SYMBOL(rtf_sem_destroy);
+EXPORT_SYMBOL(rtf_sem_init);
+EXPORT_SYMBOL(rtf_sem_post);
+EXPORT_SYMBOL(rtf_sem_trywait);
+EXPORT_SYMBOL(rtf_named_create);
+#endif /* CONFIG_KBUILD */

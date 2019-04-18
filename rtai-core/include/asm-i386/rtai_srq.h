@@ -22,6 +22,7 @@
 #include <asm/rtai_vectors.h>
 
 #ifndef __KERNEL__
+
 static inline long long rtai_srq(int srq, unsigned int whatever)
 {
 	long long retval;
@@ -33,6 +34,7 @@ static inline int rtai_open_srq(unsigned int label)
 {
 	return (int)rtai_srq(0, label);
 }
-#endif
+
+#endif /* !__KERNEL__ */
 
 #endif /* !_RTAI_ASM_I386_SRQ_H */

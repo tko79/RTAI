@@ -6,7 +6,7 @@ config MODULES
 
 config RTAI_VERSION
 	string
-	default "3.0 (kilauea)"
+	default "3.1 (vesuvio)"
 
 menu "General"
 
@@ -31,8 +31,10 @@ config RTAI_LINUXDIR
 	value of the Linux source tree which is fixed by default to
 	/usr/src/linux.  
 
-config RTAI_DOC
-	bool "Build RTAI documentation (PDF/HTML)"
+menu "RTAI Documentation"
+
+config RTAI_DOX_DOC
+	bool "Build RTAI Doxygen documentation (HTML)"
 	default n
 	help
 	This option causes the Doxygen-based RTAI documentation to be
@@ -43,7 +45,6 @@ config RTAI_DOC
 
 config RTAI_DOC_LATEX_NONSTOP
         bool "Enable LaTeX verbose output"
-	depends on RTAI_DOC
         default n
         help
         By default, all documentation generated with LaTeX uses the 
@@ -51,6 +52,43 @@ config RTAI_DOC_LATEX_NONSTOP
         verbose (nonstopmode) of LaTeX will be used instead. This 
         option is mainly intended for people writing RTAI 
         documentation.
+
+config RTAI_DBX_DOC
+	bool "Build DocBook XML documentation (HTML/PDF)"
+	default n
+	help
+	This option causes the DocBook XML based RTAI documentation to be
+	built. This option is intended for people actually writing
+	documentation and who want to update the pre-built manuals,
+	regular users can just use the latter directly.
+
+config RTAI_DBX_NET
+        bool "Let the DocBook XML tools use network"
+	depends on RTAI_DBX_DOC
+        default n
+        help
+        Let the DocBook tools use internet to fetch the DTD and XSL stylesheets.
+        If disabled, the documentation generation will fail if the necessary 
+        DTD(s) and XSL stylesheets can not be found on the local computer.
+
+config RTAI_DBX_ROOT
+        string "Docbook XML root"
+	depends on RTAI_DBX_DOC
+        default ""
+        help
+        Specify the DocBook XML root (that is, the directory where docbook.dtd
+        should be taken). Leave blank to let configure try the "well-known"
+        locations.
+
+config RTAI_DBX_XSL_ROOT
+        string "Docbook XML XSL stylesheet root"
+	depends on RTAI_DBX_DOC
+        default ""
+        help
+        Specify the DocBook XML XSL root. Leave blank to let configure try the
+        "well-known" locations.
+
+endmenu
 
 config RTAI_TESTSUITE
 	bool "Build RTAI testsuite"
@@ -66,7 +104,7 @@ config RTAI_COMPAT
 	help
 	This option allows to preserve the compatibility between
 	applications issued from the 24.1.x version of RTAI and the
-	magma branch.  This way, no adaptation in the header files is
+	3.x branch.  This way, no adaptation in the header files is
 	required.
 
 config RTAI_EXTENDED
@@ -193,7 +231,9 @@ menu "Native RTAI schedulers"
 
 config RTAI_SCHED_UP
 	bool "Scheduler for uniprocessor machine (kernel tasks only)"
+	depends on RTAI_SCHED_SMP=n && RTAI_SCHED_MUP=n
 	default y
+
 	help
 	This option allows you to select the UP realtime scheduler to
 	be interfaced to the RTAI module. This type of scheduler don't
@@ -202,6 +242,7 @@ config RTAI_SCHED_UP
 config RTAI_SCHED_SMP
 	bool "Scheduler for SMP machine (kernel tasks only)"
 	default n
+
 	help
 	This options corresponds to the Multi-Processing realtime
 	scheduler. It can use either the 8254 or the local APIC
@@ -214,8 +255,8 @@ config RTAI_SCHED_SMP
 config RTAI_SCHED_MUP
 	bool "Multi-UP scheduler for SMP machine (kernel tasks only)"
 	default n
-	help
 
+	help
 	Multi-Uniprocessor is a pseudo-SMP implementation where
 	several virtual processors are going to be served by a single
 	physical CPU. The system is therefore able to support several
@@ -278,6 +319,10 @@ config RTAI_SCHED_8254_LATENCY
 config RTAI_SCHED_APIC_LATENCY
 	string "APIC tuning latency (ns)"
 	default 3944
+
+config RTAI_SCHED_LXRT_NUMSLOTS
+	string "Number of LXRT slots"
+	default 100
 
 endmenu
 
@@ -437,8 +482,9 @@ endmenu
 menu "Other features"
 
 config RTAI_MATH
-	tristate "Math support"
-	default m
+	bool "Math support"
+	depends on RTAI_FPU_SUPPORT
+	default y
 
 config RTAI_MATH_C99
 	bool "C99 standard support"
@@ -472,6 +518,15 @@ config RTAI_MALLOC_VMALLOC
 	  controllers which don't have scattering/gathering capability.
 
 	The default is using kmalloc()
+
+config RTAI_MALLOC_HEAPSZ
+	string "Size of the global heap (Kbytes)"
+	depends on RTAI_MALLOC
+	default 128
+	help
+	RTAI pre-allocates a global heap as part of its initialization
+	chores. This parameter allows to define its size (in
+	kilobytes).
 
 config RTAI_TASKLETS
 	tristate "Tasklets"
@@ -522,6 +577,9 @@ config RTAI_TRACE
 config RTAI_USI
 	tristate "User-space interrupts"
 	default m
+	depends on RTAI_SEM && RTAI_TASKLETS
+	default y if RTAI_SEM=y || RTAI_TASKLETS=y
+	default m if RTAI_SEM=m || RTAI_TASKLETS=m
 	help
 
 	RTAI already contains some examples hinting at managing
@@ -538,8 +596,8 @@ config RTAI_USI
 	
 
 config RTAI_WD
-	tristate "Watchdog support"
-	default m
+	bool "Watchdog support"
+	default y
 	help
 
 	The purpose of the watchdog is to provide protection services
@@ -641,12 +699,14 @@ config RTAI_COMEDI_LXRT
 config RTAI_COMEDI_DIR
 	depends on RTAI_COMEDI_LXRT
 	string "COMEDI installation directory"
-	default "/usr/local/comedi"
+	default "/usr/local"
 	help
 
-	You need the COMEDILIB support for data acquisition to build
-	RTAILab. You can set the path to this package's installation
-	directory here.
+	You need the COMEDI support for data acquisition to build
+	applications such as RTAILab.
+	You can set the path to this package's installation
+	directory here. More specifically, RTAI needs the file
+	linux/comedilib.h.
 
 config RTAI_CPLUSPLUS
 	bool "In-kernel C++ support"
@@ -730,7 +790,7 @@ config RTAI_LAB
 config RTAI_EFLTK_DIR
 	depends on RTAI_LAB
 	string "EFLTK installation directory"
-	default "/usr/local/efltk"
+	default "/usr/local"
 	help
 
 	You need the Extended Fast Light Toolkit (EFLTK) to build

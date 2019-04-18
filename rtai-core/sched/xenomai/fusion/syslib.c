@@ -78,7 +78,7 @@ int pthread_info_rt (xnsysinfo_t *infop)
 int pthread_init_rt (const char *name, void *uhandle, void **khandlep)
 
 {
-    char stack[32678];
+    char stack[32768];
 
     if (__fusion_muxid == 0 && __init_skin() < 0)
 	return -1;
@@ -98,7 +98,7 @@ int pthread_create_rt (const char *name,
 		       int *syncp,
 		       void **khandlep)
 {
-    char stack[32678];
+    char stack[32768];
 
     if (__fusion_muxid == 0 && __init_skin() < 0)
 	return -1;

@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 #ifndef _FL_LED_WINDOW_H_
 #define _FL_LED_WINDOW_H_
 
-#include "Fl_Led.h"
+#include <Fl_Led.h>
 #include <efltk/Fl_Group.h>
 #include <efltk/Fl_MDI_Window.h>
 
@@ -32,6 +32,11 @@ class Fl_Led_Window
 		Fl_Led_Window(int x, int y, int w, int h, Fl_MDI_Viewport *s, const char *name, int n_leds);
 		Fl_Led **Leds;
 		Fl_Group *Led_Group;
+		int x();
+		int y();
+		int w();
+		int h();
+		void resize(int, int, int, int);
 		void show();
 		void hide();
 		void update();

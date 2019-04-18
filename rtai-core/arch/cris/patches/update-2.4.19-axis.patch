@@ -250,8 +250,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/Documentation/cris/README .
 @@ -1,6 +1,6 @@
  Linux 2.4 on the CRIS architecture
  ==================================
--$Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+$Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-$Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++$Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
  
  This is a port of Linux 2.4 to Axis Communications ETRAX 100LX embedded 
  network CPU. For more information about CRIS and ETRAX please see further
@@ -259,8 +259,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/Documentation/cris/README .
  ETRAX 100LX 10/100MBit ethernet v2.0 (c) 2000 Axis Communications AB
  eth0 initialized
  eth0: changed MAC to 00:40:8C:CD:00:00
--ETRAX 100LX serial-driver $Revision: 1.1 $, (c) 2000 Axis Communications AB
-+ETRAX 100LX serial-driver $Revision: 1.1 $, (c) 2000 Axis Communications AB
+-ETRAX 100LX serial-driver $Revision: 1.1.1.1 $, (c) 2000 Axis Communications AB
++ETRAX 100LX serial-driver $Revision: 1.1.1.1 $, (c) 2000 Axis Communications AB
  ttyS0 at 0xb0000060 is a builtin UART with DMA
  ttyS1 at 0xb0000068 is a builtin UART with DMA
  ttyS2 at 0xb0000070 is a builtin UART with DMA
@@ -268,9 +268,9 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/Documentation/cris/README .
  Hostname is bbox1
  Telnetd starting, using port 23.
    using /bin/sash as shell.
--sftpd[15]: sftpd $Revision: 1.1 $ starting up
+-sftpd[15]: sftpd $Revision: 1.1.1.1 $ starting up
 -
-+sftpd[15]: sftpd $Revision: 1.1 $ starting up
++sftpd[15]: sftpd $Revision: 1.1.1.1 $ starting up
  
  
  And here is how some /proc entries look:
@@ -754,6 +754,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/axisflash
   * partition split defined below.
   *
   * $Log: update-2.4.19-axis.patch,v $
+  * Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  * Magma baseline
+  *
   * Revision 1.1  2004/01/02 15:11:03  pgerum
   * Add Axis update to 2.4.19
   *
@@ -1235,6 +1244,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ds1302.c 
  *! Functions exported: ds1302_readreg, ds1302_writereg, ds1302_init, get_rtc_status
  *!
  *! $Log: update-2.4.19-axis.patch,v $
+ *! Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+ *! Vesuvio baseline
+ *!
+ *! Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+ *! Vesuvio baseline
+ *!
+ *! Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+ *! Magma baseline
+ *!
  *! Revision 1.1  2004/01/02 15:11:03  pgerum
  *! Add Axis update to 2.4.19
  *!
@@ -1255,8 +1273,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ds1302.c 
  *!
  *! (C) Copyright 1999, 2000, 2001  Axis Communications AB, LUND, SWEDEN
  *!
--*! $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+*! $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-*! $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++*! $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
  *!
  *!***************************************************************************/
  
@@ -1318,8 +1336,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ethernet.
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ethernet.c	Sat Aug  3 02:39:42 2002
 +++ ./arch/cris/drivers/ethernet.c	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   *
   * e100net.c: A network driver for the ETRAX 100LX network controller.
   *
@@ -1327,6 +1345,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ethernet.
   * The outline of this driver comes from skeleton.c.
   *
   * $Log: update-2.4.19-axis.patch,v $
+  * Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  * Magma baseline
+  *
   * Revision 1.1  2004/01/02 15:11:03  pgerum
   * Add Axis update to 2.4.19
   *
@@ -1558,8 +1585,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/gpio.c ./
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/gpio.c	Sat Aug  3 02:39:42 2002
 +++ ./arch/cris/drivers/gpio.c	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   *
   * Etrax general port I/O device
   *
@@ -1567,6 +1594,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/gpio.c ./
   *             Johan Adolfsson  (read/set directions, write, port G)
   *
   * $Log: update-2.4.19-axis.patch,v $
+  * Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  * Magma baseline
+  *
   * Revision 1.1  2004/01/02 15:11:03  pgerum
   * Add Axis update to 2.4.19
   *
@@ -2097,6 +2133,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/i2c.c ./a
  *!                                 don't use PB_I2C if DS1302 uses same bits,
  *!                                 use PB.
  *! $Log: update-2.4.19-axis.patch,v $
+ *! Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+ *! Vesuvio baseline
+ *!
+ *! Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+ *! Vesuvio baseline
+ *!
+ *! Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+ *! Magma baseline
+ *!
  *! Revision 1.1  2004/01/02 15:11:03  pgerum
  *! Add Axis update to 2.4.19
  *!
@@ -2115,8 +2160,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/i2c.c ./a
 +*! (C) Copyright 1999-2002 Axis Communications AB, LUND, SWEDEN
  *!
  *!***************************************************************************/
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
  /****************** INCLUDE FILES SECTION ***********************************/
  
  #include <linux/module.h>
@@ -2344,8 +2389,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ide.c ./a
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ide.c	Sat Aug  3 02:39:42 2002
 +++ ./arch/cris/drivers/ide.c	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   *
   * Etrax specific IDE functions, like init and PIO-mode setting etc.
   * Almost the entire ide.c is used for the rest of the Etrax ATA driver.
@@ -2353,6 +2398,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/ide.c ./a
   *             Mikael Starvik     (pio setup stuff)
   *
   * $Log: update-2.4.19-axis.patch,v $
+  * Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  * Magma baseline
+  *
   * Revision 1.1  2004/01/02 15:11:03  pgerum
   * Add Axis update to 2.4.19
   *
@@ -2412,8 +2466,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/parport.c
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/parport.c	Sat Aug  3 02:39:42 2002
 +++ ./arch/cris/drivers/parport.c	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   * 
   * Elinux parallel port driver
   * NOTE!
@@ -2455,7 +2509,7 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/pcf8563.c
 + *
 + * Author: Tobias Anderberg <tobiasa@axis.com>.
 + *
-+ * $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
++ * $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
 + */
 +
 +#include <linux/config.h>
@@ -2479,7 +2533,7 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/pcf8563.c
 +#define PCF8563_MAJOR 121		/* Local major number. */
 +#define DEVICE_NAME "rtc"		/* Name which is registered in /proc/devices. */
 +#define PCF8563_NAME "PCF8563"
-+#define DRIVER_VERSION "$Revision: 1.1 $"
++#define DRIVER_VERSION "$Revision: 1.1.1.1 $"
 +
 +/* I2C bus slave registers. */
 +#define RTC_I2C_READ		0xa3
@@ -2729,8 +2783,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/serial.c 
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/serial.c	Sat Aug  3 02:39:42 2002
 +++ ./arch/cris/drivers/serial.c	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   *
   * Serial port driver for the ETRAX 100LX chip
   *
@@ -2738,6 +2792,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/serial.c 
   *      Many, many authors. Based once upon a time on serial.c for 16x50.
   *
   * $Log: update-2.4.19-axis.patch,v $
+  * Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  * Magma baseline
+  *
   * Revision 1.1  2004/01/02 15:11:03  pgerum
   * Add Axis update to 2.4.19
   *
@@ -2783,8 +2846,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/drivers/serial.c 
   *
   */
  
--static char *serial_version = "$Revision: 1.1 $";
-+static char *serial_version = "$Revision: 1.1 $";
+-static char *serial_version = "$Revision: 1.1.1.1 $";
++static char *serial_version = "$Revision: 1.1.1.1 $";
  
  #include <linux/config.h>
  #include <linux/version.h>
@@ -3840,8 +3903,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/Makefile .
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/Makefile	Fri Nov  9 22:58:02 2001
 +++ ./arch/cris/kernel/Makefile	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--# $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+# $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-# $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++# $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
  #
  # Makefile for the linux kernel.
  #
@@ -3857,13 +3920,22 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/fasttimer.
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/fasttimer.c	Thu Jan  1 01:00:00 1970
 +++ ./arch/cris/kernel/fasttimer.c	Wed Oct 23 12:28:59 2002
 @@ -0,0 +1,982 @@
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
 + * linux/arch/cris/kernel/fasttimer.c
 + *
 + * Fast timers for ETRAX100/ETRAX100LX
 + * This may be useful in other OS than Linux so use 2 space indentation...
 + *
 + * $Log: update-2.4.19-axis.patch,v $
++ * Revision 1.1.1.1  2004/06/06 14:14:02  rpm
++ * Vesuvio baseline
++ *
++ * Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
++ * Vesuvio baseline
++ *
++ * Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
++ * Magma baseline
++ *
 + * Revision 1.1  2004/01/02 15:11:03  pgerum
 + * Add Axis update to 2.4.19
 + *
@@ -4849,6 +4921,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/kgdb.c ./a
  *! Jul 21 1999  Bjorn Wesen     eLinux port
  *!
  *! $Log: update-2.4.19-axis.patch,v $
+ *! Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+ *! Vesuvio baseline
+ *!
+ *! Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+ *! Vesuvio baseline
+ *!
+ *! Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+ *! Magma baseline
+ *!
  *! Revision 1.1  2004/01/02 15:11:03  pgerum
  *! Add Axis update to 2.4.19
  *!
@@ -4862,8 +4943,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/kgdb.c ./a
  *!
  *!---------------------------------------------------------------------------
  *!
--*! $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+*! $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-*! $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++*! $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
  *!
  *! (C) Copyright 1999, Axis Communications AB, LUND, SWEDEN
  *!
@@ -4914,8 +4995,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/process.c 
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/process.c	Mon Feb 25 20:37:52 2002
 +++ ./arch/cris/kernel/process.c	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   * 
   *  linux/arch/cris/kernel/process.c
   *
@@ -4923,6 +5004,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/process.c 
   *  Authors:   Bjorn Wesen (bjornw@axis.com)
   *
   *  $Log: update-2.4.19-axis.patch,v $
+  *  Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  *  Vesuvio baseline
+  *
+  *  Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  *  Vesuvio baseline
+  *
+  *  Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  *  Magma baseline
+  *
   *  Revision 1.1  2004/01/02 15:11:03  pgerum
   *  Add Axis update to 2.4.19
   *
@@ -4957,8 +5047,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/setup.c ./
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/setup.c	Mon Feb 25 20:37:52 2002
 +++ ./arch/cris/kernel/setup.c	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   *
   *  linux/arch/cris/kernel/setup.c
   *
@@ -5056,8 +5146,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/time.c ./a
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/kernel/time.c	Sat Aug  3 02:39:42 2002
 +++ ./arch/cris/kernel/time.c	Wed Oct 23 12:28:59 2002
 @@ -1,9 +1,9 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   *
   *  linux/arch/cris/kernel/time.c
   *
@@ -5198,8 +5288,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/lib/dram_init.S .
 --- /home/starvik/download/kernel/linux-2.4.19/arch/cris/lib/dram_init.S	Mon Oct  8 20:43:54 2001
 +++ ./arch/cris/lib/dram_init.S	Wed Oct 23 12:28:59 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   * 
   * DRAM/SDRAM initialization - alter with care
   * This file is intended to be included from other assembler files
@@ -5207,6 +5297,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/lib/dram_init.S .
   * Authors:  Mikael Starvik (starvik@axis.com)	
   * 
   * $Log: update-2.4.19-axis.patch,v $
+  * Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  * Vesuvio baseline
+  *
+  * Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  * Magma baseline
+  *
   * Revision 1.1  2004/01/02 15:11:03  pgerum
   * Add Axis update to 2.4.19
   *
@@ -5260,8 +5359,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/lib/hw_settings.S
 +++ ./arch/cris/lib/hw_settings.S	Wed Oct 23 12:28:59 2002
 @@ -1,11 +1,11 @@
  /*
-- * $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
-+ * $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
+- * $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
++ * $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
   * 
   * This table is used by some tools to extract hardware parameters.
   * The table should be included in the kernel and the decompressor.
@@ -5545,6 +5644,15 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/arch/cris/mm/fault.c ./arch
   *  Authors:  Bjorn Wesen 
   * 
   *  $Log: update-2.4.19-axis.patch,v $
+  *  Revision 1.1.1.1  2004/06/06 14:14:02  rpm
+  *  Vesuvio baseline
+  *
+  *  Revision 1.1.1.1  2004/04/04 19:00:54  pgerum
+  *  Vesuvio baseline
+  *
+  *  Revision 1.1.1.1  2004/02/15 11:56:24  pgerum
+  *  Magma baseline
+  *
   *  Revision 1.1  2004/01/02 15:11:03  pgerum
   *  Add Axis update to 2.4.19
   *
@@ -7632,8 +7740,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/etraxgpio.
 --- /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/etraxgpio.h	Sat Aug  3 02:39:45 2002
 +++ ./include/asm-cris/etraxgpio.h	Wed Oct 23 12:29:00 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
  /*
   * The following devices are accessable using this driver using
   * GPIO_MAJOR (120) and a couple of minor numbers:
@@ -7685,7 +7793,7 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/fasttimer.
 --- /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/fasttimer.h	Thu Jan  1 01:00:00 1970
 +++ ./include/asm-cris/fasttimer.h	Wed Oct 23 12:29:00 2002
 @@ -0,0 +1,47 @@
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
 + * linux/include/asm-cris/fasttimer.h
 + *
 + * Fast timers for ETRAX100LX
@@ -7759,8 +7867,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/posix_type
 --- /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/posix_types.h	Fri Feb  9 01:32:44 2001
 +++ ./include/asm-cris/posix_types.h	Wed Oct 23 12:29:00 2002
 @@ -1,4 +1,4 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
  
  /* We cheat a bit and use our C-coded bitops functions from asm/bitops.h */
  /* I guess we should write these in assembler because they are used often. */
@@ -7777,8 +7885,8 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/rtc.h ./in
 --- /home/starvik/download/kernel/linux-2.4.19/include/asm-cris/rtc.h	Wed May  2 01:05:00 2001
 +++ ./include/asm-cris/rtc.h	Wed Oct 23 12:29:00 2002
 @@ -1,55 +1,92 @@
--/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
-+/* $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $ */
+-/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
++/* $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $ */
 +
 +#ifndef __RTC_H__
 +#define __RTC_H__
@@ -8232,7 +8340,7 @@ diff -Nur /home/starvik/download/kernel/linux-2.4.19/include/net/bluetooth/hci_e
 +*/
 +
 +/*
-+ * $Id: update-2.4.19-axis.patch,v 1.1 2004/01/02 15:11:03 pgerum Exp $
++ * $Id: update-2.4.19-axis.patch,v 1.1.1.1 2004/06/06 14:14:02 rpm Exp $
 + */
 +
 +#ifndef __IF_HCI_EMU_H

@@ -30,16 +30,6 @@
 #include <rtai_types.h>
 #include <features.h>
 
-#ifdef CONFIG_RTAI_MATH_BUILTIN
-int math_init_module(void);
-void math_cleanup_module(void);
-#define MATH_INIT_MODULE     math_init_module
-#define MATH_CLEANUP_MODULE  math_cleanup_module
-#else
-#define MATH_INIT_MODULE     init_module
-#define MATH_CLEANUP_MODULE  cleanup_module
-#endif
-
 __BEGIN_DECLS
 
 /* Get machine-dependent HUGE_VAL value (returned on overflow).
@@ -448,5 +438,19 @@ extern int matherr (struct exception *__exc);
 
 __END_DECLS
 
+/* Missing declarations */
+
+struct complex {
+	double x;
+	double y;
+};
+
+double cabs __P((struct complex));
+
+double gamma_r(double x, int *signgamp); /* wrapper lgamma_r */
+
+long int rinttol(double x);
+
+long int roundtol(double x);
 
 #endif /* !_RTAI_MATH_H  */

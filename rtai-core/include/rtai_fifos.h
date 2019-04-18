@@ -93,21 +93,13 @@ struct rt_fifo_get_info_struct{
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_RTAI_FIFOS_BUILTIN
-#define FIFOS_INIT_MODULE     fifos_init_module
-#define FIFOS_CLEANUP_MODULE  fifos_cleanup_module
-#else  /* !CONFIG_RTAI_FIFOS_BUILTIN */
-#define FIFOS_INIT_MODULE     init_module
-#define FIFOS_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_FIFOS_BUILTIN */
-
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-int FIFOS_INIT_MODULE(void);
+int __rtai_fifos_init(void);
 
-void FIFOS_CLEANUP_MODULE(void);
+void __rtai_fifos_exit(void);
 
 int rtf_init(void);
 

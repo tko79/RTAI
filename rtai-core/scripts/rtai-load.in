@@ -4,9 +4,12 @@
 # April 2003, <rpm@xenomai.org>
 
 usage='usage: rtai-load [[dir:]target]'
+prefix="@prefix@"
+exec_prefix="@exec_prefix@"
 insmod=/sbin/insmod
+modprobe=/sbin/modprobe
 rmmod=/sbin/rmmod
-modext=.o
+modext=@RTAI_MODULE_EXT@
 verbose=0
 spc=" 	"
 
@@ -65,7 +68,7 @@ else
   eval $rtai_moddir
 fi
 
-if `$insmod -pq adeos >& /dev/null`; then
+if `$modprobe -nq adeos >& /dev/null`; then
    target_deps="adeos+"
 else
    target_deps=
@@ -99,11 +102,7 @@ sync
 loadlist=`cat /proc/modules | ( \
   while read lm; do \
     set -- $lm; \
-    case $1 in \
-      rtai_up|rtai_smp*|rtai_ksched|rtai_lxrt) \
-         loadlist="$loadlist rtai_ksched $1" ;; \
-      *) loadlist="$loadlist $1" ;; \
-    esac ; \
+    loadlist="$loadlist $1"; \
   done  ; echo $loadlist )`
 
 ( cd $target_dir ;
@@ -132,6 +131,11 @@ trap cleanup SIGINT
 while test -n "$target_deps" ; do
   mod=`echo $target_deps|cut -d+ -f1`
   target_deps=`echo $target_deps|cut -s -d+ -f2-`
+  if test -h $rtai_moddir/rtai_$mod$modext; then
+     # Substitute the symlink with the target name since
+     # new modutils (>= 2.5.48) will use the actual name.
+     mod=`ls -l $rtai_moddir/rtai_$mod$modext|sed -e "s,.* \-> .*rtai_\([a-z0-9A-Z]*\)$modext.*,\1,"`
+  fi
   if `echo $loadlist | grep -vq "\\brtai_$mod\\b"`; then
      # If we cannot find the module in our install dir, try Linux's
      # one. If the latter fails too, assume the feature is built into
@@ -142,18 +146,14 @@ while test -n "$target_deps" ; do
         $sudo $insmod $rtai_moddir/rtai_$mod$modext
 	if test $? = 0 ; then
            inslist="rtai_$mod $inslist"
-           case $mod in
-             up|smp*|ksched|lxrt)
-                loadlist="$loadlist ksched $mod" ;;
-             *) loadlist="$loadlist $mod" ;;
-           esac
+           loadlist="$loadlist $mod"
 	else
 	   echo "ERROR: cannot load $rtai_moddir/rtai_$mod$modext"
 	   break
         fi
-     elif `$insmod -pq $mod >& /dev/null`; then
-        test $verbose = 1 && echo "+ $insmod $mod"
-        $sudo $insmod $mod
+     elif `$modprobe -n $mod >& /dev/null`; then
+        test $verbose = 1 && echo "+ $modprobe $mod"
+        $sudo $modprobe $mod
         inslist="$mod $inslist"
         loadlist="$loadlist $mod"
      fi

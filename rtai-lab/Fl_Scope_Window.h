@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 #ifndef _FL_SCOPE_WINDOW_H_
 #define _FL_SCOPE_WINDOW_H_
 
-#include "Fl_Scope.h"
+#include <Fl_Scope.h>
 #include <efltk/Fl_MDI_Window.h>
 
 class Fl_Scope_Window
@@ -27,6 +27,11 @@ class Fl_Scope_Window
 	public:
 		Fl_Scope_Window(int x, int y, int w, int h, Fl_MDI_Viewport *s, const char *name, int n_traces, float dt);
 		Fl_Scope *Plot;
+		int x();
+		int y();
+		int w();
+		int h();
+		void resize(int, int, int, int);
 		void show();
 		void hide();
 		int is_visible();

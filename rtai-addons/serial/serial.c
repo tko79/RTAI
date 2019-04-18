@@ -33,6 +33,7 @@
 #include <asm/system.h>
 #include <asm/io.h>
 
+#include <rtai_lxrt.h>
 #include <rtai_sem.h>
 #include <rtai_serial.h>
 #include "serialP.h"
@@ -41,7 +42,7 @@ MODULE_AUTHOR("Paolo Mantegazza, Giuseppe Renoldi");
 MODULE_DESCRIPTION("RTAI real time serial ports driver");
 MODULE_LICENSE("GPL");
 
-static int spconfig[CONFIG_SIZE] = RT_SP_CONFIG_INIT; 
+static unsigned long spconfig[CONFIG_SIZE] = RT_SP_CONFIG_INIT; 
 MODULE_PARM(spconfig, "1-" __MODULE_STRING(CONFIG_SIZE) "i");
 
 static int spbufsiz = SPBUFSIZ;
@@ -871,8 +872,6 @@ int rt_spopen(unsigned int tty, unsigned int baud, unsigned int numbits,
 	if ((p = spct + tty)->opened)
 		return -EADDRINUSE;
 	
-	MOD_INC_USE_COUNT;
-
 	// disable interrupt
 	rt_disable_irq(p->irq);
 
@@ -952,9 +951,6 @@ int rt_spclose(unsigned int tty)
 	inb(base_adr + RT_SP_MSR);
 	// disable DTR, RTS
 	outb(spct[tty].mcr = MCR_OUT1 | MCR_OUT2, base_adr + RT_SP_MCR);
-	if (spct[tty].opened) {
-		MOD_DEC_USE_COUNT;
-	}	
 	spct[tty].opened = 0;
 	if (spct[tty].callback_task) {
 		rt_task_resume(spct[tty].callback_task);
@@ -1138,14 +1134,36 @@ void rt_spwait_usr_callback(unsigned int tty, unsigned long *retvals)
 	return;
 }
 
+static struct rt_fun_entry rtai_spdrv_fun[] = {
+	[_SPOPEN]              = { 0, rt_spopen},
+	[_SPCLOSE]             = { 0, rt_spclose},
+	[_SPREAD]              = { 0, rt_spread },
+	[_SPEVDRP]             = { 0, rt_spevdrp },
+	[_SPWRITE]             = { 0, rt_spwrite },
+	[_SPCLEAR_RX]          = { 0, rt_spclear_rx },
+	[_SPCLEAR_TX]          = { 0, rt_spclear_tx },
+	[_SPGET_MSR]           = { 0, rt_spget_msr },
+	[_SPSET_MCR]           = { 0, rt_spset_mcr },
+	[_SPGET_ERR]           = { 0, rt_spget_err },
+	[_SPSET_MODE]          = { 0, rt_spset_mode },
+	[_SPSET_FIFOTRIG]      = { 0, rt_spset_fifotrig },
+	[_SPGET_RXAVBS]        = { 0, rt_spget_rxavbs },
+	[_SPGET_TXFRBS]        = { 0, rt_spget_txfrbs },
+	[_SPSET_THRS]          = { 0, rt_spset_thrs },
+	[_SPSET_CALLBACK]      = { 0, rt_spset_callback_fun_usr },
+	[_SPSET_ERR_CALLBACK]  = { 0, rt_spset_err_callback_fun_usr },
+	[_SPWAIT_USR_CALLBACK] = { UW1(2, 3), rt_spwait_usr_callback },
+	[_SPREAD_TIMED]        = { UW1(2, 3), rt_spread_timed },
+	[_SPWRITE_TIMED]       = { UR1(2, 3), rt_spwrite_timed }
+};
 
-int init_module(void)
+int __rtai_serial_init(void)
 {
 	int i, j;
 
 	for (spcnt=0; spcnt < CONFIG_SIZE/2; spcnt++) {
 		if (!spconfig[spcnt + spcnt] || !spconfig[spcnt + spcnt + 1]) break;
-		printk("TTY_INDX: %d, PORT: %x, IRQ %d.\n", spcnt, spconfig[spcnt + spcnt], spconfig[spcnt + spcnt + 1]);
+		printk("TTY_INDX: %d, PORT: %lx, IRQ %ld.\n", spcnt, spconfig[spcnt + spcnt], spconfig[spcnt + spcnt + 1]);
 	}
 	printk("# OF PORTS: %d, BUFFER SIZE: %d.\n", spcnt, spbufsiz);
 	if (!(spct = kmalloc(spcnt*sizeof(struct rt_spct_t), GFP_KERNEL))) {
@@ -1166,10 +1184,11 @@ int init_module(void)
 			kfree(spct);
 			return -ENODEV;
 		}
-		if (check_region(spconfig[i + i], 8)) {
-			release_region(spconfig[i + i], 8);
-		}
-		request_region(spconfig[i + i], 8, RTAI_SPDRV_NAME);
+		if (request_region(spconfig[i + i], 8, RTAI_SPDRV_NAME) == NULL)
+		    {
+		    release_region(spconfig[i + i], 8);
+		    request_region(spconfig[i + i], 8, RTAI_SPDRV_NAME);
+		    }
 		spct[i].callback_task = 0;
 		spct[i].opened = 0;
 		// set base address for UART
@@ -1189,12 +1208,21 @@ int init_module(void)
 	spbuflow = spbufsiz / 3;
 	spbufhi  = spbufsiz - spbuflow;
 	spbufull = spbufsiz / 10;
+
+	if (set_rt_fun_ext_index(rtai_spdrv_fun, FUN_EXT_RTAI_SP)) {
+		rt_printk("%d is a wrong index module for lxrt.\n", FUN_EXT_RTAI_SP);
+		return -EACCES;
+	}			
+
 	return 0;
 }
 
-void cleanup_module(void)
+void __rtai_serial_exit(void)
 {
 	int i;
+
+	reset_rt_fun_ext_index(rtai_spdrv_fun, FUN_EXT_RTAI_SP);
+
 	for (i = 0; i < spcnt; i++) {
 		if (spct[i].opened) {
 			rt_spclose(spcnt);
@@ -1211,6 +1239,9 @@ void cleanup_module(void)
 	}
 	kfree(spct);
 }
+
+module_init(__rtai_serial_init);
+module_exit(__rtai_serial_exit);
 
 EXPORT_SYMBOL(rt_spclear_rx);
 EXPORT_SYMBOL(rt_spclear_tx);
@@ -1234,5 +1265,3 @@ EXPORT_SYMBOL(rt_spset_err_callback_fun_usr);
 EXPORT_SYMBOL(rt_spwait_usr_callback);
 EXPORT_SYMBOL(rt_spread_timed);
 EXPORT_SYMBOL(rt_spwrite_timed);
-
-

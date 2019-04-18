@@ -110,7 +110,7 @@ void producer_task (u_long a0, u_long a1, u_long a2, u_long a3)
 	}
 }
 
-int USER_INIT_MODULE (void)
+int __xeno_user_init (void)
 
 {
     u_long err, args[4];
@@ -169,7 +169,7 @@ int USER_INIT_MODULE (void)
     return 0;
 }
 
-void USER_CLEANUP_MODULE (void)
+void __xeno_user_exit (void)
 
 {
     t_delete(producer_tid);

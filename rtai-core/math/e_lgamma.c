@@ -18,7 +18,7 @@
  * Method: call __ieee754_lgamma_r
  */
 
-#include "math_private.h"
+#include "mathP.h"
 
 extern int signgam;
 

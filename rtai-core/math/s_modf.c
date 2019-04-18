@@ -26,7 +26,7 @@ static char rcsid[] = "$NetBSD: s_modf.c,v 1.8 1995/05/10 20:47:55 jtc Exp $";
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 static const double one = 1.0;

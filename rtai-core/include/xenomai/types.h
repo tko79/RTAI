@@ -46,12 +46,10 @@
 #ifndef _xenomai_types_h
 #define _xenomai_types_h
 
-#include "asm/rtai_xeno.h"
+#include <asm/rtai_xeno.h>
+#include "xenomai/errno.h"
 
 typedef unsigned long xnsigmask_t;
-
-#define XN_OK     0
-#define XN_ERROR (-1)
 
 typedef unsigned long long xnticks_t;
 

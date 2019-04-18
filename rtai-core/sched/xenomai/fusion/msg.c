@@ -117,8 +117,6 @@ int dbridge_mconnect (int minor,
 	    }
 	}
 
-    MOD_INC_USE_COUNT;
-
     return 0;
 }
 
@@ -177,8 +175,6 @@ int dbridge_mdisconnect (int minor)
 	    dbridge_schedule_request();
 	    }
 	}
-
-    MOD_DEC_USE_COUNT;
 
     return 0;
 }

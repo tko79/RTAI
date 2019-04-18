@@ -35,41 +35,46 @@ class Fl_Meter : public Fl_Gl_Window
 		float value();
 		void minimum_value(float);
 		void maximum_value(float);
-
 		void bg_color(float r, float g, float b);
+		void bg_color(Fl_Color c);
+		float bg_r();
+		float bg_g();
+		float bg_b();
 		Fl_Color bg_color();
 		void bg_free_color();
 		void grid_color(float r, float g, float b);
+		void grid_color(Fl_Color c);
+		float grid_r();
+		float grid_g();
+		float grid_b();
 		Fl_Color grid_color();
 		void grid_free_color();
 		void arrow_color(float r, float g, float b);
+		void arrow_color(Fl_Color c);
+		float arrow_r();
+		float arrow_g();
+		float arrow_b();
 		Fl_Color arrow_color();
 		void arrow_free_color();
-
 	private:
 		int Start_Deg, End_Deg;
 		float Start_Rad, End_Rad;
-
 		float Radius;
 		float Arrow_Length;
 		int N_Ticks;
 		int N_Ticks_Per_Div;
 		float Big_Ticks_Angle;
 		float Small_Ticks_Angle;
-
 		float Minimum_Value;
 		float Maximum_Value;
-
 		float Value;
 		int overload;
-
 		float Bg_rgb[3];
 		Fl_Color Bg_Color;
 		float Grid_rgb[3];
 		Fl_Color Grid_Color;
 		float Arrow_rgb[3];
 		Fl_Color Arrow_Color;
-
 	protected:
 		void initgl();
 		void drawgrid();

@@ -201,8 +201,13 @@ void MvmTimerTrigger::body ()
 	    {
 	    delay(triggerDate - MvmClock);
 
-	    if (MvmClock == triggerDate)
-		handler(clientData);
+	    if (MvmClock < triggerDate)
+		// This may happen if the trigger is reprogrammed on
+		// the fly in order to elapse before the previous
+		// timeout date.
+		continue;
+
+	    handler(clientData);
 	    }
 	
 	suspend();

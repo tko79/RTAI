@@ -707,7 +707,7 @@ MODULE_PARM(tasklets_stacksize, "i");
 
 static RT_TASK *rt_base_linux_task;
 
-int TASKLETS_INIT_MODULE(void)
+int __rtai_tasklets_init(void)
 {
 	RT_TASK *rt_linux_tasks[NR_RT_CPUS];
 	rt_base_linux_task = rt_get_base_linux_task(rt_linux_tasks);
@@ -722,15 +722,42 @@ int TASKLETS_INIT_MODULE(void)
         }
 	rt_task_init(&timers_manager, rt_timers_manager, 0, tasklets_stacksize, RT_SCHED_LOWEST_PRIORITY, 0, 0);
 	rt_task_resume(&timers_manager);
+	printk(KERN_INFO "RTAI[tasklets]: loaded.\n");
 	return 0;
 }
 
-void TASKLETS_CLEANUP_MODULE(void)
+void __rtai_tasklets_exit(void)
 {
 	rt_task_delete(&timers_manager);
         if(rt_base_linux_task->task_trap_handler[1]) {
                 ((int (*)(void *, int))rt_base_linux_task->task_trap_handler[1])(rt_tasklet_fun, TSKIDX);
         }
+	printk(KERN_INFO "RTAI[tasklets]: unloaded.\n");
 }
 
 /*@}*/
+
+#ifndef CONFIG_RTAI_TASKLETS_BUILTIN
+module_init(__rtai_tasklets_init);
+module_exit(__rtai_tasklets_exit);
+#endif /* !CONFIG_RTAI_TASKLETS_BUILTIN */
+
+#ifdef CONFIG_KBUILD
+EXPORT_SYMBOL(rt_insert_tasklet);
+EXPORT_SYMBOL(rt_remove_tasklet);
+EXPORT_SYMBOL(rt_find_tasklet_by_id);
+EXPORT_SYMBOL(rt_exec_tasklet);
+EXPORT_SYMBOL(rt_set_tasklet_priority);
+EXPORT_SYMBOL(rt_set_tasklet_handler);
+EXPORT_SYMBOL(rt_set_tasklet_data);
+EXPORT_SYMBOL(rt_tasklet_use_fpu);
+EXPORT_SYMBOL(rt_insert_timer);
+EXPORT_SYMBOL(rt_remove_timer);
+EXPORT_SYMBOL(rt_set_timer_priority);
+EXPORT_SYMBOL(rt_set_timer_firing_time);
+EXPORT_SYMBOL(rt_set_timer_period);
+EXPORT_SYMBOL(rt_init_tasklet);
+EXPORT_SYMBOL(rt_register_task);
+EXPORT_SYMBOL(rt_wait_tasklet_is_hard);
+EXPORT_SYMBOL(rt_delete_tasklet);
+#endif /* CONFIG_KBUILD */

@@ -298,7 +298,8 @@ static inline int pthread_create_rt(pthread_t *thread, const pthread_attr_t *att
 		(cookie->task).magic = 0;
 		cookie->task_fun = (void *)start_routine;
 		cookie->arg = (int)arg;
-		if (!rt_task_init(&cookie->task, (void *)posix_wrapper_fun, (int)cookie, attr->stacksize, attr->priority, 1, 0)) {
+		if (!rt_task_init(&cookie->task, (void *)posix_wrapper_fun, (int)cookie,
+				(attr) ? attr->stacksize : STACK_SIZE, (attr) ? attr->priority : RT_SCHED_LOWEST_PRIORITY, 1, 0)) {
 			*thread = &cookie->task;
 			rt_typed_sem_init(&cookie->sem, 0, BIN_SEM | FIFO_Q);
 			rt_task_resume(&cookie->task);
@@ -326,7 +327,20 @@ static inline void pthread_exit_rt(void *retval)
 
 static inline int pthread_join_rt(pthread_t thread, void **thread_return)
 {
-	return rt_sem_wait((SEM *)(thread + 1));
+	int retval1, retval2;
+	if (rt_whoami()->priority != RT_SCHED_LINUX_PRIORITY)
+		retval1 = rt_sem_wait((SEM *)(thread + 1));
+	else {
+		while ((retval1 = rt_sem_wait_if((SEM *)(thread + 1))) <= 0) {
+			set_current_state(TASK_INTERRUPTIBLE);
+			schedule_timeout(HZ/10);
+		}
+	}
+	if (retval1 != 0xFFFF)
+		retval1 = 0;
+	retval2 = rt_task_delete(thread);
+	rt_free(thread);
+	return (retval1) ? retval1 : retval2;
 }
 
 static inline int pthread_cancel_rt(pthread_t thread)
@@ -520,6 +534,7 @@ static inline int nanosleep_rt(const struct timespec *rqtp, struct timespec *rmt
 #include <sys/stat.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 struct task_struct;
 
@@ -628,7 +643,7 @@ RTAI_PROTO(int, sem_close_rt,(sem_t *sem))
 	if (!cnt || (cnt && atomic_dec_and_test((atomic_t *)&((int *)sem)[1]))) {
 		hs = MAKE_SOFT();
 		num2nam(rt_get_name(((void **)sem)[0]), name);
-		rtai_lxrt(BIDX, SIZARG, SEM_DELETE, &arg);
+		rtai_lxrt(BIDX, SIZARG, LXRT_SEM_DELETE, &arg);
 	        if (cnt) {
 			unlink(name);
 			free((void *)sem);
@@ -767,7 +782,7 @@ RTAI_PROTO(int, pthread_mutex_close_rt,(pthread_mutex_t *mutex))
 	if (!cnt || (cnt && atomic_dec_and_test((atomic_t *)&((int *)mutex)[1]))) {
 		hs = MAKE_SOFT();
 		num2nam(rt_get_name(((void **)mutex)[0]), name);
-		rtai_lxrt(BIDX, SIZARG, SEM_DELETE, &arg);
+		rtai_lxrt(BIDX, SIZARG, LXRT_SEM_DELETE, &arg);
 	        if (cnt) {
 			unlink(name);
 			free((void *)mutex);
@@ -966,7 +981,7 @@ RTAI_PROTO(int, sem_post_rt,(sem_t *sem))
 	return rtai_lxrt(BIDX, SIZARG, SEM_SIGNAL, &arg).i[LOW];
 }
 
-extern int sem_getvalue_rt(sem_t *sem, int *sval)
+RTAI_PROTO(int, sem_getvalue_rt,(sem_t *sem, int *sval))
 {
 	struct { void *sem; } arg = { ((void **)sem)[0] };
 	*sval = rtai_lxrt(BIDX, SIZARG, SEM_COUNT, &arg).i[LOW];
@@ -1028,6 +1043,7 @@ RTAI_PROTO(int, pthread_barrier_wait_rt,(pthread_barrier_t *barrier))
 }
 #endif
 
+#ifdef __USE_UNIX98
 RTAI_PROTO(pthread_rwlock_t *, pthread_rwlock_open_rt,(const char *name))
 {
 	int hs, fd;
@@ -1052,6 +1068,7 @@ RTAI_PROTO(pthread_rwlock_t *, pthread_rwlock_open_rt,(const char *name))
 	MAKE_HARD(hs);
 	return rwlock;
 }
+#endif /* __USE_UNIX98 */
 
 RTAI_PROTO(int, pthread_rwlock_init_rt,(pthread_rwlock_t *rwlock, pthread_rwlockattr_t *attr))
 {
@@ -1082,7 +1099,7 @@ RTAI_PROTO(int, pthread_rwlock_close_rt,(pthread_rwlock_t *rwlock))
 	if (!cnt || (cnt && atomic_dec_and_test((atomic_t *)&((int *)rwlock)[1]))) {
 		hs = MAKE_SOFT();
 		num2nam(rt_get_name(((void **)rwlock)[0]), name);
-		rtai_lxrt(BIDX, SIZARG, RWL_DELETE, &arg);
+		rtai_lxrt(BIDX, SIZARG, LXRT_RWL_DELETE, &arg);
 	        if (cnt) {
 			unlink(name);
 			free((void *)rwlock);

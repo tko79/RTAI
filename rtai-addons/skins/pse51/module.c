@@ -55,9 +55,7 @@ static void pse51_shutdown(int xtype)
     xnpod_shutdown(xtype);
 }
 
-
-
-int SKIN_INIT_MODULE(void)
+int __xeno_skin_init(void)
 {
     u_long nstick = XNPOD_DEFAULT_TICK;
     int err;
@@ -89,10 +87,11 @@ int SKIN_INIT_MODULE(void)
     return 0;
 }
 
-
-
-void SKIN_CLEANUP_MODULE(void)
+void __xeno_skin_exit(void)
 {
     xnprintf("PSE51 %s: Stopping API emulator\n",PSE51_SKIN_VERSION_STRING);
     pse51_shutdown(XNPOD_NORMAL_EXIT);
 }
+
+module_init(__xeno_skin_init);
+module_exit(__xeno_skin_exit);

@@ -59,9 +59,9 @@
 #define XENO_INTR_MODULE
 
 #include "rtai_config.h"
-#include "xenomai/pod.h"
-#include "xenomai/mutex.h"
-#include "xenomai/intr.h"
+#include <xenomai/pod.h>
+#include <xenomai/mutex.h>
+#include <xenomai/intr.h>
 
 static void xnintr_irq_handler(unsigned irq, void *cookie);
 
@@ -78,10 +78,11 @@ static void xnintr_svc_thread(void *cookie);
  *
  * The nanokernel defines a threaded interrupt model in order to:
  *
- *    - provide a mean to prioritize interrupt handling by software.
- *    - allow the interrupt code to synchronize with other system code
- *      using kernel mutexes, therefore reducing the need for hard
- *      interrupt masking in critical sections.
+ * - provide a mean for prioritizing interrupt handling by software.
+ *
+ * - allow the interrupt code to synchronize with other system code
+ * using mutexes, therefore reducing the need for hard interrupt
+ * masking in critical sections.
  *
  * Xenomai's nanokernel exhibits a split interrupt handling scheme
  * separated into two parts. The first part is known as the Interrupt
@@ -97,11 +98,19 @@ static void xnintr_svc_thread(void *cookie);
  * services safely. A Xenomai interrupt object may be associated with
  * an ISR and/or an IST to process each IRQ event.
  *
+ ********************************************************************
+ * [WARNING] Interrupt service threads/tasklets are deprecated in
+ * newer versions of the Xenomai nucleus, basically due to design and
+ * performance issues. Do not use the IST facility if you plan to port
+ * to RTAI/fusion.
+ ********************************************************************
+ *
  * Upon receipt of an IRQ, the ISR/IST invocation policy is as
  * follows:
  *
  * - if an ISR has been defined, it is immediately called on behalf of
  * the interrupt stack context.
+ *
  * - if an IST has been defined, then its is scheduled upon return of
  * the ISR if the XN_ISR_SCHED_T bit set in its return code or if no
  * ISR has been defined for this interrupt object. The tasklet will
@@ -164,9 +173,8 @@ static void xnintr_svc_thread(void *cookie);
  * no flags are currently defined, zero should be passed for this
  * parameter.
  *
- * @return XN_OK is returned upon success. Otherwise
- * XNERR_INTR_INVALID is returned if the interrupt priority level is
- * out of range.
+ * @return XN_OK is returned upon success. Otherwise XNERR_PARAM is
+ * returned if the interrupt priority level is out of range.
  *
  * Side-effect: This routine calls the rescheduling procedure as a
  * result of starting the interrupt service thread (if any).
@@ -184,12 +192,12 @@ int xnintr_init (xnintr_t *intr,
     char name[16];
 
     if (priority < 0 || priority > XNINTR_MAX_PRIORITY)
-	return XNERR_INTR_INVALID;
+	return XNERR_PARAM;
 
     intr->irq = irq;
     intr->isr = isr;
     intr->ist = ist;
-    intr->hits = 0;
+    intr->pending = 0;
     intr->cookie = NULL;
     intr->status = 0;
     intr->priority = XNPOD_ISVC_PRIO_BASE(priority);
@@ -228,8 +236,8 @@ int xnintr_init (xnintr_t *intr,
  * @param intr The descriptor address of the interrupt object to
  * destroy.
  *
- * @return XN_OK is returned on success. Otherwise, XNERR_INTR_INVALID
- * is returned if an error occurred while detaching the interrupt (see
+ * @return XN_OK is returned on success. Otherwise, XNERR_BUSY is
+ * returned if an error occurred while detaching the interrupt (see
  * xnintr_detach()).
  *
  * Side-effect: This routine calls the rescheduling procedure as a
@@ -267,10 +275,10 @@ int xnintr_destroy (xnintr_t *intr)
  * interrupt object descriptor for further retrieval by the ISR/ISR
  * handlers.
  *
- * @return XN_OK is returned on success. Otherwise, XNERR_INTR_INVALID
- * is returned if a low-level error occurred while attaching the
- * interrupt. XNERR_INTR_BUSY is specifically returned if the
- * interrupt object was already attached.
+ * @return XN_OK is returned on success. Otherwise, XNERR_NOSYS is
+ * returned if a low-level error occurred while attaching the
+ * interrupt. XNERR_BUSY is specifically returned if the interrupt
+ * object was already attached.
  *
  * Side-effect: This routine does not call the rescheduling procedure.
  *
@@ -288,16 +296,16 @@ int xnintr_attach (xnintr_t *intr,
 
     intr->cookie = cookie;
 
-    switch (xnarch_hook_irq(intr->irq,xnintr_irq_handler,intr))
+    switch (xnarch_hook_irq(intr->irq,&xnintr_irq_handler,intr))
 	{
 	case -EINVAL:
 
-	    err = XNERR_INTR_INVALID;
+	    err = XNERR_NOSYS;
 	    break;
 	    
 	case -EBUSY:
 
-	    err = XNERR_INTR_BUSY;
+	    err = XNERR_BUSY;
 	    break;
 
 	default:
@@ -326,8 +334,8 @@ int xnintr_attach (xnintr_t *intr,
  * @param intr The descriptor address of the interrupt object to
  * detach.
  *
- * @return XN_OK is returned on success. Otherwise, XNERR_INTR_INVALID
- * is returned if a low-level error occurred while detaching the
+ * @return XN_OK is returned on success. Otherwise, XNERR_BUSY is
+ * returned if a low-level error occurred while detaching the
  * interrupt. Detaching a non-attached interrupt object leads to a
  * null-effect and returns XN_OK.
  *
@@ -348,7 +356,7 @@ int xnintr_detach (xnintr_t *intr)
     if (testbits(intr->status,XNINTR_ATTACHED))
 	{
 	if (xnarch_release_irq(intr->irq) == -EINVAL)
-	    err = XNERR_INTR_INVALID;
+	    err = XNERR_BUSY;
 	else
 	    clrbits(intr->status,XNINTR_ATTACHED);
 	}
@@ -363,16 +371,25 @@ static void xnintr_svc_thread (void *cookie)
 {
     xnsched_t *sched = xnpod_current_sched();
     xnintr_t *intr = (xnintr_t *)cookie;
+    int hits;
     spl_t s;
+
+    splhigh(s);
 
     for (;;)
 	{
-	splhigh(s);
-	intr->hits = 0;
 	xnpod_renice_isvc(&intr->svcthread,XNPOD_ISVC_PRIO_IDLE);
-	splexit(s);
 	sched->inesting++;
-	intr->ist(intr);
+
+	while (intr->pending > 0)
+	    {
+	    hits = intr->pending;
+	    intr->pending = 0;
+	    splexit(s);
+	    intr->ist(intr,hits);
+	    splhigh(s);
+	    }
+
 	sched->inesting--;
 	}
 }
@@ -380,18 +397,21 @@ static void xnintr_svc_thread (void *cookie)
 static void xnintr_irq_handler (unsigned irq, void *cookie)
 
 {
+    xnsched_t *sched = xnpod_current_sched();
     xnintr_t *intr = (xnintr_t *)cookie;
     int s = XN_ISR_SCHED_T;
 
-    intr->hits++;
-
     xnarch_memory_barrier();
+
+    intr->pending++;
 
     /* If a raw interrupt handler has been given, fire it. */
 
     if (intr->isr != NULL)
 	{
+	sched->inesting++;
 	s = intr->isr(intr);
+	sched->inesting--;
 
 	if (s & XN_ISR_ENABLE)
 	    xnarch_isr_enable_irq(irq);
@@ -411,7 +431,17 @@ static void xnintr_irq_handler (unsigned irq, void *cookie)
 	    xnpod_renice_isvc(&intr->svcthread,intr->priority);
 	}
     else
-	intr->hits = 0;
+	{
+	intr->pending = 0;
+
+	if (testbits(nkpod->status,XNSCHED))
+	    xnpod_schedule_runnable(xnpod_current_thread(),XNPOD_SCHEDLIFO);
+	}
 }
 
 /*@{*/
+
+EXPORT_SYMBOL(xnintr_attach);
+EXPORT_SYMBOL(xnintr_destroy);
+EXPORT_SYMBOL(xnintr_detach);
+EXPORT_SYMBOL(xnintr_init);

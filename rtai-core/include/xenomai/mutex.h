@@ -46,8 +46,8 @@
 #ifndef _xenomai_mutex_h
 #define _xenomai_mutex_h
 
-#include "xenomai/pod.h"
-#include "xenomai/synch.h"
+#include <xenomai/pod.h>
+#include <xenomai/synch.h>
 
 struct xnthread;
 
@@ -62,6 +62,8 @@ typedef struct xnmutex {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+void xnmutex_forget_sleeper(struct xnthread *sleeper);
 
 void xnmutex_sleepon_inner(xnmutex_t *mutex,
 			   struct xnthread *thread);
@@ -87,6 +89,9 @@ static inline int xnmutex_clear_lock (xnmutex_t *mutex,
     if (xnmutex_owner_p(mutex)) {
         *pcounter = mutex->lockcnt;
         if (xnsynch_nsleepers(&mutex->synchbase) > 0) {
+	    /* Remove the lock count which accounted for the
+	       sleepers. */
+	    xnarch_atomic_inc(pcounter);
 	    xnarch_atomic_set(&mutex->lockcnt,0);
             /* Wake up one sleeper. */
             xnmutex_wakeup_inner(mutex,XNPOD_NOSWITCH);
@@ -116,6 +121,11 @@ static inline void xnmutex_set_lock (xnmutex_t *mutex,
 	       xnmutex_sleepon_inner(mutex,runthread);
 	}
     }
+
+    /* Account for the sleepers if any. */
+    if (xnsynch_nsleepers(&mutex->synchbase) > 0)
+	xnarch_atomic_dec(pcounter);
+
     xnarch_atomic_set(&mutex->lockcnt,xnarch_atomic_get(pcounter));
 }
 

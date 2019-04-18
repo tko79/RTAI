@@ -6,7 +6,7 @@ config MODULES
 
 config RTAI_VERSION
 	string
-	default "3.0 (kilauea)"
+	default "3.1 (vesuvio)"
 
 menu "General"
 
@@ -26,16 +26,20 @@ config RTAI_LINUXDIR
 	string "Linux source tree"
 	default "/usr/src/linux"
 
-config RTAI_DOC
-	bool "Build RTAI documentation (PDF/HTML)"
+menu "RTAI Documentation"
+
+config RTAI_DOX_DOC
+	bool "Build RTAI Doxygen documentation (HTML)"
 	default n
 	help
 	This option causes the Doxygen-based RTAI documentation to be
-	built. You will need the Doxygen toolsuite for this.
+	built. This option is intended for people actually writing
+	documentation and who want to update the pre-built manuals,
+	regular users can just use the latter directly. You will need
+	the Doxygen toolsuite for regenerating the documentation.
 
 config RTAI_DOC_LATEX_NONSTOP
         bool "Enable LaTeX verbose output"
-	depends on RTAI_DOC
         default n
         help
         By default, all documentation generated with LaTeX uses the 
@@ -43,6 +47,43 @@ config RTAI_DOC_LATEX_NONSTOP
         verbose (nonstopmode) of LaTeX will be used instead. This 
         option is mainly intended for people writing RTAI 
         documentation.
+
+config RTAI_DBX_DOC
+	bool "Build DocBook XML documentation (HTML/PDF)"
+	default n
+	help
+	This option causes the DocBook XML based RTAI documentation to be
+	built. This option is intended for people actually writing
+	documentation and who want to update the pre-built manuals,
+	regular users can just use the latter directly.
+
+config RTAI_DBX_NET
+        bool "Let the DocBook XML tools use network"
+	depends on RTAI_DBX_DOC
+        default n
+        help
+        Let the DocBook tools use internet to fetch the DTD and XSL stylesheets.
+        If disabled, the documentation generation will fail if the necessary 
+        DTD(s) and XSL stylesheets can not be found on the local computer.
+
+config RTAI_DBX_ROOT
+        string "Docbook XML root"
+	depends on RTAI_DBX_DOC
+        default ""
+        help
+        Specify the DocBook XML root (that is, the directory where docbook.dtd
+        should be taken). Leave blank to let configure try the "well-known"
+        locations.
+
+config RTAI_DBX_XSL_ROOT
+        string "Docbook XML XSL stylesheet root"
+	depends on RTAI_DBX_DOC
+        default ""
+        help
+        Specify the DocBook XML XSL root. Leave blank to let configure try the
+        "well-known" locations.
+
+endmenu
 
 config RTAI_TESTSUITE
 	bool "Build RTAI testsuite"
@@ -189,8 +230,9 @@ endmenu
 menu "Misc"
 
 config RTAI_MATH
-	tristate "Math support"
-	default m
+	bool "Math support"
+	depends on RTAI_FPU_SUPPORT	
+	default y
 
 config RTAI_MATH_C99
 	bool "C99 standard support"
@@ -206,6 +248,15 @@ config RTAI_MALLOC_VMALLOC
 	depends on RTAI_EXTENDED && RTAI_MALLOC
 	default n
 
+config RTAI_MALLOC_HEAPSZ
+	string "Size of the global heap (Kbytes)"
+	depends on RTAI_MALLOC
+	default 128
+	help
+	RTAI pre-allocates a global heap as part of its initialization
+	chores. This parameter allows to define its size (in
+	kilobytes).
+
 config RTAI_TASKLETS
 	tristate "Tasklets"
 	default m
@@ -216,11 +267,13 @@ config RTAI_TRACE
 
 config RTAI_USI
 	tristate "User-space interrupts"
-	default m
+	depends on RTAI_SEM && RTAI_TASKLETS
+	default y if RTAI_SEM=y || RTAI_TASKLETS=y
+	default m if RTAI_SEM=m || RTAI_TASKLETS=m
 
 config RTAI_WD
-	tristate "Watchdog support"
-	default m
+	bool "Watchdog support"
+	default y
 
 endmenu
 

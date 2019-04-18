@@ -16,7 +16,7 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
-#include "Fl_Meter.h"
+#include <Fl_Meter.h>
 
 void Fl_Meter::value(float v)
 {
@@ -56,6 +56,26 @@ void Fl_Meter::bg_color(float r, float g, float b)
 	Bg_rgb[2] = b;
 }
 
+float Fl_Meter::bg_r()
+{
+	return Bg_rgb[0];
+}
+
+float Fl_Meter::bg_g()
+{
+	return Bg_rgb[1];
+}
+
+float Fl_Meter::bg_b()
+{
+	return Bg_rgb[2];
+}
+
+void Fl_Meter::bg_color(Fl_Color c)
+{
+	Bg_Color = c;
+}
+
 Fl_Color Fl_Meter::bg_color()
 {
 	return Bg_Color;
@@ -73,6 +93,26 @@ void Fl_Meter::grid_color(float r, float g, float b)
 	Grid_rgb[2] = b;
 }
 
+float Fl_Meter::grid_r()
+{
+	return Grid_rgb[0];
+}
+
+float Fl_Meter::grid_g()
+{
+	return Grid_rgb[1];
+}
+
+float Fl_Meter::grid_b()
+{
+	return Grid_rgb[2];
+}
+
+void Fl_Meter::grid_color(Fl_Color c)
+{
+	Grid_Color = c;
+}
+
 Fl_Color Fl_Meter::grid_color()
 {
 	return Grid_Color;
@@ -88,6 +128,26 @@ void Fl_Meter::arrow_color(float r, float g, float b)
 	Arrow_rgb[0] = r;
 	Arrow_rgb[1] = g;
 	Arrow_rgb[2] = b;
+}
+
+float Fl_Meter::arrow_r()
+{
+	return Arrow_rgb[0];
+}
+
+float Fl_Meter::arrow_g()
+{
+	return Arrow_rgb[1];
+}
+
+float Fl_Meter::arrow_b()
+{
+	return Arrow_rgb[2];
+}
+
+void Fl_Meter::arrow_color(Fl_Color c)
+{
+	Arrow_Color = c;
 }
 
 Fl_Color Fl_Meter::arrow_color()
@@ -213,7 +273,7 @@ Fl_Meter::Fl_Meter(int x, int y, int w, int h, const char *title):Fl_Gl_Window(x
 	Bg_rgb[2] = 1.0;
 	Bg_Color = FL_GRAY;
 	fl_set_color(FL_FREE_COLOR, fl_rgb((unsigned char)(Bg_rgb[0]*255.), (unsigned char)(Bg_rgb[1]*255.), (unsigned char)(Bg_rgb[2]*255.)));
-	Grid_Color = FL_FREE_COLOR;
+	Bg_Color = FL_FREE_COLOR;
 	Grid_rgb[0] = 0.650;
 	Grid_rgb[1] = 0.650;
 	Grid_rgb[2] = 0.650;

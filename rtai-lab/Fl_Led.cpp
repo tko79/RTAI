@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 
 #include <efltk/fl_math.h>
 #include <efltk/Fl.h>
-#include "Fl_Led.h"
+#include <Fl_Led.h>
 #include <efltk/Fl_Group.h>
 #include <efltk/fl_draw.h>
 #include <stdlib.h>

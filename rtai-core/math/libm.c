@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/init.h>
 #include <rtai_math.h>
 
 MODULE_LICENSE("GPL");
@@ -28,22 +29,27 @@ int libm_errno;
 
 static int verbose = 1;
 
-int MATH_INIT_MODULE(void)
+int __rtai_math_init(void)
 {
 	if(verbose){
-		printk("RTAI libm init\n");
+		printk(KERN_INFO "RTAI[math]: loaded.\n");
 	}
 	return 0;
 }
 
-void MATH_CLEANUP_MODULE(void)
+void __rtai_math_exit(void)
 {
 	if(verbose){
-		printk("RTAI libm cleanup\n");
+		printk(KERN_INFO "RTAI[math]: unloaded.\n");
 	}
 }
 
+#ifndef CONFIG_RTAI_MATH_BUILTIN
+module_init(__rtai_math_init);
+module_exit(__rtai_math_exit);
+#endif /* CONFIG_RTAI_MATH_BUILTIN */
 
+#ifdef CONFIG_KBUILD
 EXPORT_SYMBOL(acos);
 EXPORT_SYMBOL(asin);
 EXPORT_SYMBOL(atan);
@@ -69,17 +75,17 @@ EXPORT_SYMBOL(sqrt);
 EXPORT_SYMBOL(tan);
 EXPORT_SYMBOL(tanh);
 
-#ifdef DO_C99_MATH
+#ifdef CONFIG_RTAI_MATH_C99
 EXPORT_SYMBOL(acosh);
 EXPORT_SYMBOL(asinh);
 EXPORT_SYMBOL(atanh);
-//EXPORT_SYMBOL(cabs);
+EXPORT_SYMBOL(cabs);
 EXPORT_SYMBOL(cbrt);
 EXPORT_SYMBOL(drem);
 EXPORT_SYMBOL(erf);
 EXPORT_SYMBOL(erfc);
 EXPORT_SYMBOL(gamma);
-//EXPORT_SYMBOL(gamma_r);
+EXPORT_SYMBOL(gamma_r);
 EXPORT_SYMBOL(hypot);
 EXPORT_SYMBOL(ilogb);
 EXPORT_SYMBOL(j0);
@@ -95,9 +101,9 @@ EXPORT_SYMBOL(nearbyint);
 EXPORT_SYMBOL(nextafter);
 EXPORT_SYMBOL(remainder);
 EXPORT_SYMBOL(rint);
-//EXPORT_SYMBOL(rinttol);
+EXPORT_SYMBOL(rinttol);
 EXPORT_SYMBOL(round);
-//EXPORT_SYMBOL(roundtol);
+EXPORT_SYMBOL(roundtol);
 EXPORT_SYMBOL(scalb);
 EXPORT_SYMBOL(signgam);
 EXPORT_SYMBOL(significand);
@@ -106,4 +112,5 @@ EXPORT_SYMBOL(y0);
 EXPORT_SYMBOL(y1);
 EXPORT_SYMBOL(yn);
 EXPORT_SYMBOL(libm_errno);
-#endif
+#endif /* CONFIG_RTAI_MATH_C99 */
+#endif /* CONFIG_KBUILD */

@@ -1,3 +1,16 @@
+2004-04-20  Philippe Gerum  <rpm@xenomai.org>
+
+	* vm/trigger.cc (body): Fix a bug causing the trigger to be lost
+	when it is reprogrammed on the fly to a regressing timeout date.
+
+	* gcic/gcic.cc (main): Drain __xeno_skin_init() instead of
+	mvm_init_skin() at link time.
+
+2004-04-19  Philippe Gerum  <rpm@xenomai.org>
+
+	* include/asm/rtai_xeno.h, vm/simapi.cc: Provide support for the
+	aperiodic time source now supported by the Xenomai nucleus.
+
 2004-01-11  Philippe Gerum  <rpm@xenomai.org>
 
 	* include/asm/rtai_xeno.h (xnarch_enter_root): Update prototype.

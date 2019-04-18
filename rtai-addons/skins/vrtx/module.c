@@ -79,6 +79,11 @@ xnmutex_t __imutex;
 
 void *vrtxobjmap[VRTX_MAX_CB];
 
+int sc_gversion (void)
+{
+    return VRTX_VERSION;
+}
+
 int vrtx_alloc_id (void *refobject)
 
 {
@@ -136,7 +141,7 @@ static void vrtx_shutdown (int xtype)
     xnpod_shutdown(xtype);
 }
 
-int INIT_MODULE (void)
+int __xeno_skin_init (void)
 
 {
     u_long nstick = XNPOD_DEFAULT_TICK;
@@ -186,16 +191,14 @@ int INIT_MODULE (void)
     return 0;
 }
 
-void CLEANUP_MODULE (void) {
+void __xeno_skin_exit (void) {
 
     xnprintf("VRTX/VM: stopping services.\n");
     vrtx_shutdown(XNPOD_NORMAL_EXIT);
 }
 
-int sc_gversion (void)
-{
-    return VRTX_VERSION;
-}
+module_init(__xeno_skin_init);
+module_exit(__xeno_skin_exit);
 
 EXPORT_SYMBOL(sc_accept);
 EXPORT_SYMBOL(sc_adelay);

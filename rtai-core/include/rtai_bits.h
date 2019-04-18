@@ -52,14 +52,6 @@ struct rt_bits_struct;
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_RTAI_BITS_BUILTIN
-#define BITS_INIT_MODULE     bits_init_module
-#define BITS_CLEANUP_MODULE  bits_cleanup_module
-#else  /* !CONFIG_RTAI_BITS_BUILTIN */
-#define BITS_INIT_MODULE     init_module
-#define BITS_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_BITS_BUILTIN */
-
 #ifndef __cplusplus
 
 typedef struct rt_bits_struct {
@@ -75,9 +67,9 @@ typedef struct rt_bits_struct {
 extern "C" {
 #endif /* !__cplusplus */
 
-int BITS_INIT_MODULE(void);
+int __rtai_bits_init(void);
 
-void BITS_CLEANUP_MODULE(void);
+void __rtai_bits_exit(void);
 
 void rt_bits_init(struct rt_bits_struct *bits,
 		  unsigned long mask);
@@ -93,35 +85,30 @@ unsigned long rt_bits_signal(struct rt_bits_struct *bits,
 			     int setfun,
 			     unsigned long masks);
 
-int rt_bits_wait(struct rt_bits_struct *bits,
-		 int testfun,
-		 unsigned long testmasks,
-		 int exitfun,
-		 unsigned long exitmasks,
-		 unsigned long *resulting_mask);
+int _rt_bits_wait(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask, int space);
+static inline int rt_bits_wait(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask)
+{
+	return  _rt_bits_wait(bits, testfun, testmasks, exitfun, exitmasks, resulting_mask, 1);
+}
 
-int rt_bits_wait_if(struct rt_bits_struct *bits,
-		    int testfun,
-		    unsigned long testmasks,
-		    int exitfun,
-		    unsigned long exitmasks,
-		    unsigned long *resulting_mask);
+int _rt_bits_wait_if(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask, int space);
+static inline int rt_bits_wait_if(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, unsigned long *resulting_mask)
+{
+	return  _rt_bits_wait_if(bits, testfun, testmasks, exitfun, exitmasks, resulting_mask, 1);
+}
 
-int rt_bits_wait_until(struct rt_bits_struct *bits,
-		       int testfun,
-		       unsigned long testmasks,
-		       int exitfun,
-		       unsigned long exitmasks,
-		       RTIME time,
-		       unsigned long *resulting_mask);
+int _rt_bits_wait_until(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME time, unsigned long *resulting_mask, int space);
+static inline int rt_bits_wait_until(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME time, unsigned long *resulting_mask)
+{
+	return  _rt_bits_wait_until(bits, testfun, testmasks, exitfun, exitmasks, time, resulting_mask, 1);
+}
 
-int rt_bits_wait_timed(struct rt_bits_struct *bits,
-		       int testfun,
-		       unsigned long testmasks,
-		       int exitfun,
-		       unsigned long exitmasks,
-		       RTIME delay,
-		       unsigned long *resulting_mask);
+int _rt_bits_wait_timed(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME delay, unsigned long *resulting_mask, int space);
+static inline int rt_bits_wait_timed(struct rt_bits_struct *bits, int testfun, unsigned long testmasks, int exitfun, unsigned long exitmasks, RTIME delay, unsigned long *resulting_mask)
+{
+	return  _rt_bits_wait_timed(bits, testfun, testmasks, exitfun, exitmasks, delay, resulting_mask, 1);
+}
+
 
 #ifdef __cplusplus
 }
@@ -171,8 +158,8 @@ RTAI_PROTO(int, rt_bits_wait,(struct rt_bits_struct *bits, int testfun, unsigned
 			      unsigned long exitmasks, unsigned long *resulting_mask))
 {
 	struct { struct rt_bits_struct *bits; int testfun; unsigned long testmasks; int exitfun;
-	    unsigned long exitmasks; unsigned long *resulting_mask; } arg =
-		{ bits, testfun, testmasks, exitfun, exitmasks, resulting_mask };
+	    unsigned long exitmasks; unsigned long *resulting_mask; int space; } arg =
+		{ bits, testfun, testmasks, exitfun, exitmasks, resulting_mask, 0 };
 	return rtai_lxrt(BITSIDX, SIZARG, BITS_WAIT, &arg).i[LOW];
 }
 
@@ -180,8 +167,8 @@ RTAI_PROTO(int, rt_bits_wait_if,(struct rt_bits_struct *bits, int testfun, unsig
 				 unsigned long exitmasks, unsigned long *resulting_mask))
 {
 	struct { struct rt_bits_struct *bits; int testfun; unsigned long testmasks; int exitfun;
-	    unsigned long exitmasks; unsigned long *resulting_mask; } arg =
-		{ bits, testfun, testmasks, exitfun, exitmasks, resulting_mask };
+	    unsigned long exitmasks; unsigned long *resulting_mask; int space; } arg =
+		{ bits, testfun, testmasks, exitfun, exitmasks, resulting_mask, 0 };
 	return rtai_lxrt(BITSIDX, SIZARG, BITS_WAIT_IF, &arg).i[LOW];
 }
 
@@ -189,8 +176,8 @@ RTAI_PROTO(int, rt_bits_wait_until,(struct rt_bits_struct *bits, int testfun, un
 				    unsigned long exitmasks, RTIME time, unsigned long *resulting_mask))
 {
 	struct { struct rt_bits_struct *bits; int testfun; unsigned long testmasks; int exitfun;
-	    unsigned long exitmasks; RTIME time; unsigned long *resulting_mask; } arg =
-		{ bits, testfun, testmasks, exitfun, exitmasks, time, resulting_mask };
+	    unsigned long exitmasks; RTIME time; unsigned long *resulting_mask; int space; } arg =
+		{ bits, testfun, testmasks, exitfun, exitmasks, time, resulting_mask, 0 };
 	return rtai_lxrt(BITSIDX, SIZARG, BITS_WAIT_UNTIL, &arg).i[LOW];
 }
 
@@ -198,8 +185,8 @@ RTAI_PROTO(int, rt_bits_wait_timed,(struct rt_bits_struct *bits, int testfun, un
 				    unsigned long exitmasks, RTIME delay, unsigned long *resulting_mask))
 {
 	struct { struct rt_bits_struct *bits; int testfun; unsigned long testmasks; int exitfun;
-	    unsigned long exitmasks; RTIME delay; unsigned long *resulting_mask; } arg =
-		{ bits, testfun, testmasks, exitfun, exitmasks, delay, resulting_mask };
+	    unsigned long exitmasks; RTIME delay; unsigned long *resulting_mask; int space; } arg =
+		{ bits, testfun, testmasks, exitfun, exitmasks, delay, resulting_mask, 0 };
 	return rtai_lxrt(BITSIDX, SIZARG, BITS_WAIT_TIMED, &arg).i[LOW];
 }
 

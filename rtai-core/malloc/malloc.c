@@ -1,775 +1,772 @@
-/*
- * Dynamic Memory Management for Real Time Linux.
+/*!\file malloc.c
+ * \brief Dynamic memory allocation services.
+ * \author Philippe Gerum
  *
- * Copyright (©) 2000 Pierre Cloutier (Poseidon Controls Inc.),
- *                    Steve Papacharalambous (Lineo Inc.),
- * All rights reserved
+ * Copyright (C) 2001,2002,2003,2004 Philippe Gerum <rpm@xenomai.org>.
  *
- * Authors: Pierre Cloutier <pcloutier@poseidoncontrols.com>
- *          Steve Papacharalambous <stevep@lineo.com>
+ * RTAI is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * Original date: Mon 14 Feb 2000
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation; either version 2 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * RTAI is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+ * License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * along with RTAI; if not, write to the Free Software Foundation,
+ * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *
+ * Dynamic memory allocation services lifted and adapted from the
+ * Xenomai nucleus.
+ *
+ * This file implements the RTAI dynamic memory allocator based on the
+ * algorithm described in "Design of a General Purpose Memory
+ * Allocator for the 4.3BSD Unix Kernel" by Marshall K. McKusick and
+ * Michael J. Karels.
+ *
+ * \ingroup shm
  */
 
+/*!
+ * @addtogroup shm
+ *@{*/
 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/version.h>
 #include <rtai_config.h>
+#include <asm/rtai.h>
 #ifdef CONFIG_RTAI_MALLOC_VMALLOC
 #include <rtai_shm.h>
 #else /* !CONFIG_RTAI_MALLOC_VMALLOC */
 #include <linux/slab.h>
 #endif /* CONFIG_RTAI_MALLOC_VMALLOC */
-#include <linux/errno.h>
-#include <linux/smp_lock.h>
-#include <linux/interrupt.h>
-
-#ifdef CONFIG_PROC_FS
-#include <linux/stat.h>
-#include <linux/proc_fs.h>
-#endif /* CONFIG_PROC_FS */
-
-#include <rtai.h>
-#include <rtai_proc_fs.h>
-#include <rtai_fifos.h>
 #include <rtai_malloc.h>
 
-MODULE_LICENSE("GPL");
+MODULE_PARM(rtai_global_heap_size,"i");
 
-// ------------------------------< definitions >-------------------------------
-#ifndef NULL
-#define NULL ((void *) 0)
-#endif
+int rtai_global_heap_size = RTHEAP_GLOBALSZ;
 
-#define OVERHEAD (sizeof(struct chkhdr) + sizeof(struct blkhdr))
-#define MINSIZE 16					// Need 16 bytes alignment for PIII floating point support.
+void *rtai_global_heap_adr = NULL;
 
-#ifdef DEBUG
-#define DPRINTK(format,args...) printk(format,## args)
-#else
-#define DPRINTK(format,args...)
-#endif
+rtheap_t rtai_global_heap;	/* Global system heap */
 
-// These defines set whether kmalloc() or vmalloc() is used
-// to allocate the memory chunks used by the rt memory manager.
-//
-// Reasons for using vmalloc:
-// - Simpler to share allocated buffers with user space.
-// - Doesn't have the size restriction of kmalloc.
-//
-// Reasons for using kmalloc:
-// - Faster
-// - Contiguous buffer address, needed for DMA controllers which don't
-//   have scatter/gather capability.
-// The default is vmalloc()
-//
-#if defined(CONFIG_RTAI_MALLOC_VMALLOC)
-  #define alloc_chunk(size) vmalloc((size))
-  #define free_chunk(addr) vfree((addr))
-static inline void MEM_MAP_RESERVE(unsigned long adr, unsigned long size)
+static void *alloc_extent (u_long size)
+
 {
-	char *pt = (char *)adr;
-	for (; size > 0; size -= PAGE_SIZE, adr += PAGE_SIZE, pt += PAGE_SIZE) {
-		mem_map_reserve(virt_to_page(__va(kvirt_to_pa(adr))));
-		*pt = 0; // I'm paranoid, but let's have trap 14's (if any) while in Linux context.
-	}
+#ifdef CONFIG_RTAI_MALLOC_VMALLOC
+    caddr_t _p, p;
+
+    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    p = _p = (caddr_t)vmalloc(size);
+
+    if (!p)
+	return NULL;
+
+    /* Reserve the allocated space. */
+    for (; size > 0; size -= PAGE_SIZE, _p += PAGE_SIZE)
+	mem_map_reserve(virt_to_page(__va(kvirt_to_pa((u_long)_p))));
+
+    return p;
+#else /* !CONFIG_RTAI_MALLOC_VMALLOC */
+    if (size > KMALLOC_LIMIT)
+	printk("RTAI[malloc]: extent > 128Kb unavailable in kmalloc() mode\n");
+
+    return kmalloc(size,GFP_KERNEL);
+#endif /* CONFIG_RTAI_MALLOC_VMALLOC */
 }
 
-static inline void MEM_MAP_UNRESERVE(unsigned long adr, unsigned long size)
+static void free_extent (void *p, u_long size)
+
 {
-	for(; size > 0; size -= PAGE_SIZE, adr += PAGE_SIZE) {
-		mem_map_unreserve(virt_to_page(__va(kvirt_to_pa(adr))));
-	}
+#ifdef CONFIG_RTAI_MALLOC_VMALLOC
+    caddr_t _p = (caddr_t)p;
+
+    /* Unreserve the space before freeing it. */
+
+    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+    for (; size > 0; size -= PAGE_SIZE, _p += PAGE_SIZE)
+	mem_map_unreserve(virt_to_page(__va(kvirt_to_pa((u_long)_p))));
+
+    vfree(p);
+#else /* !CONFIG_RTAI_MALLOC_VMALLOC */
+    kfree(p);
+#endif /* CONFIG_RTAI_MALLOC_VMALLOC */
 }
-#else
-  #define alloc_chunk(size) kmalloc((size), GFP_KERNEL)
-  #define free_chunk(addr) kfree((addr))
-  #define MEM_MAP_RESERVE(chk_ptr, granularity)
-  #define MEM_MAP_UNRESERVE(chk_ptr, granularity)
-#endif
 
-
-// Chunk of contiguous memory.
-struct chkhdr {
-  void *chk_addr;                    // Address of chunk.
-  struct chkhdr *next_chk;           // 0 if none. 
-  unsigned int chk_limit;            // Size of chunk.
-  struct blkhdr *free_list;          // 1st free object in chunk, NULL if none.
-  char data[0];
-};
-
-
-// Block header for management within a chunk.
-struct blkhdr {
-  void *chk_addr;                    // Address of owner chunk.
-  struct blkhdr *next_free;          // SELF if not free, NULL if end of list.
-  unsigned int free_size;
-  int align16;						 // Unused variable for 16 bytes alignment.	  
-  char data[0];
-};
-
-enum mem_cmd { chk_alloc, chk_free };
-
-
-// ----------------------------------------------------------------------------
-//      Local Definitions.
-// ----------------------------------------------------------------------------
-static void *alloc_in_chk(unsigned int size, struct chkhdr *chk);
-void rt_mmgr_dump(void);
-
-
-// ----------------------------------------------------------------------------
-//      Package Global Data.
-// ----------------------------------------------------------------------------
-#define GRANULARITY  0x10000
-#define LOWCHKREF    4
-#define LOWDATAMARK  0x4000
-
-char rtmmgr_version[] = "1.3";
-unsigned int granularity   = GRANULARITY;
-int low_chk_ref            = LOWCHKREF;
-unsigned int low_data_mark = LOWDATAMARK; // Enough to allocate a dynamic task.
-int extra_chks;
-unsigned int max_allocated = 0;
-unsigned int total_available = 0;
-unsigned int sys_malloc_calls = 0;
-unsigned int sys_free_calls = 0;
-unsigned int memory_leak = 0;
-unsigned int memory_overhead = 0;
-int sysrq_cmd_err = 0;
-int rt_mem_mgr_init = 0;
-struct chkhdr *chk_list = NULL;
-struct { int srq, no_chk; spinlock_t srq_lock; } alloc_sysrq;
-struct { int srq, no_chk; spinlock_t srq_lock; } free_sysrq;
-spinlock_t rt_mem_lock;
-
-
-// ----------------------------------------------------------------------------
-
-// -----------------------< Memory management section >------------------------
-void *rt_malloc(unsigned int size)
+static void init_extent (rtheap_t *heap,
+			 rtextent_t *extent)
 {
-
-  unsigned long flags;
-  void *mem_ptr = NULL;
-  struct chkhdr *chk_list_ptr;
-  char *func __attribute__ ((unused)) = "rt_malloc";
-
-  size = (size + (MINSIZE - 1)) & ~(MINSIZE - 1);
-  if(size > granularity - OVERHEAD) {
-    DBG("%s - Cannot allocate %d bytes, too large.\n", func, size);
-    DBG("\n");
-    return(NULL);
-  }
-
-  chk_list_ptr = chk_list;
-  flags = rt_spin_lock_irqsave(&rt_mem_lock);
-  for(chk_list_ptr = chk_list; chk_list_ptr != NULL;
-                     chk_list_ptr = chk_list_ptr->next_chk) {
-
-    if(chk_list_ptr->free_list != NULL) {
-
-      if((mem_ptr = alloc_in_chk(size, chk_list_ptr)) != NULL) {
-        break;
-      }  // End if - Allocated a block okay.
-
-      DBG("%s - Insufficient free memory in chunk %p, trying %p\n",
-                               func, chk_list_ptr, chk_list_ptr->next_chk);
-    }  // End if - Chunk is not full
-
-  }  // End for loop - search all chunks
-
-  if((total_available - (memory_leak + memory_overhead)) <= low_data_mark) {
-    if(alloc_sysrq.no_chk == 0) {
-      alloc_sysrq.no_chk++;
-      DBG("%s - Requesting an extra chunk.\n", func);
-      rt_pend_linux_srq(alloc_sysrq.srq);
-    }  // End if - No other allocation sys requests pending.
-  }  // End if - Request another chunk if < low water level.
-
-  rt_spin_unlock_irqrestore(flags, &rt_mem_lock);
-  return(mem_ptr);
-
-}  // End function - rt_malloc
-
-
-void rt_free(void *addr)
-{
-
-  unsigned int flags;
-  struct chkhdr *chk_ptr;
-  struct blkhdr *blk_ptr, *cur_blk_ptr, *prev_blk_ptr;
-  char *func __attribute__ ((unused)) = "rt_free";
-
-// Get the block and chunk headers for the block.
-  blk_ptr = (struct blkhdr *)(addr - sizeof(struct blkhdr));
-  chk_ptr = blk_ptr->chk_addr;
-
-// Make sure that it is valid block.
-  if(blk_ptr->chk_addr != chk_ptr->chk_addr ||
-     blk_ptr->next_free != blk_ptr ||
-     ((unsigned)(blk_ptr->free_size) == 0) ||
-     ((unsigned)(blk_ptr->free_size) > (granularity - OVERHEAD)) ||
-     (unsigned)(blk_ptr->free_size) % MINSIZE != 0) {
-
-    DBG("%s - Attempt to free corrupt heap at 0x%p.\n", func, addr);
-  } else {
-
-    DBG("%s - Request to free block at 0x%p from chunk 0x%p.\n",
-                                                       func, addr, chk_ptr);
-    DBG("%s - 1st free block in chunk is 0x%p\n", func, chk_ptr->free_list);
-    flags = rt_spin_lock_irqsave(&rt_mem_lock);
-    cur_blk_ptr = chk_ptr->free_list;
-    prev_blk_ptr = NULL;
-
-// Find a previous free block to link into the free list.
-    while(cur_blk_ptr != NULL && cur_blk_ptr->data < (char *)addr) {
-      prev_blk_ptr = cur_blk_ptr;
-      cur_blk_ptr = cur_blk_ptr->next_free;
-    }  // End while loop - find previous free block
-    DBG("%s - Exit from while loop - cur_blk_ptr 0x%p prev_blk_ptr 0x%p\n",
-                                             func, cur_blk_ptr, prev_blk_ptr);
-    memory_leak -= blk_ptr->free_size;
-
-// If the previous free block is contiguous merge them.
-    if((prev_blk_ptr != NULL) && ((struct blkhdr *)(prev_blk_ptr->data +
-                                      prev_blk_ptr->free_size) == blk_ptr)) {
-
-      prev_blk_ptr->free_size += blk_ptr->free_size + sizeof(struct blkhdr);
-      blk_ptr = prev_blk_ptr;
-      memory_overhead -= sizeof(struct blkhdr);
-      DBG("%s - Merging free block with previous block at 0x%p.\n",
-                                                          func, prev_blk_ptr);
-
-    // Or, insert a new free block.
-    } else if(prev_blk_ptr != NULL) {
-      blk_ptr->next_free = prev_blk_ptr->next_free;
-      prev_blk_ptr->next_free = blk_ptr;
-
-    // Or, add first free block.
-    } else {
-		blk_ptr->next_free = chk_ptr->free_list;
-		chk_ptr->free_list = blk_ptr;
-    }  // End if else - previous block is not contiguous
-
-// If the following free block is contiguous merge them.
-    if((struct blkhdr *)(blk_ptr->data + blk_ptr->free_size)
-                                         == blk_ptr->next_free) {
-
-      DBG("%s - Merging free block with following block at 0x%p.\n",
-                                             func, blk_ptr->next_free);
-      memory_overhead -= sizeof(struct blkhdr);
-      blk_ptr->free_size += blk_ptr->next_free->free_size +
-                                                    sizeof(struct blkhdr);
-      blk_ptr->next_free = blk_ptr->next_free->next_free;
-
-    }  // End if - following block is free
-
-    if((total_available - (granularity + memory_leak + memory_overhead)) >=
-                                                             low_data_mark) {
-      if(free_sysrq.no_chk == 0) {
-        free_sysrq.no_chk = 1;
-        rt_pend_linux_srq(free_sysrq.srq);
-        DBG("%s - Released a memory chunk.\n", func);
-      }  // End if - Only pend free srq if none are in progress.
-    }  // End if - Free chunks exceed low water resevoir.
-
-    rt_spin_unlock_irqrestore(flags, &rt_mem_lock);
-
-  }  // End if else - Valid block to free
-
-}  // End function - rt_free
-
-
-// This function tries to find size free bytes in the current chunk.
-static void *alloc_in_chk(unsigned int size, struct chkhdr *chk)
-{
-
-  void *mem_ptr = NULL;
-  struct blkhdr *cur, *prev = NULL, *next;
-  char *func __attribute__ ((unused)) = "alloc_in_chk";
-
-  for(cur = chk->free_list; cur != NULL; prev = cur, cur = cur->next_free) {
-
-// Check the free block is large enough.
-    if(cur->free_size >= size) {
-
-      DBG("%s - Allocating block at %p\n", func, cur->data);
-
-// Calculate the next free block in the chunk.
-      if(cur->free_size - size >= sizeof(struct blkhdr) + MINSIZE) {
-        next = (struct blkhdr *)(cur->data + size);
-        next->chk_addr = chk->chk_addr;
-        next->next_free = cur->next_free;
-        next->free_size = cur->free_size - (size + sizeof(struct blkhdr));
-        memory_overhead += sizeof(struct blkhdr);
-      } else {
-
-// We get here if there isn't enough free contiguous free
-// memory left in this chunk for another block.
-        next = cur->next_free;  // NB: This is NULL for last block in list
-        DBG("%s - No space left in chunk 0x%p\n", func, chk);
-      }  // End if else - determine next free block
-
-// Remove the block from the free list.
-      if(prev == NULL) {
-        chk->free_list = next;
-      } else {
-        prev->next_free = next;
-      }  // End if else - First time through the loop.
-
-      DBG("%s - Next free block at %p\n", func, next);
-      cur->next_free = cur;
-      cur->free_size = size;
-      mem_ptr = cur->data;
-      break;
-    }  // End if - free block large enough
-  }  // End for loop - find free block in the chunk.
-  if(mem_ptr != NULL) {
-    memory_leak += size;
-    if(memory_leak > max_allocated) {
-      max_allocated = memory_leak;
-    }
-  }
-  return(mem_ptr);
-
-}  // End function - alloc_in_chk
-
-
-// ---------------------< End memory management section >----------------------
-
-// ----------------------< sysrq (Linux kernel) section >----------------------
-void rt_alloc_sysrq_handler(void)
-{
-
-  unsigned long flags;
-  struct chkhdr *chk_ptr, *chk_list_ptr;
-  struct blkhdr *blk_ptr;
-  char *func = "rt_alloc_sysrq_handler";
-
-// Allocate "alloc_sysrq.no_chk" memory chunks, initialise them, and
-// insert them into the chunk list.
-  if((chk_ptr = (struct chkhdr *)alloc_chunk(granularity)) == NULL ) {
-    printk("%s - Memory allocation failure.\n", func);
-  } else {
-    MEM_MAP_RESERVE((unsigned long)chk_ptr, granularity);
-	chk_ptr->chk_addr = (void *)chk_ptr;
-    chk_ptr->chk_limit = granularity;
-    chk_ptr->next_chk = NULL;
-    blk_ptr = chk_ptr->free_list = (struct blkhdr *)chk_ptr->data;
-    blk_ptr->next_free = NULL;
-    blk_ptr->chk_addr = (void *)chk_ptr;
-    blk_ptr->free_size = chk_ptr->chk_limit - OVERHEAD;
-
-// Hmm.. maybe this should go outside the while loop :-??
-    flags = rt_spin_lock_irqsave(&rt_mem_lock);
-    sys_malloc_calls++;
-    total_available += granularity;
-    memory_overhead += OVERHEAD;
-
-// Paranoid, but just in case there are no chunks already allocated. :->>
-    if( chk_list == NULL ) {
-      chk_list = chk_ptr;
-    } else {
-      for(chk_list_ptr = chk_list; chk_list_ptr->next_chk != NULL;
-                             chk_list_ptr = chk_list_ptr->next_chk) {
-          ;
-      }  // End for loop - find end of chunk list.
-      chk_list_ptr->next_chk = chk_ptr;
-    }  // End else - Not the 1st chunk in the list.
-    alloc_sysrq.no_chk = 0;
-    extra_chks += 1;
-    rt_spin_unlock_irqrestore(flags, &rt_mem_lock);
-    DPRINTK("%s - New chunk, Address: %p, size: %d\n",
-        func, chk_ptr->chk_addr, chk_ptr->chk_limit);
-    DPRINTK("%s - Extra chunk count: %d \n", func, extra_chks);
-
-  }  // End if else - system malloc failed.
-} // End function - rt_alloc_sysrq_handler
-
-
-
-void rt_free_sysrq_handler(void)
-{
-
-  unsigned int do_free;
-  unsigned long flags;
-  struct chkhdr *chk_ptr, *prev_chk_ptr;
-  struct blkhdr *blk_ptr;
-  char *func __attribute__ ((unused)) = "rt_free_sysrq_handler";
-
-
-  do_free = 0;
-  prev_chk_ptr = NULL;
-  if(extra_chks > 0) {
-    flags = rt_spin_lock_irqsave(&rt_mem_lock);
-    for(chk_ptr = chk_list; chk_ptr != NULL;
-                            chk_ptr = chk_ptr->next_chk) {
-
-      blk_ptr = chk_ptr->free_list;
-      if((blk_ptr != NULL) && (blk_ptr->free_size == chk_ptr->chk_limit - OVERHEAD)) {
-
-// Remove chunk to be freed from list.
-        if(prev_chk_ptr == NULL) {
-          chk_list = chk_ptr->next_chk;
-        } else {
-          prev_chk_ptr->next_chk = chk_ptr->next_chk;
-        }  // End if else - handle first chunk in the list.
-        extra_chks--;
-        do_free = 1;
-        break;
-      }  // End if - chunk is completely free && more free chunks than needed
-
-      prev_chk_ptr = chk_ptr;
-
-    }  // End for loop - Loop through all chunks in the list
-
-    free_sysrq.no_chk = 0;
-    if(do_free) {
-
-      sys_free_calls++;
-      total_available -= granularity;
-      memory_overhead -= OVERHEAD;
-rt_printk("rt_free_sysrq_handler()\n");
-      MEM_MAP_UNRESERVE((unsigned long)chk_ptr, granularity);
-	free_chunk(chk_ptr);  // Assumes that chk_ptr contains the address to be freed.
-
-      DPRINTK("%s - freed chunk, Address: %p\n", func, chk_ptr);
-      DPRINTK("%s - extra chunk count: %d\n", func, extra_chks);
-
-    }  // End if - free the chunk memory.
-    rt_spin_unlock_irqrestore(flags, &rt_mem_lock);
-  } else {  // End if - extra chunks have been previously allocated.
-    free_sysrq.no_chk = 0;
-  }  // End if - Clear the free request count.
-}  // End function - rt_free_sysrq_handler.
-
-
-// --------------------< end sysrq (Linux kernel) section >--------------------
-
-
-// ------------------------< proc filesystem section >-------------------------
-#ifdef CONFIG_PROC_FS
-static int mmgr_read_proc(char *page, char **start, off_t off, int count,
-                          int *eof, void *data)
-{
-
-  PROC_PRINT_VARS;
-  int i = 0;
-  unsigned int chk_free;
-  struct chkhdr *chk_ptr;
-
-  PROC_PRINT("\nRTAI Dynamic Memory Management Status.\n");
-  PROC_PRINT("----------------------------------------\n\n");
-  PROC_PRINT("Chunk Size  Address    1st free block  Block size\n");
-  PROC_PRINT("-------------------------------------------------\n");
-
-  for(chk_ptr = chk_list; chk_ptr != NULL; chk_ptr = chk_ptr->next_chk) {
-    if(chk_ptr->free_list == NULL) { // Needed to avoid possible Oops :-(
-      chk_free = 0;
-    } else {
-      chk_free = chk_ptr->free_list->free_size;
-    }
-    PROC_PRINT("%-5d %-5d 0x%-8p 0x%-15p %-5d\n",
-                   i,
-                   chk_ptr->chk_limit,
-                   chk_ptr->chk_addr,
-                   chk_ptr->free_list,
-                   chk_free);
-    i += 1;
-  } // End for loop - Display data for all chunks.
-
-  PROC_PRINT_DONE;
-
-}       // End function - mmgr_read_proc
-
-
-static int mmgr_proc_register(void)
-{
-
-	static struct proc_dir_entry *proc_rtai_mmgr;
-
-	proc_rtai_mmgr = create_proc_entry("memory_manager",
-                                            S_IFREG | S_IRUGO | S_IWUSR,
-                                            rtai_proc_root);
-	if(!proc_rtai_mmgr) {
-        	rt_printk("Unable to initialize: /proc/rtai/memory_manager\n");
-		return(-1);
+    caddr_t freepage;
+    int n, lastpgnum;
+
+    INIT_LIST_HEAD(&extent->link);
+
+    /* The page area starts right after the (aligned) header. */
+    extent->membase = (caddr_t)extent + heap->hdrsize;
+    lastpgnum = heap->npages - 1;
+
+    /* Mark each page as free in the page map. */
+    for (n = 0, freepage = extent->membase;
+	 n < lastpgnum; n++, freepage += heap->pagesize)
+	{
+	*((caddr_t *)freepage) = freepage + heap->pagesize;
+	extent->pagemap[n] = RTHEAP_PFREE;
 	}
 
-	proc_rtai_mmgr->read_proc = mmgr_read_proc;
+    *((caddr_t *)freepage) = NULL;
+    extent->pagemap[lastpgnum] = RTHEAP_PFREE;
+    extent->memlim = freepage + heap->pagesize;
 
-	return 0;
-}       /* End function - rtai_proc_register */
+    /* The first page starts the free list of a new extent. */
+    extent->freelist = extent->membase;
+}
 
+/*! 
+ * \fn int rtheap_init(rtheap_t *heap,
+                       void *heapaddr,
+		         u_long heapsize,
+		         u_long pagesize);
+ * \brief Initialize a memory heap.
+ *
+ * Initializes a memory heap suitable for dynamic memory allocation
+ * requests.  The heap manager can operate in two modes, whether
+ * time-bounded if the heap storage area and size are statically
+ * defined at initialization time, or dynamically extendable at the
+ * expense of a less deterministic behaviour.
+ *
+ * @param heap The address of a heap descriptor the memory manager
+ * will use to store the allocation data.  This descriptor must always
+ * be valid while the heap is active therefore it must be allocated in
+ * permanent memory.
+ *
+ * @param heapaddr The address of a statically-defined heap storage
+ * area. If this parameter is non-zero, all allocations will be made
+ * from the given area in fully time-bounded mode. In such a case, the
+ * heap is non-extendable. If a null address is passed, the heap
+ * manager will attempt to extend the heap each time a memory
+ * starvation is encountered. In the latter case, the heap manager
+ * will request additional chunks of core memory to Linux when needed,
+ * voiding the real-time guarantee for the caller.
+ *
+ * @param heapsize If heapaddr is non-zero, heapsize gives the size in
+ * bytes of the statically-defined storage area. Otherwise, heapsize
+ * defines the standard length of each extent that will be requested
+ * to Linux when a memory starvation is encountered for the heap.
+ * heapsize must be a multiple of pagesize and lower than 16
+ * Mbytes. Depending on the Linux allocation service used, requests
+ * for extent memory might be limited in size. For instance, heapsize
+ * must be lower than 128Kb for kmalloc()-based allocations. In the
+ * current implementation, heapsize must be large enough to contain an
+ * internal header. The following formula gives the size of this
+ * header: hdrsize = (sizeof(rtextent_t) + ((heapsize -
+ * sizeof(rtextent_t))) / (pagesize + 1) + 15) & ~15;
+ *
+ * @param pagesize The size in bytes of the fundamental memory page
+ * which will be used to subdivide the heap internally. Choosing the
+ * right page size is important regarding performance and memory
+ * fragmentation issues, so it might be a good idea to take a look at
+ * http://docs.FreeBSD.org/44doc/papers/kernmalloc.pdf to pick the
+ * best one for your needs. In the current implementation, pagesize
+ * must be a power of two in the range [ 8 .. 32768] inclusive.
+ *
+ * @return 0 is returned upon success, or one of the following
+ * error codes:
+ * - RTHEAP_PARAM is returned whenever a parameter is invalid.
+ * - RTHEAP_NOMEM is returned if no initial extent can be allocated
+ * for a dynamically extendable heap (i.e. heapaddr == NULL).
+ *
+ * Side-effect: This routine does not call the rescheduling procedure.
+ *
+ * Context: This routine must be called on behalf of a thread context.
+ */
 
-static void mmgr_proc_unregister(void)
+int rtheap_init (rtheap_t *heap,
+		 void *heapaddr,
+		 u_long heapsize,
+		 u_long pagesize)
 {
-	remove_proc_entry("memory_manager", rtai_proc_root);
-}       /* End function - rtai_proc_unregister */
+    u_long hdrsize, pmapsize, shiftsize, pageshift;
+    struct list_head *holder;
+    rtextent_t *extent;
+    int n;
 
-// --------------------< end of proc filesystem section >--------------------
-#endif  // CONFIG_PROC_FS
+    /*
+     * Perform some parametrical checks first.
+     * Constraints are:
+     * PAGESIZE must be >= 2 ** MINLOG2.
+     * PAGESIZE must be <= 2 ** MAXLOG2.
+     * PAGESIZE must be a power of 2.
+     * HEAPSIZE must be large enough to contain the static part of an
+     * extent header.
+     * HEAPSIZE must be a multiple of PAGESIZE.
+     * HEAPSIZE must be lower than RTHEAP_MAXEXTSZ.
+     */
 
-// ------------------------< Debug functions section >------------------------
+    if ((pagesize < (1 << RTHEAP_MINLOG2)) ||
+	(pagesize > (1 << RTHEAP_MAXLOG2)) ||
+	(pagesize & (pagesize - 1)) != 0 ||
+	heapsize <= sizeof(rtextent_t) ||
+	heapsize > RTHEAP_MAXEXTSZ ||
+	(heapsize & (pagesize - 1)) != 0)
+	return RTHEAP_PARAM;
 
-// This function displays the allocation details of a chunk.
-// The chunk to be displayed is determined from the address
-// of a data block within the chunk.
-void display_chunk(void *addr)
+    /* Determine the page map overhead inside the given extent
+       size. We need to reserve a byte in a page map for each page
+       which is addressable into this extent. The page map is itself
+       stored in the extent space, right after the static part of its
+       header, and before the first allocatable page. */
+    pmapsize = ((heapsize - sizeof(rtextent_t)) * sizeof(u_char)) / (pagesize + sizeof(u_char));
+
+    /* The overall header size is: static_part + page_map rounded to
+       the minimum alignment size. */
+    hdrsize = (sizeof(rtextent_t) + pmapsize + RTHEAP_MINALIGNSZ - 1) & ~(RTHEAP_MINALIGNSZ - 1);
+
+    /* An extent must contain at least two addressable pages to cope
+       with allocation sizes between pagesize and 2 * pagesize. */
+    if (hdrsize + 2 * pagesize > heapsize)
+	return RTHEAP_PARAM;
+
+    /* Compute the page shiftmask from the page size (i.e. log2 value). */
+    for (pageshift = 0, shiftsize = pagesize;
+	 shiftsize > 1; shiftsize >>= 1, pageshift++)
+	; /* Loop */
+
+    heap->flags = 0;
+    heap->pagesize = pagesize;
+    heap->pageshift = pageshift;
+    heap->hdrsize = hdrsize;
+    heap->npages = (heapsize - hdrsize) >> pageshift;
+    heap->ubytes = 0;
+    heap->extentsize = heapsize;
+    heap->maxcont = heap->npages * pagesize;
+    INIT_LIST_HEAD(&heap->extents);
+    spin_lock_init(&heap->lock);
+
+    for (n = 0; n < RTHEAP_NBUCKETS; n++)
+	heap->buckets[n] = NULL;
+
+    if (heapaddr)
+	{
+	extent = (rtextent_t *)heapaddr;
+	init_extent(heap,extent);
+	list_add_tail(&extent->link,&heap->extents);
+	}
+    else
+	{
+	u_long init_size = 0;
+
+	/* NULL initial heap address means that we should obtain it
+	   from the kernel allocation service. This also means that
+	   this heap is extendable by requesting additional extents to
+	   the very same service upon memory starvation. */
+
+#ifndef CONFIG_RTAI_MALLOC_VMALLOC
+	/* Kmalloc() cannot handle chunks over KMALLOC_LIMIT. So let's
+	   obtain the requested initial heap by allocating extents of
+	   this size, and keep the extent size under this limit. */
+	heap->extentsize = KMALLOC_LIMIT;
+#endif /* CONFIG_RTAI_MALLOC_VMALLOC */
+
+	while (init_size < heapsize)
+	    {
+	    extent = (rtextent_t *)alloc_extent(heap->extentsize);
+
+	    if (!extent)
+		{
+		list_for_each(holder,&heap->extents) {
+	            extent = list_entry(holder,rtextent_t,link);
+		    free_extent(extent,heap->extentsize);
+		}
+
+		return RTHEAP_NOMEM;
+		}
+
+	    init_extent(heap,extent);
+	    list_add_tail(&extent->link,&heap->extents);
+	    init_size += heap->extentsize;
+	    }
+
+	heap->flags |= RTHEAP_EXTENDABLE;
+	}
+
+    return 0;
+}
+
+/*! 
+ * \fn void rtheap_destroy(rtheap_t *heap);
+ * \brief Destroys a memory heap.
+ *
+ * Destroys a memory heap. Dynamically allocated extents are returned
+ * to Linux.
+ *
+ * @param heap The descriptor address of the destroyed heap.
+ *
+ * Side-effect: This routine does not call the rescheduling procedure.
+ *
+ * Context: This routine must be called on behalf of a thread context.
+ */
+
+void rtheap_destroy (rtheap_t *heap)
+
 {
+    struct list_head *holder;
 
-  struct chkhdr *chk_ptr;
-  struct blkhdr *blk_ptr, *last;
-  char free[5];
-  char *func __attribute__ ((unused)) = "display_chunk";
+    if (!(heap->flags & RTHEAP_EXTENDABLE))
+	return;
 
+    /* If the heap is marked as extendable, we have to release each
+       allocated extent back to the arch-dependent allocator. */
 
-  blk_ptr = (struct blkhdr *)(addr - (sizeof(struct blkhdr)));
-  chk_ptr = (struct chkhdr *)blk_ptr->chk_addr;
-  (void *)last = (void *)chk_ptr + (chk_ptr->chk_limit - sizeof(struct blkhdr) - MINSIZE);
+    list_for_each(holder,&heap->extents) {
+        free_extent(list_entry(holder,rtextent_t,link),heap->extentsize);
+    }
+}
 
+/*
+ * get_free_range() -- Obtain a range of contiguous free pages to
+ * fulfill an allocation of 2 ** log2size. Each extent is searched,
+ * and a new one is allocated if needed, provided the heap is
+ * extendable. Must be called with the heap lock set.
+ */
 
-  rt_printk("\n\n%s - Allocation for chunk: 0x%p\n", func, chk_ptr);
-  rt_printk("----------------------------------------------------\n");
-  blk_ptr = (struct blkhdr *)chk_ptr->data;
-  do {
+static caddr_t get_free_range (rtheap_t *heap,
+			       u_long bsize,
+			       int log2size,
+			       int mode)
+{
+    caddr_t block, eblock, freepage, lastpage, headpage, freehead = NULL;
+    u_long pagenum, pagecont, freecont;
+    struct list_head *holder;
+    rtextent_t *extent;
 
-    if(blk_ptr == blk_ptr->next_free) {
-      strncpy(free, "Used", strlen("Used") + 1);
-    } else { // End if - Don't display free blocks.
-      strncpy(free, "Free", strlen("Free") + 1);
+    list_for_each(holder,&heap->extents) {
+
+	extent = list_entry(holder,rtextent_t,link);
+
+searchrange:
+
+	freepage = extent->freelist;
+
+	while (freepage != NULL)
+	    {
+	    headpage = freepage;
+    	    freecont = 0;
+
+	    /* Search for a range of contiguous pages in the free page
+	       list of the current extent. The range must be 'bsize'
+	       long. */
+	    do
+		{
+		lastpage = freepage;
+		freepage = *((caddr_t *)freepage);
+		freecont += heap->pagesize;
+		}
+	    while (freepage == lastpage + heap->pagesize && freecont < bsize);
+
+	    if (freecont >= bsize)
+		{
+		/* Ok, got it. Just update the extent's free page
+		   list, then proceed to the next step. */
+
+		if (headpage == extent->freelist)
+		    extent->freelist = *((caddr_t *)lastpage);
+		else   
+		    *((caddr_t *)freehead) = *((caddr_t *)lastpage);
+
+		goto splitpage;
+		}
+
+	    freehead = lastpage;
+	    }
     }
 
-    rt_printk("%s - Block header: 0x%p, Status: %s, data address: 0x%p, block size: %d\n",
-                                 func, blk_ptr, free, &blk_ptr->data, blk_ptr->free_size);
+    /* No available free range in the existing extents so far. If we
+       cannot extend the heap, we have failed and we are done with
+       this request. */
 
-    (void *)blk_ptr = (void *)blk_ptr + sizeof(struct blkhdr) +
-                                              blk_ptr->free_size;
+    if (!(heap->flags & RTHEAP_EXTENDABLE) || !(mode & RTHEAP_EXTEND))
+	return NULL;
 
-  } while(blk_ptr < last); // End do loop - display all allocated blocks in the chunk.
-  rt_printk("----------------------------------------------------\n\n");
+    /* Get a new extent. */
+    extent = (rtextent_t *)alloc_extent(heap->extentsize);
 
-}  // End function - display_chunk
+    if (extent == NULL)
+	return NULL;
 
+    init_extent(heap,extent);
 
-void rt_mmgr_stats(void)
+    list_add_tail(&extent->link,&heap->extents);
+
+    goto searchrange;	/* Always successful at the first try */
+
+splitpage:
+
+    /* At this point, headpage is valid and points to the first page
+       of a range of contiguous free pages larger or equal than
+       'bsize'. */
+
+    if (bsize < heap->pagesize)
+	{
+	/* If the allocation size is smaller than the standard page
+	   size, split the page in smaller blocks of this size,
+	   building a free list of free blocks. */
+
+	for (block = headpage, eblock = headpage + heap->pagesize - bsize;
+	     block < eblock; block += bsize)
+	    *((caddr_t *)block) = block + bsize;
+
+	*((caddr_t *)eblock) = NULL;
+	}
+    else   
+        *((caddr_t *)headpage) = NULL;
+
+    pagenum = (headpage - extent->membase) >> heap->pageshift;
+
+    /* Update the extent's page map.  If log2size is non-zero
+       (i.e. bsize <= 2 * pagesize), store it in the first page's slot
+       to record the exact block size (which is a power of
+       two). Otherwise, store the special marker RTHEAP_PLIST,
+       indicating the start of a block whose size is a multiple of the
+       standard page size, but not necessarily a power of two.  In any
+       case, the following pages slots are marked as 'continued'
+       (PCONT). */
+
+    extent->pagemap[pagenum] = log2size ? log2size : RTHEAP_PLIST;
+
+    for (pagecont = bsize >> heap->pageshift; pagecont > 1; pagecont--)
+	extent->pagemap[pagenum + pagecont - 1] = RTHEAP_PCONT;
+
+    return headpage;
+}
+
+/*! 
+ * \fn void *rtheap_alloc(rtheap_t *heap, u_long size, int flags);
+ * \brief Allocate a memory block from a memory heap.
+ *
+ * Allocates a contiguous region of memory from an active memory heap.
+ * Such allocation is guaranteed to be time-bounded if the heap is
+ * non-extendable (see rtheap_init()). Otherwise, it might trigger a
+ * dynamic extension of the storage area through an internal request
+ * to the Linux allocation service (kmalloc/vmalloc).
+ *
+ * @param heap The descriptor address of the heap to get memory from.
+ *
+ * @param size The size in bytes of the requested block. Sizes lower
+ * or equal to the page size are rounded either to the minimum
+ * allocation size if lower than this value, or to the minimum
+ * alignment size if greater or equal to this value. In the current
+ * implementation, with MINALLOC = 16 and MINALIGN = 16, a 15 bytes
+ * request will be rounded to 16 bytes, and a 17 bytes request will be
+ * rounded to 32.
+ *
+ * @param flags A set of flags affecting the operation. Unless
+ * RTHEAP_EXTEND is passed and the heap is extendable, this service
+ * will return NULL without attempting to extend the heap dynamically
+ * upon memory starvation.
+ *
+ * @return The address of the allocated region upon success, or NULL
+ * if no memory is available from the specified non-extendable heap,
+ * or no memory can be obtained from Linux to extend the heap.
+ *
+ * Side-effect: This routine does not call the rescheduling procedure.
+ *
+ * Context: This routine can always be called on behalf of a thread
+ * context. It can also be called on behalf of an IST context if the
+ * heap storage area has been statically-defined at initialization
+ * time (see rtheap_init()).
+ */
+
+void *rtheap_alloc (rtheap_t *heap, u_long size, int mode)
+
 {
-  char kv;
+    u_long bsize, flags;
+    caddr_t block;
+    int log2size;
+
+    if (size == 0)
+	return NULL;
+
+    if (size <= heap->pagesize)
+	/* Sizes lower or equal to the page size are rounded either to
+	   the minimum allocation size if lower than this value, or to
+	   the minimum alignment size if greater or equal to this
+	   value. In other words, with MINALLOC = 15 and MINALIGN =
+	   16, a 15 bytes request will be rounded to 16 bytes, and a
+	   17 bytes request will be rounded to 32. */
+	{
+	if (size <= RTHEAP_MINALIGNSZ)
+	    size = (size + RTHEAP_MINALLOCSZ - 1) & ~(RTHEAP_MINALLOCSZ - 1);
+	else
+	    size = (size + RTHEAP_MINALIGNSZ - 1) & ~(RTHEAP_MINALIGNSZ - 1);
+	}
+    else
+	/* Sizes greater than the page size are rounded to a multiple
+	   of the page size. */
+	size = (size + heap->pagesize - 1) & ~(heap->pagesize - 1);
+
+    /* It becomes more space efficient to directly allocate pages from
+       the free page list whenever the requested size is greater than
+       2 times the page size. Otherwise, use the bucketed memory
+       blocks. */
+
+    if (size <= heap->pagesize * 2)
+	{
+	/* Find the first power of two greater or equal to the rounded
+	   size. The log2 value of this size is also computed. */
+
+	for (bsize = (1 << RTHEAP_MINLOG2), log2size = RTHEAP_MINLOG2;
+	     bsize < size; bsize <<= 1, log2size++)
+	    ; /* Loop */
+
+	flags = rt_spin_lock_irqsave(&heap->lock);
+
+	block = heap->buckets[log2size - RTHEAP_MINLOG2];
+
+	if (block == NULL)
+	    {
+	    block = get_free_range(heap,bsize,log2size,mode);
+
+	    if (block == NULL)
+		goto release_and_exit;
+	    }
+
+	heap->buckets[log2size - RTHEAP_MINLOG2] = *((caddr_t *)block);
+	heap->ubytes += bsize;
+	}
+    else
+        {
+        if (size > heap->maxcont)
+            return NULL;
+
+	flags = rt_spin_lock_irqsave(&heap->lock);
+
+	/* Directly request a free page range. */
+	block = get_free_range(heap,size,0,mode);
+
+	if (block)   
+	    heap->ubytes += size;
+	}
+
+release_and_exit:
+
+    rt_spin_unlock_irqrestore(flags,&heap->lock);
+
+    return block;
+}
+
+/*! 
+ * \fn int rtheap_free(rtheap_t *heap, void *block);
+ * \brief Release a memory block to a memory heap.
+ *
+ * Releases a memory region to the memory heap it was previously
+ * allocated from.
+ *
+ * @param heap The descriptor address of the heap to release memory
+ * to.
+ *
+ * @param block The address of the region to release returned by a
+ * previous call to rtheap_alloc().
+ *
+ * @return 0 is returned upon success, or RTHEAP_PARAM is returned
+ * whenever the block is not a valid region of the specified heap.
+ *
+ * Side-effect: This routine does not call the rescheduling procedure.
+ *
+ * Context: This routine can be called on behalf of a thread or IST
+ * context
+ */
+
+int rtheap_free (rtheap_t *heap, void *block)
+
+{
+    u_long pagenum, pagecont, boffset, bsize, flags;
+    caddr_t freepage, lastpage, nextpage, tailpage;
+    rtextent_t *extent = NULL;
+    struct list_head *holder;
+    int log2size, npages;
+
+    flags = rt_spin_lock_irqsave(&heap->lock);
+
+    /* Find the extent from which the returned block is
+       originating. If the heap is non-extendable, then a single
+       extent is scanned at most. */
+
+    list_for_each(holder,&heap->extents) {
+
+        extent = list_entry(holder,rtextent_t,link);
+
+	if ((caddr_t)block >= extent->membase &&
+	    (caddr_t)block < extent->memlim)
+	    break;
+    }
+
+    if (!holder)
+	goto unlock_and_fail;
+
+    /* Compute the heading page number in the page map. */
+    pagenum = ((caddr_t)block - extent->membase) >> heap->pageshift;
+    boffset = ((caddr_t)block - (extent->membase + (pagenum << heap->pageshift)));
+
+    switch (extent->pagemap[pagenum])
+	{
+	case RTHEAP_PFREE: /* Unallocated page? */
+	case RTHEAP_PCONT:  /* Not a range heading page? */
+
+unlock_and_fail:
+
+	    rt_spin_unlock_irqrestore(flags,&heap->lock);
+	    return RTHEAP_PARAM;
+
+	case RTHEAP_PLIST:
+
+	    npages = 1;
+
+	    while (npages < heap->npages &&
+		   extent->pagemap[pagenum + npages] == RTHEAP_PCONT)
+		npages++;
+
+	    bsize = npages * heap->pagesize;
+
+	    /* Link all freed pages in a single sub-list. */
+
+	    for (freepage = (caddr_t)block,
+		     tailpage = (caddr_t)block + bsize - heap->pagesize;
+		 freepage < tailpage; freepage += heap->pagesize)
+		*((caddr_t *)freepage) = freepage + heap->pagesize;
+
+	    /* Mark the released pages as free in the extent's page map. */
+
+	    for (pagecont = 0; pagecont < npages; pagecont++)
+		extent->pagemap[pagenum + pagecont] = RTHEAP_PFREE;
+
+	    /* Return the sub-list to the free page list, keeping
+	       an increasing address order to favor coalescence. */
+    
+	    for (nextpage = extent->freelist, lastpage = NULL;
+		 nextpage != NULL && nextpage < (caddr_t)block;
+		 lastpage = nextpage, nextpage = *((caddr_t *)nextpage))
+		; /* Loop */
+
+	    *((caddr_t *)tailpage) = nextpage;
+
+	    if (lastpage)
+		*((caddr_t *)lastpage) = (caddr_t)block;
+	    else
+		extent->freelist = (caddr_t)block;
+
+	    break;
+
+	default:
+
+	    log2size = extent->pagemap[pagenum];
+	    bsize = (1 << log2size);
+
+	    if ((boffset & (bsize - 1)) != 0) /* Not a block start? */
+		goto unlock_and_fail;
+
+	    /* Return the block to the bucketed memory space. */
+
+	    *((caddr_t *)block) = heap->buckets[log2size - RTHEAP_MINLOG2];
+	    heap->buckets[log2size - RTHEAP_MINLOG2] = block;
+
+	    break;
+	}
+
+    heap->ubytes -= bsize;
+
+    rt_spin_unlock_irqrestore(flags,&heap->lock);
+
+    return 0;
+}
+
+int __rtai_heap_init (void)
+
+{
 
 #ifdef CONFIG_RTAI_MALLOC_VMALLOC
-  kv = 'v';
-#else
-  kv = 'k';
-#endif  
-  printk("==== RT memory manager max allocated: %u bytes.\n", max_allocated);
-  printk("==== RT memory manager kernel %cmalloc()'s:   %u\n", kv, sys_malloc_calls);
-  printk("==== RT memory manager kernel %cfree()'s:     %u\n", kv, sys_free_calls);
-  printk("==== RT memory manager overhead:      %u bytes.\n", memory_overhead);
-  printk("==== RT memory manager leaks:         %u bytes.\n", memory_leak);
-
-}  // End function - rt_mmgr_stats
-
-
-
-
-// --------------------< End of debug functions section >---------------------
-
-
-// ----------------------------------------------------------------------------
-// Module Initialisation/Finalisation
-// ----------------------------------------------------------------------------
-
-int __rt_mem_init(void)
-{
-
-  int i;
-  struct chkhdr *chk_ptr, *chk_list_ptr;
-  struct blkhdr *blk_ptr;
-
-// Stop the initialization function from being called more than once.
-// Useful when this is used as an object module and not a stand alone
-// kernel module.
-  if(rt_mem_mgr_init != 0) {
-    return(0);
-  }
-
-// Register the dynamic allocate and free srqs.
-  if(( alloc_sysrq.srq = rt_request_srq(0, rt_alloc_sysrq_handler, 0)) < 0 ) {
-    printk("rt_malloc - Error allocating alloc sysrq: %d\n", alloc_sysrq.srq);
-    return(alloc_sysrq.srq);
-  }
-  DPRINTK("rt_malloc - Registered alloc sysrq no: %d\n", alloc_sysrq.srq);
-  alloc_sysrq.no_chk = 0;
-  free_sysrq.no_chk = 0;
-  spin_lock_init(&alloc_sysrq.srq_lock);
-  extra_chks = 0;
-  if(( free_sysrq.srq = rt_request_srq(0, rt_free_sysrq_handler, 0)) < 0 ) {
-    printk("rt_malloc - Error allocating free sysrq: %d\n", free_sysrq.srq);
-    return(free_sysrq.srq);
-  }
-  DPRINTK("rt_malloc - Registered free sysrq no: %d\n", free_sysrq.srq);
-  spin_lock_init(&free_sysrq.srq_lock);
-
-
-// Allocate "low water" memory chunks, initialise them, and
-// insert them into the chunk list.
-  for( i = 0; i < low_chk_ref; i++ ) {
-    if((chk_ptr = (struct chkhdr *)alloc_chunk(granularity)) == NULL ) {
-      printk("rt_malloc - Initial memory allocation failure.\n");
-      return(-ENOMEM);
-    }  // End for loop - Allocate low_chk_ref memory chunks.
-    MEM_MAP_RESERVE((unsigned long)chk_ptr, granularity);
-    sys_malloc_calls++;
-    total_available += granularity;
-    memory_overhead += OVERHEAD;
-    chk_ptr->chk_addr = (void *)chk_ptr;
-    chk_ptr->chk_limit = granularity;
-    chk_ptr->next_chk = NULL;
-    blk_ptr = chk_ptr->free_list = (struct blkhdr *)chk_ptr->data;
-    blk_ptr->next_free = NULL;
-    blk_ptr->free_size = chk_ptr->chk_limit - OVERHEAD;
-    blk_ptr->chk_addr = (void *)chk_ptr;
-    if( chk_list == NULL ) {
-      chk_list = chk_ptr;
-    } else {
-      for(chk_list_ptr = chk_list; chk_list_ptr->next_chk != NULL;
-                         chk_list_ptr = chk_list_ptr->next_chk) {
-              ;
-      }  // End for loop - find end of chunk list.
-      chk_list_ptr->next_chk = chk_ptr;
-    }  // End else - Not the 1st chunk in the list.
-
-    DPRINTK("rt_malloc - Allocated chunk, Address: %p, size: %d\n",
-           chk_ptr->chk_addr, chk_ptr->chk_limit);
-
-  }  // End for loop - Allocate "low water" memory chunks.
-
-// Register the proc system for this module.
-#ifdef CONFIG_PROC_FS
-        mmgr_proc_register();
+	if (!(rtai_global_heap_adr = alloc_extent(rtai_global_heap_size))) {
+		printk(KERN_INFO "RTAI[malloc]: initial alloc_extent() failed (size=%d bytes).\n",
+		       rtai_global_heap_size);
+		return 1;
+	}
 #endif
 
-  spin_lock_init(&rt_mem_lock);
-  rt_mem_mgr_init = 1;
+    /* The global heap is extendable once, only at init. */
 
-  printk("\n\n==== RT memory manager v%s Loaded. ====\n\n", rtmmgr_version);
-  return(0);
+    if (rtheap_init(&rtai_global_heap,rtai_global_heap_adr,rtai_global_heap_size,PAGE_SIZE))
+	{
+	printk(KERN_INFO "RTAI[malloc]: failed to initialize the global heap (size=%d bytes).\n",
+	       rtai_global_heap_size);
 
-} // End function - init_module
+	return 1;
+	}
 
+    rtai_global_heap.flags &= ~RTHEAP_EXTENDABLE;
 
-// -----------------------------------------------------------------------------
-void __rt_mem_end(void)
-{
+    printk(KERN_INFO "RTAI[malloc]: loaded (global heap size=%d bytes).\n",
+	   rtai_global_heap_size);
 
-  int oldsize;
-  struct chkhdr *chk_ptr;
-  void *tmp_chkptr;
-
-  for(chk_ptr = chk_list; chk_ptr != NULL; ) {
-    oldsize = chk_ptr->chk_limit;
-    tmp_chkptr = chk_ptr->chk_addr;
-    chk_ptr = chk_ptr->next_chk;
-    sys_free_calls++;
-    total_available -= granularity;
-    memory_overhead -= OVERHEAD;
-    free_chunk(tmp_chkptr);
-    DPRINTK("rt_malloc - Freed chunk, Address: %p, size: %d\n",
-                                                   tmp_chkptr, oldsize);
-
-  } // End for loop - Free up all allocated chunks.
-
-// Unregister the dynamic allocate and free srqs.
-  if( rt_free_srq(alloc_sysrq.srq) < 0 ) {
-    printk("rt_malloc - Attempt to free srq: %d failed.\n", alloc_sysrq.srq);
-#ifdef DEBUG
-  } else {
-    DPRINTK("rt_malloc - Released sysrq no: %d\n", alloc_sysrq.srq);
-#endif
-  }
-
-  if( rt_free_srq(free_sysrq.srq) < 0 ) {
-    printk("rt_malloc - Attempt to free srq: %d failed.\n", free_sysrq.srq);
-#ifdef DEBUG
-  } else {
-    DPRINTK("rt_malloc - Released sysrq no: %d\n", free_sysrq.srq);
-#endif
-  }
-
-// Unregister the proc system for this module.
-#ifdef CONFIG_PROC_FS
-        mmgr_proc_unregister();
-#endif
-
-  rt_mmgr_stats();
-  printk("\n\n==== RT memory manager v%s Unloaded. ====\n\n", rtmmgr_version);
-
-} // End function - cleanup_module
-
-void rt_mem_end(void)
-{
-	__rt_mem_end();
+    return 0;
 }
 
-#ifdef CONFIG_RTAI_MALLOC_BUILTIN
+void __rtai_heap_exit (void) {
 
-int rt_mem_init(void)
-{
-	return __rt_mem_init();
+    rtheap_destroy(&rtai_global_heap);
+    printk("RTAI[malloc]: unloaded.\n");
 }
 
-void rt_mem_cleanup(void)
-{
-	__rt_mem_end();
-}
+/*
+ * IMPLEMENTATION NOTES:
+ *
+ * The implementation follows the algorithm described in a USENIX
+ * 1988 paper called "Design of a General Purpose Memory Allocator for
+ * the 4.3BSD Unix Kernel" by Marshall K. McKusick and Michael
+ * J. Karels. You can find it at various locations on the net,
+ * including http://docs.FreeBSD.org/44doc/papers/kernmalloc.pdf.
+ * A minor variation allows this implementation to have 'extendable'
+ * heaps when needed, with multiple memory extents providing autonomous
+ * page address spaces. When the non-extendable form is used, the heap
+ * management routines show bounded worst-case execution time.
+ *
+ * The data structures hierarchy is as follows:
+ *
+ * HEAP {
+ *      block_buckets[]
+ *      extent_queue -------+
+ * }                        |
+ *                          V
+ *                       EXTENT #1 {
+ *                              <static header>
+ *                              page_map[npages]
+ *                              page_array[npages][pagesize]
+ *                       } -+
+ *                          |
+ *                          |
+ *                          V
+ *                       EXTENT #n {
+ *                              <static header>
+ *                              page_map[npages]
+ *                              page_array[npages][pagesize]
+ *                       }
+ */
 
-#else
+/*@}*/
 
-MODULE_PARM(granularity,"i");
-MODULE_PARM(low_chk_ref,"i");
-MODULE_PARM(low_data_mark,"i");
+#ifndef CONFIG_RTAI_MALLOC_BUILTIN
+module_init(__rtai_heap_init);
+module_exit(__rtai_heap_exit);
+#endif /* !CONFIG_RTAI_MALLOC_BUILTIN */
 
-EXPORT_SYMBOL(rt_malloc);
-EXPORT_SYMBOL(rt_free);
-EXPORT_SYMBOL(display_chunk);
-EXPORT_SYMBOL(rt_mem_init);
-EXPORT_SYMBOL(rt_mem_end);
-EXPORT_SYMBOL(rt_mmgr_stats);
-
-int init_module(void)
-{
-	return __rt_mem_init();
-}
-
-void cleanup_module(void)
-{
-	__rt_mem_end();
-}
-
-int rt_mem_init(void)
-{
-	return 0;
-}
-
-void rt_mem_cleanup(void)
-{
-}
-#endif
-
-// ---------------------------------< eof >------------------------------------
+#ifdef CONFIG_KBUILD
+EXPORT_SYMBOL(rtheap_init);
+EXPORT_SYMBOL(rtheap_destroy);
+EXPORT_SYMBOL(rtheap_alloc);
+EXPORT_SYMBOL(rtheap_free);
+EXPORT_SYMBOL(rtai_global_heap);
+EXPORT_SYMBOL(rtai_global_heap_adr);
+EXPORT_SYMBOL(rtai_global_heap_size);
+#endif /* CONFIG_KBUILD */

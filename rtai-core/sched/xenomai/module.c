@@ -145,8 +145,18 @@ static int xnpod_read_proc (char *page,
 		 nkpod->sched.readyq.pqueue.elems,
 		 delayed,
 		 nkpod->sched.suspendq.elems);
-    p += sprintf(p,"Elapsed ticks: %Lu\n",nkpod->jiffies);
-    p += sprintf(p,"Timer frequency: %lu us\n",xnpod_get_tickval() / 1000);
+
+    if (testbits(nkpod->status,XNTIMED))
+	{
+	if (testbits(nkpod->status,XNTMPER))
+	    p += sprintf(p,"Timer: periodic [tickval=%luus, elapsed=%Lu]\n",
+			 xnpod_get_tickval() / 1000,
+			 nkpod->jiffies);
+	else
+	    p += sprintf(p,"Timer: aperiodic.\n");
+	}
+    else
+	p += sprintf(p,"Timer: none.\n");
 
  out:
 
@@ -184,7 +194,7 @@ void xnpod_delete_proc (void) {
 
 #endif /* CONFIG_PROC_FS */
 
-int MAIN_INIT_MODULE (void)
+int __xeno_main_init (void)
 
 {
     int err;
@@ -208,7 +218,7 @@ int MAIN_INIT_MODULE (void)
     return err;
 }
 
-void MAIN_CLEANUP_MODULE (void)
+void __xeno_main_exit (void)
 
 {
     xnpod_shutdown(XNPOD_NORMAL_EXIT);
@@ -224,3 +234,6 @@ void MAIN_CLEANUP_MODULE (void)
     xnprintf("RTAI/Xenomai: virtual machine stopped.\n");
 #endif /* __KERNEL__ */
 }
+
+module_init(__xeno_main_init);
+module_exit(__xeno_main_exit);

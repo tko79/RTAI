@@ -22,14 +22,6 @@
 
 #include <rtai_types.h>
 
-#ifdef CONFIG_RTAI_MSG_BUILTIN
-#define MSG_INIT_MODULE     msg_init_module
-#define MSG_CLEANUP_MODULE  msg_cleanup_module
-#else
-#define MSG_INIT_MODULE     init_module
-#define MSG_CLEANUP_MODULE  cleanup_module
-#endif
-
 #define MSG_ERR ((RT_TASK *)0xFfff)
 
 #define MAX_NAME_LENGTH  32
@@ -65,9 +57,9 @@ struct proxy_t {
 extern "C" {
 #endif /* __cplusplus */
 
-int MSG_INIT_MODULE(void);
+int __rtai_msg_init(void);
 
-void MSG_CLEANUP_MODULE(void);
+void __rtai_msg_exit(void);
 
 struct rt_task_struct *rt_send(struct rt_task_struct *task,
 			       unsigned msg);

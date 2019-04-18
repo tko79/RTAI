@@ -25,6 +25,7 @@
 #ifndef _RTAI_MQ_H
 #define _RTAI_MQ_H
 
+#include <linux/version.h>
 #include <rtai_sem.h>
 
 #define	MQ_OPEN_MAX	8	/* Maximum number of message queues per process */
@@ -61,19 +62,15 @@ typedef struct mq_attr {
     long mq_curmsgs;		/* Number of messages currently in queue */
 } MQ_ATTR;
 
-typedef unsigned long mqd_t;
-
 #define	INVALID_PQUEUE	0
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_RTAI_MQ_BUILTIN
-#define MQ_INIT_MODULE     mq_init_module
-#define MQ_CLEANUP_MODULE  mq_cleanup_module
-#else  /* !CONFIG_RTAI_MQ_BUILTIN */
-#define MQ_INIT_MODULE     init_module
-#define MQ_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_MQ_BUILTIN */
+#include <linux/types.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,6)
+typedef int mqd_t;
+#endif
 
 #ifndef __cplusplus
 
@@ -169,9 +166,9 @@ typedef struct z_apps {
 extern "C" {
 #endif /* !__cplusplus */
 
-int MQ_INIT_MODULE(void);
+int __rtai_mq_init(void);
 
-void MQ_CLEANUP_MODULE(void);
+void __rtai_mq_exit(void);
 
 QUEUEING_POLICY get_task_queueing_policy(void);
 
@@ -185,46 +182,41 @@ void *init_z_apps(void *this_task);
 
 void free_z_apps(void *this_task);
 
-mqd_t mq_open(char *mq_name,
-	      int oflags,
-	      mode_t permissions,
-	      struct mq_attr *mq_attr);
+mqd_t mq_open(char *mq_name, int oflags, mode_t permissions, struct mq_attr *mq_attr);
 
-size_t mq_receive(mqd_t mq,
-		  char *msg_buffer,
-		  size_t buflen,
-		  unsigned int *msgprio);
+size_t _mq_receive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, int space);
+static inline size_t mq_receive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio)
+{
+	return _mq_receive(mq, msg_buffer, buflen, msgprio, 1);
+}
 
-int mq_send(mqd_t mq,
-	    const char *msg,
-	    size_t msglen,
-	    unsigned int msgprio);
+int _mq_send(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, int space);
+static inline int mq_send(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio)
+{
+	return _mq_send(mq, msg, msglen, msgprio, 1);
+}
 
 int mq_close(mqd_t mq);
 
-int mq_getattr(mqd_t mq,
-	       struct mq_attr *attrbuf);
+int mq_getattr(mqd_t mq, struct mq_attr *attrbuf);
 
-int mq_setattr(mqd_t mq,
-	       const struct mq_attr *new_attrs,
-	       struct mq_attr *old_attrs);
+int mq_setattr(mqd_t mq, const struct mq_attr *new_attrs, struct mq_attr *old_attrs);
 
-int mq_notify(mqd_t mq,
-	      const struct sigevent *notification);
+int mq_notify(mqd_t mq, const struct sigevent *notification);
 
 int mq_unlink(char *mq_name);
 
-size_t mq_timedreceive(mqd_t mq,
-		       char *msg_buffer,
-		       size_t buflen,
-		       unsigned int *msgprio,
-		       const struct timespec *abstime);
+size_t _mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime, int space);
+static inline size_t mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime)
+{
+	return _mq_timedreceive(mq, msg_buffer, buflen, msgprio, abstime, 1);
+}
 
-int mq_timedsend(mqd_t mq,
-		 const char *msg,
-		 size_t msglen,
-		 unsigned int msgprio,
-		 const struct timespec *abstime);
+int _mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime, int space);
+static inline int mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime)
+{
+	return _mq_timedsend(mq, msg, msglen, msgprio, abstime, 1);
+}
 
 #ifdef __cplusplus
 }
@@ -236,6 +228,8 @@ int mq_timedsend(mqd_t mq,
 #include <rtai_lxrt.h>
 
 #define MQIDX  0
+
+typedef int mqd_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -249,13 +243,13 @@ RTAI_PROTO(mqd_t, mq_open,(char *mq_name, int oflags, mode_t permissions, struct
 
 RTAI_PROTO(size_t, mq_receive,(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio))
 {
-	struct { mqd_t mq; char *msg_buffer; size_t buflen; unsigned int *msgprio; } arg = { mq, msg_buffer, buflen, msgprio };
+	struct { mqd_t mq; char *msg_buffer; size_t buflen; unsigned int *msgprio; int space; } arg = { mq, msg_buffer, buflen, msgprio, 0 };
 	return (size_t)rtai_lxrt(MQIDX, SIZARG, MQ_RECEIVE, &arg).i[LOW];
 }
 
 RTAI_PROTO(int, mq_send,(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio))
 {
-	struct { mqd_t mq; const char *msg; size_t msglen; unsigned int msgprio; } arg = { mq, msg, msglen, msgprio };
+	struct { mqd_t mq; const char *msg; size_t msglen; unsigned int msgprio; int space; } arg = { mq, msg, msglen, msgprio, 0 };
 	return rtai_lxrt(MQIDX, SIZARG, MQ_SEND, &arg).i[LOW];
 }
 
@@ -291,13 +285,13 @@ RTAI_PROTO(int, mq_unlink,(char *mq_name))
 
 RTAI_PROTO(size_t, mq_timedreceive,(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime))
 {
-	struct { mqd_t mq; char *msg_buffer; size_t buflen; unsigned int *msgprio; const struct timespec *abstime; int size; } arg = { mq, msg_buffer, buflen, msgprio, abstime, sizeof(struct timespec) };
+	struct { mqd_t mq; char *msg_buffer; size_t buflen; unsigned int *msgprio; const struct timespec *abstime; int space; } arg = { mq, msg_buffer, buflen, msgprio, abstime, 0 };
 	return (size_t)rtai_lxrt(MQIDX, SIZARG, MQ_TIMEDRECEIVE, &arg).i[LOW];
 }
 
 RTAI_PROTO(int, mq_timedsend,(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime))
 {
-	struct { mqd_t mq; const char *msg; size_t msglen; unsigned int msgprio; const struct timespec *abstime; int size; } arg = { mq, msg, msglen, msgprio, abstime, sizeof(struct timespec) };
+	struct { mqd_t mq; const char *msg; size_t msglen; unsigned int msgprio; const struct timespec *abstime; int space; } arg = { mq, msg, msglen, msgprio, abstime, 0 };
 	return rtai_lxrt(MQIDX, SIZARG, MQ_TIMEDSEND, &arg).i[LOW];
 }
 

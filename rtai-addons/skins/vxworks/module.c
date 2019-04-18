@@ -56,9 +56,6 @@ static u_long tick_hz_arg = 100; /* Default tick period */
 MODULE_PARM(tick_hz_arg,"i");
 MODULE_PARM_DESC(tick_hz_arg,"Clock tick frequency (Hz)");
 
-int INIT_MODULE (void);
-void CLEANUP_MODULE (void);
-
 static xnpod_t pod;
 
 xnmutex_t __imutex;
@@ -83,7 +80,7 @@ static void wind_shutdown (int xtype)
 
 
 
-int INIT_MODULE (void)
+int __xeno_skin_init (void)
 {
     u_long nstick = XNPOD_DEFAULT_TICK;
     int err;
@@ -116,14 +113,14 @@ int INIT_MODULE (void)
     return 0;
 }
 
-
-
-
-void CLEANUP_MODULE (void)
+void __xeno_skin_exit (void)
 {
     xnprintf("VxWorks/VM: stopping services.\n");
     wind_shutdown(XNPOD_NORMAL_EXIT);
 }
+
+module_init(__xeno_skin_init);
+module_exit(__xeno_skin_exit);
 
 /* exported API : */
 

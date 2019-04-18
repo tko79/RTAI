@@ -40,12 +40,7 @@ static spinlock_t splock = SPIN_LOCK_UNLOCKED;
 #define buf_atomic_end(flags, mbx)  do { hard_restore_flags(flags); } while (0)
 #endif
 
-#if defined(CONFIG_X86) && defined(CONFIG_RTAI_RTHAL) && !defined(CONFIG_SMP)
-/* Assume ISA edge IRQs are ack'ed but not masked by RTHAL. */
-#define ENABLE_SP(irq) 
-#else
-#define ENABLE_SP(irq)  do { rt_enable_irq(irq); } while (0)
-#endif
+#define ENABLE_SP(irq)  rt_enable_irq(irq)
 
 #define RT_SP_BASE_BAUD  115200
 
@@ -106,7 +101,7 @@ struct rt_spct_t {
 	int mode, fifotrig;
 	int ier, mcr;
 	int error;
-	int just_onew, just_oner;
+	unsigned long just_onew, just_oner;
 	int tx_fifo_depth;
 	struct rt_spmbx ibuf, obuf;
 	void (*callback_fun)(int, int);

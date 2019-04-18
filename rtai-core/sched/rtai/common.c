@@ -25,9 +25,7 @@
 
 #include <rtai_schedcore.h>
 #include <rtai_registry.h>
-
-//#define __RTAI_LXRT__
-//#ifdef __RTAI_LXRT__ /* FIXME: REMOVE THIS CONDITIONAL WHEN KSCHEDS FULLY USE COMMON.C */
+#include <linux/module.h>
 
 /* ++++++++++++++++++++++++ COMMON FUNCTIONALITIES ++++++++++++++++++++++++++ */
 
@@ -192,16 +190,7 @@ int rt_change_prio(RT_TASK *task, int priority)
  */
 RT_TASK *rt_whoami(void)
 {
-#ifdef CONFIG_SMP
-	RT_TASK *rt_current;
-	unsigned long flags;
-	flags = rt_global_save_flags_and_cli();
-	rt_current = RT_CURRENT;
-	rt_global_restore_flags(flags);
-	return rt_current;
-#else
-	return rt_smp_current[0];
-#endif
+	return _rt_whoami();
 }
 
 
@@ -404,7 +393,7 @@ int rt_get_task_state(RT_TASK *task)
 void rt_linux_use_fpu(int use_fpu_flag)
 {
 	int cpuid;
-	for (cpuid = 0; cpuid < smp_num_cpus; cpuid++) {
+	for (cpuid = 0; cpuid < num_online_cpus(); cpuid++) {
 		rt_linux_task.uses_fpu = use_fpu_flag ? 1 : 0;
 	}
 }
@@ -501,20 +490,27 @@ void rt_gettimeorig(RTIME time_orig[])
  * execution, with period @e period, when @ref rt_task_wait_period()
  * is called.
  *
- * The time of first execution is given by @e start_time or @e
+ * The time of first execution is defined through @e start_time or @e
  * start_delay. @e start_time is an absolute value measured in clock
  * ticks. @e start_delay is relative to the current time and measured
- * in nanoseconds.
+ * in nanoseconds. 
  *
  * @param task is a pointer to the task you want to make periodic.
  *
- * @param start_delay is the time to wait before the task start
- *	  running.
+ * @param start_delay is the time, to wait before the task start
+ *	  running, in nanoseconds.
  *
- * @param period corresponds to the period of the task.
+ * @param period corresponds to the period of the task, in nanoseconds.
  *
  * @retval 0 on success. A negative value on failure as described below:
  * - @b EINVAL: task does not refer to a valid task.
+ *
+ * Recall that the term clock ticks depends on the mode in which the hard
+ * timer runs. So if the hard timer was set as periodic a clock tick will
+ * last as the period set in start_rt_timer, while if oneshot mode is used
+ * a clock tick will last as the inverse of the running frequency of the
+ * hard timer in use and irrespective of any period used in the call to
+ * start_rt_timer.
  */
 int rt_task_make_periodic_relative_ns(RT_TASK *task, RTIME start_delay, RTIME period)
 {
@@ -548,23 +544,30 @@ int rt_task_make_periodic_relative_ns(RT_TASK *task, RTIME start_delay, RTIME pe
  * with @ref rt_task_init(), as suitable for a periodic execution, with
  * period @e period, when @ref rt_task_wait_period() is called.
  *
- * The time of first execution is given by @e start_time or @e
+ * The time of first execution is defined through @e start_time or @e
  * start_delay. @e start_time is an absolute value measured in clock
  * ticks.  @e start_delay is relative to the current time and measured
  * in nanoseconds.
  *
  * @param task is a pointer to the task you want to make periodic.
  *
- * @param start_time is the time to wait before the task start
- *	  running.
+ * @param start_time is the absolute time to wait before the task start
+ *	  running, in clock ticks.
  *
- * @param period corresponds to the period of the task.
+ * @param period corresponds to the period of the task, in clock ticks.
  *
  * @retval 0 on success. A negative value on failure as described
  * below: 
  * - @b EINVAL: task does not refer to a valid task.
  *
  * See also: @ref rt_task_make_periodic_relative_ns().
+ * Recall that the term clock ticks depends on the mode in which the hard
+ * timer runs. So if the hard timer was set as periodic a clock tick will
+ * last as the period set in start_rt_timer, while if oneshot mode is used
+ * a clock tick will last as the inverse of the running frequency of the
+ * hard timer in use and irrespective of any period used in the call to
+ * start_rt_timer.
+ *
  */
 int rt_task_make_periodic(RT_TASK *task, RTIME start_time, RTIME period)
 {
@@ -936,35 +939,41 @@ int rt_named_task_delete(RT_TASK *task)
 	return rt_drg_on_adr(task);
 }
 
-//#endif /* !__RTAI_LXRT__ */
-
 /* +++++++++++++++++++++++++++++++ REGISTRY +++++++++++++++++++++++++++++++++ */
 
-static struct rt_registry_entry_struct lxrt_list[MAX_SLOTS + 1] = {{0, 0, 0, 0}, };
+static volatile int max_slots;
+static struct rt_registry_entry_struct lxrt_list[MAX_SLOTS + 1] = { { 0, 0, 0, 0, 0 }, };
 static spinlock_t list_lock = SPIN_LOCK_UNLOCKED;
 
 static inline int registr(unsigned long name, void *adr, int type, struct task_struct *tsk)
 {
         unsigned long flags;
-        int slot;
+        int i, slot;
 /*
  * Register a resource. This allows other programs (RTAI and/or user space)
  * to use the same resource because they can find the address from the name.
 */
-        flags = rt_spin_lock_irqsave(&list_lock);
         // index 0 is reserved for the null slot.
-        for (slot = 1; slot <= MAX_SLOTS; slot++) {
-                if (!lxrt_list[slot].name) {
-                        lxrt_list[slot].name = name;
-                        lxrt_list[slot].adr  = adr;
-                        lxrt_list[slot].tsk  = tsk;
-                        lxrt_list[slot].pid  = tsk ? tsk->pid : 0 ;
-                        lxrt_list[slot].type = type;
+	while ((slot = max_slots) < MAX_SLOTS) {
+        	for (i = 1; i <= max_slots; i++) {
+                	if (lxrt_list[i].name == name) {
+				return 0;
+			}
+		}
+        	flags = rt_spin_lock_irqsave(&list_lock);
+                if (slot == max_slots && max_slots < MAX_SLOTS) {
+			slot = ++max_slots;
+                        lxrt_list[slot].name  = name;
+                        lxrt_list[slot].adr   = adr;
+                        lxrt_list[slot].tsk   = tsk;
+                        lxrt_list[slot].pid   = tsk ? tsk->pid : 0 ;
+                        lxrt_list[slot].type  = type;
+                        lxrt_list[slot].count = 1;
                         rt_spin_unlock_irqrestore(flags, &list_lock);
                         return slot;
                 }
+        	rt_spin_unlock_irqrestore(flags, &list_lock);
         }
-        rt_spin_unlock_irqrestore(flags, &list_lock);
         return 0;
 }
 
@@ -972,133 +981,154 @@ static inline int drg_on_name(unsigned long name)
 {
 	unsigned long flags;
 	int slot;
-	flags = rt_spin_lock_irqsave(&list_lock);
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
+	for (slot = 1; slot <= max_slots; slot++) {
+		flags = rt_spin_lock_irqsave(&list_lock);
 		if (lxrt_list[slot].name == name) {
-			lxrt_list[slot] = lxrt_list[0];
+			if (slot < max_slots) {
+				lxrt_list[slot] = lxrt_list[max_slots];
+			}
+			if (max_slots > 0) {
+				max_slots--;
+			}
 			rt_spin_unlock_irqrestore(flags, &list_lock);
 			return slot;
 		}
+		rt_spin_unlock_irqrestore(flags, &list_lock);
 	}
-	rt_spin_unlock_irqrestore(flags, &list_lock);
 	return 0;
+} 
+
+static inline int drg_on_name_cnt(unsigned long name)
+{
+	unsigned long flags;
+	int slot, count;
+	for (slot = 1; slot <= max_slots; slot++) {
+		flags = rt_spin_lock_irqsave(&list_lock);
+		if (lxrt_list[slot].name == name && lxrt_list[slot].count > 0 && !(count = --lxrt_list[slot].count)) {
+			if (slot < max_slots) {
+				lxrt_list[slot] = lxrt_list[max_slots];
+			}
+			if (max_slots > 0) {
+				max_slots--;
+			}
+			rt_spin_unlock_irqrestore(flags, &list_lock);
+			return count;
+		}
+		rt_spin_unlock_irqrestore(flags, &list_lock);
+	}
+	return -EFAULT;
 } 
 
 static inline int drg_on_adr(void *adr)
 {
 	unsigned long flags;
 	int slot;
-	flags = rt_spin_lock_irqsave(&list_lock);
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
+	for (slot = 1; slot <= max_slots; slot++) {
+		flags = rt_spin_lock_irqsave(&list_lock);
 		if (lxrt_list[slot].adr == adr) {
-			lxrt_list[slot] = lxrt_list[0];
+			if (slot < max_slots) {
+				lxrt_list[slot] = lxrt_list[max_slots];
+			}
+			if (max_slots > 0) {
+				max_slots--;
+			}
 			rt_spin_unlock_irqrestore(flags, &list_lock);
 			return slot;
 		}
+		rt_spin_unlock_irqrestore(flags, &list_lock);
 	}
-	rt_spin_unlock_irqrestore(flags, &list_lock);
 	return 0;
+} 
+
+static inline int drg_on_adr_cnt(void *adr)
+{
+	unsigned long flags;
+	int slot, count;
+	for (slot = 1; slot <= max_slots; slot++) {
+		flags = rt_spin_lock_irqsave(&list_lock);
+		if (lxrt_list[slot].adr == adr && lxrt_list[slot].count > 0 && !(count = --lxrt_list[slot].count)) {
+			if (slot < max_slots) {
+				lxrt_list[slot] = lxrt_list[max_slots];
+			}
+			if (max_slots > 0) {
+				max_slots--;
+			}
+			rt_spin_unlock_irqrestore(flags, &list_lock);
+			return count;
+		}
+		rt_spin_unlock_irqrestore(flags, &list_lock);
+	}
+	return -EFAULT;
 } 
 
 static inline unsigned long get_name(void *adr)
 {
 	static unsigned long nameseed = 0xfacade;
-	unsigned long flags;
 	int slot;
         if (!adr) {
+		unsigned long flags;
 		unsigned long name;
 		flags = rt_spin_lock_irqsave(&list_lock);
 		name = nameseed++;
 		rt_spin_unlock_irqrestore(flags, &list_lock);
 		return name;
         }
-	flags = rt_spin_lock_irqsave(&list_lock);
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
+	for (slot = 1; slot <= max_slots; slot++) {
 		if (lxrt_list[slot].adr == adr) {
-		rt_spin_unlock_irqrestore(flags, &list_lock);
-		return lxrt_list[slot].name;
+			return lxrt_list[slot].name;
 		}
 	}
-	rt_spin_unlock_irqrestore(flags, &list_lock);
 	return 0;
 } 
 
 static inline void *get_adr(unsigned long name)
 {
-	unsigned long flags;
 	int slot;
-	flags = rt_spin_lock_irqsave(&list_lock);
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
+	for (slot = 1; slot <= max_slots; slot++) {
 		if (lxrt_list[slot].name == name) {
-			rt_spin_unlock_irqrestore(flags, &list_lock);
 			return lxrt_list[slot].adr;
 		}
 	}
-	rt_spin_unlock_irqrestore(flags, &list_lock);
+	return 0;
+} 
+
+static inline void *get_adr_cnt(unsigned long name)
+{
+	unsigned long flags;
+	int slot;
+	for (slot = 1; slot <= max_slots; slot++) {
+		flags = rt_spin_lock_irqsave(&list_lock);
+		if (lxrt_list[slot].name == name) {
+			++lxrt_list[slot].count;
+			rt_spin_unlock_irqrestore(flags, &list_lock);
+			return lxrt_list[slot].adr;
+		}
+		rt_spin_unlock_irqrestore(flags, &list_lock);
+	}
 	return 0;
 } 
 
 static inline int get_type(unsigned long name)
 {
-        unsigned long flags;
         int slot;
-        flags = rt_spin_lock_irqsave(&list_lock);
-        for (slot = 1; slot <= MAX_SLOTS; slot++) {
+        for (slot = 1; slot <= max_slots; slot++) {
                 if (lxrt_list[slot].name == name) {
-                        rt_spin_unlock_irqrestore(flags, &list_lock);
                         return lxrt_list[slot].type;
                 }
         }
-        rt_spin_unlock_irqrestore(flags, &list_lock);
         return -EINVAL;
 }
 
-static inline int inc_count(unsigned long name)
-{
-	unsigned long flags;
-	int slot, count;
-	flags = rt_spin_lock_irqsave(&list_lock);
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
-		if (lxrt_list[slot].name == name) {
-			count = ++lxrt_list[slot].pid;
-			rt_spin_unlock_irqrestore(flags, &list_lock);
-			return count;
-		}
-	}
-	rt_spin_unlock_irqrestore(flags, &list_lock);
-	return 0;
-} 
-
-static inline int dec_count(unsigned long name)
-{
-	unsigned long flags;
-	int slot, count;
-	flags = rt_spin_lock_irqsave(&list_lock);
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
-		if (lxrt_list[slot].name == name) {
-			count = lxrt_list[slot].pid > 0 ? --lxrt_list[slot].pid : 0;
-			rt_spin_unlock_irqrestore(flags, &list_lock);
-			return count;
-		}
-	}
-	rt_spin_unlock_irqrestore(flags, &list_lock);
-	return 0;
-} 
-
 unsigned long is_process_registered(struct task_struct *tsk)
 {
-	unsigned long flags;
 	int slot;
-	flags = rt_spin_lock_irqsave(&list_lock);
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
+	for (slot = 1; slot <= max_slots; slot++) {
 		if (lxrt_list[slot].tsk == tsk) {
 			if (lxrt_list[slot].pid == (tsk ? tsk->pid : 0)) {
-				rt_spin_unlock_irqrestore(flags, &list_lock);
 				return lxrt_list[slot].name;
 			}
                 }
         }
-        rt_spin_unlock_irqrestore(flags, &list_lock);
         return 0;
 }
 
@@ -1161,14 +1191,19 @@ int rt_get_type(unsigned long name)
 	return get_type(name);
 }
 
-int rt_inc_count(unsigned long name)
+int rt_drg_on_name_cnt(unsigned long name)
 {
-	return inc_count(name);
+	return drg_on_name_cnt(name);
 }
 
-int rt_dec_count(unsigned long name)
+int rt_drg_on_adr_cnt(void *adr)
 {
-	return dec_count(name);
+	return drg_on_adr_cnt(adr);
+}
+
+void *rt_get_adr_cnt(unsigned long name)
+{
+	return get_adr_cnt(name);
 }
 
 #ifdef CONFIG_RTAI_SCHED_ISR_LOCK
@@ -1192,7 +1227,7 @@ void krtai_objects_release(void)
         struct rt_registry_entry_struct entry;
 	char name[8], *type;
 
-	for (slot = 1; slot <= MAX_SLOTS; slot++) {
+	for (slot = 1; slot <= max_slots; slot++) {
                 if (rt_get_registry_slot(slot, &entry) && entry.adr) {
 			switch (entry.type) {
 	                       	case IS_TASK:
@@ -1221,7 +1256,7 @@ void krtai_objects_release(void)
 					rt_drg_on_adr(entry.adr); 
 					break;
 	                       	default:
-					type = "XXXX";
+					type = "ALIEN";
 					break;
 			}
 			num2nam(entry.name, name);
@@ -1237,33 +1272,20 @@ void krtai_objects_release(void)
 #include <linux/proc_fs.h>
 #include <rtai_proc_fs.h>
 #include <rtai_nam2num.h>
+
 extern struct proc_dir_entry *rtai_proc_root;
-int rtai_proc_lxrt_register(void);
-void rtai_proc_lxrt_unregister(void);
 
 int rt_get_registry_slot(int slot, struct rt_registry_entry_struct* entry)
 {
 	unsigned long flags;
 
-	// check if we got a valid pointer
-	if(entry == 0)
+	if(entry == 0) {
 		return 0;
-
-
+	}
 	flags = rt_spin_lock_irqsave(&list_lock);
-	// index 0 is reserved for the null slot.
-	if (slot > 0 && slot <= MAX_SLOTS ) {
+	if (slot > 0 && slot <= max_slots ) {
 		if (lxrt_list[slot].name != 0) {
-            // clear the result
-			memset((char*)entry,0,sizeof(*entry));
-
-			// copy the structure
-			entry->name = lxrt_list[slot].name;
-			entry->adr  = lxrt_list[slot].adr;
-			entry->tsk  = lxrt_list[slot].tsk;
-			entry->pid  = lxrt_list[slot].pid;
-			entry->type = lxrt_list[slot].type;
-
+			*entry = lxrt_list[slot];
 			rt_spin_unlock_irqrestore(flags, &list_lock);
 			return slot;
 		}
@@ -1279,7 +1301,7 @@ static int rtai_read_lxrt(char *page, char **start, off_t off, int count, int *e
 {
 	PROC_PRINT_VARS;
 	struct rt_registry_entry_struct entry;
-	char *type_name[] = { "TASK", "SEM", "RWL", "SPL", "MBX", "PRX" };
+	char *type_name[] = { "TASK", "SEM", "RWL", "SPL", "MBX", "PRX", "BITS", "TBX", "HPCK" };
 	unsigned int i = 1;
 	char name[8];
 
@@ -1288,24 +1310,24 @@ static int rtai_read_lxrt(char *page, char **start, off_t off, int count, int *e
 
 //                  1234 123456 0x12345678 ALIEN  0x12345678 0x12345678   1234567      1234567
 
-	PROC_PRINT("                                         Linux_Owner  MEM_Cnt Linux_Parent\n");
-	PROC_PRINT("Slot Name   ID         Type   RT_Handle    Pointer    Tsk_PID PID | MEM_Sz\n");
-	PROC_PRINT("--------------------------------------------------------------------------\n");
-	for (i = 1; i <= MAX_SLOTS; i++) {
+	PROC_PRINT("                                         Linux_Owner         Parent PID\n");
+	PROC_PRINT("Slot Name   ID         Type   RT_Handle    Pointer   Tsk_PID   MEM_Sz   USG Cnt\n");
+	PROC_PRINT("-------------------------------------------------------------------------------\n");
+	for (i = 1; i <= max_slots; i++) {
 		if (rt_get_registry_slot(i, &entry)) {
 			num2nam(entry.name, name);
-			PROC_PRINT("%4d %-6.6s 0x%08lx %-6.6s 0x%p 0x%p   %7d     %8d\n",
+			PROC_PRINT("%4d %-6.6s 0x%08lx %-6.6s 0x%p 0x%p  %7d   %8d %7d\n",
 			i,    			// the slot number
 			name,       		// the name in 6 char asci
 			entry.name, 		// the name as unsigned long hex
-			abs(entry.type) >= PAGE_SIZE ? "MEM" : 
+			entry.type >= PAGE_SIZE ? "SHMEM" : 
 			entry.type > sizeof(type_name)/sizeof(char *) ? 
 			"ALIEN" : 
 			type_name[entry.type],	// the Type
 			entry.adr,		// The RT Handle
 			entry.tsk,   		// The Owner task pointer
 			entry.pid,   		// The Owner PID
-			entry.type == IS_TASK && ((RT_TASK *)entry.adr)->lnxtsk ? (((RT_TASK *)entry.adr)->lnxtsk)->pid : abs(entry.type) >= PAGE_SIZE ? entry.type : 0);
+			entry.type == IS_TASK && ((RT_TASK *)entry.adr)->lnxtsk ? (((RT_TASK *)entry.adr)->lnxtsk)->pid : entry.type >= PAGE_SIZE ? entry.type : 0, entry.count);
 		 }
 	}
         PROC_PRINT_DONE;
@@ -1333,3 +1355,109 @@ void rtai_proc_lxrt_unregister(void)
 
 /* ------------------< end of proc filesystem section >------------------*/
 #endif /* CONFIG_PROC_FS */
+
+#ifdef CONFIG_KBUILD
+
+EXPORT_SYMBOL(rt_set_sched_policy);
+EXPORT_SYMBOL(rt_get_prio);
+EXPORT_SYMBOL(rt_get_inher_prio);
+EXPORT_SYMBOL(rt_change_prio);
+EXPORT_SYMBOL(rt_whoami);
+EXPORT_SYMBOL(rt_task_yield);
+EXPORT_SYMBOL(rt_task_suspend);
+EXPORT_SYMBOL(rt_task_resume);
+EXPORT_SYMBOL(rt_get_task_state);
+EXPORT_SYMBOL(rt_linux_use_fpu);
+EXPORT_SYMBOL(rt_task_use_fpu);
+EXPORT_SYMBOL(rt_task_signal_handler);
+EXPORT_SYMBOL(rt_gettimeorig);
+EXPORT_SYMBOL(rt_task_make_periodic_relative_ns);
+EXPORT_SYMBOL(rt_task_make_periodic);
+EXPORT_SYMBOL(rt_task_wait_period);
+EXPORT_SYMBOL(rt_task_set_resume_end_times);
+EXPORT_SYMBOL(rt_set_resume_time);
+EXPORT_SYMBOL(rt_set_period);
+EXPORT_SYMBOL(next_period);
+EXPORT_SYMBOL(rt_busy_sleep);
+EXPORT_SYMBOL(rt_sleep);
+EXPORT_SYMBOL(rt_sleep_until);
+EXPORT_SYMBOL(rt_task_wakeup_sleeping);
+EXPORT_SYMBOL(rt_nanosleep);
+EXPORT_SYMBOL(rt_enq_ready_edf_task);
+EXPORT_SYMBOL(rt_enq_ready_task);
+EXPORT_SYMBOL(rt_renq_ready_task);
+EXPORT_SYMBOL(rt_rem_ready_task);
+EXPORT_SYMBOL(rt_rem_ready_current);
+EXPORT_SYMBOL(rt_enq_timed_task);
+EXPORT_SYMBOL(rt_wake_up_timed_tasks);
+EXPORT_SYMBOL(rt_rem_timed_task);
+EXPORT_SYMBOL(rt_enqueue_blocked);
+EXPORT_SYMBOL(rt_dequeue_blocked);
+EXPORT_SYMBOL(rt_renq_current);
+EXPORT_SYMBOL(rt_named_task_init);
+EXPORT_SYMBOL(rt_named_task_init_cpuid);
+EXPORT_SYMBOL(rt_named_task_delete);
+EXPORT_SYMBOL(is_process_registered);
+EXPORT_SYMBOL(rt_register);
+EXPORT_SYMBOL(rt_drg_on_name);
+EXPORT_SYMBOL(rt_drg_on_adr);
+EXPORT_SYMBOL(rt_get_name);
+EXPORT_SYMBOL(rt_get_adr);
+EXPORT_SYMBOL(rt_get_type);
+EXPORT_SYMBOL(rt_drg_on_name_cnt);
+EXPORT_SYMBOL(rt_drg_on_adr_cnt);
+EXPORT_SYMBOL(rt_get_adr_cnt);
+EXPORT_SYMBOL(rt_get_registry_slot);
+
+EXPORT_SYMBOL(rt_task_init);
+EXPORT_SYMBOL(rt_task_init_cpuid);
+EXPORT_SYMBOL(rt_set_runnable_on_cpus);
+EXPORT_SYMBOL(rt_set_runnable_on_cpuid);
+EXPORT_SYMBOL(rt_check_current_stack);
+EXPORT_SYMBOL(rt_schedule);
+EXPORT_SYMBOL(rt_spv_RMS);
+EXPORT_SYMBOL(rt_sched_lock);
+EXPORT_SYMBOL(rt_sched_unlock);
+EXPORT_SYMBOL(rt_task_delete);
+EXPORT_SYMBOL(rt_is_hard_timer_running);
+EXPORT_SYMBOL(rt_set_periodic_mode);
+EXPORT_SYMBOL(rt_set_oneshot_mode);
+EXPORT_SYMBOL(rt_get_timer_cpu);
+EXPORT_SYMBOL(start_rt_timer);
+EXPORT_SYMBOL(stop_rt_timer);
+EXPORT_SYMBOL(start_rt_timer_cpuid);
+EXPORT_SYMBOL(start_rt_apic_timers);
+EXPORT_SYMBOL(rt_sched_type);
+EXPORT_SYMBOL(rt_preempt_always);
+EXPORT_SYMBOL(rt_preempt_always_cpuid);
+EXPORT_SYMBOL(rt_set_task_trap_handler);
+EXPORT_SYMBOL(rt_get_time);
+EXPORT_SYMBOL(rt_get_time_cpuid);
+EXPORT_SYMBOL(rt_get_time_ns);
+EXPORT_SYMBOL(rt_get_time_ns_cpuid);
+EXPORT_SYMBOL(rt_get_cpu_time_ns);
+EXPORT_SYMBOL(rt_get_base_linux_task);
+EXPORT_SYMBOL(rt_alloc_dynamic_task);
+EXPORT_SYMBOL(rt_register_watchdog);
+EXPORT_SYMBOL(rt_deregister_watchdog);
+EXPORT_SYMBOL(count2nano);
+EXPORT_SYMBOL(nano2count);
+EXPORT_SYMBOL(count2nano_cpuid);
+EXPORT_SYMBOL(nano2count_cpuid);
+
+EXPORT_SYMBOL(rt_kthread_init);
+EXPORT_SYMBOL(rt_smp_linux_task);
+EXPORT_SYMBOL(rt_smp_current);
+EXPORT_SYMBOL(rt_smp_time_h);
+EXPORT_SYMBOL(rt_smp_oneshot_timer);
+EXPORT_SYMBOL(wake_up_srq);
+EXPORT_SYMBOL(set_rt_fun_entries);
+EXPORT_SYMBOL(reset_rt_fun_entries);
+EXPORT_SYMBOL(set_rt_fun_ext_index);
+EXPORT_SYMBOL(reset_rt_fun_ext_index);
+
+#ifdef CONFIG_SMP
+EXPORT_SYMBOL(sqilter);
+#endif /* CONFIG_SMP */
+
+#endif /* CONFIG_KBUILD */

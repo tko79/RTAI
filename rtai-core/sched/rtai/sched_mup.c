@@ -38,8 +38,6 @@ ACKNOWLEDGMENTS:
 #define LINUX_FPU       1
 #endif
 
-#define cpu_present_map cpu_online_map
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/version.h>
@@ -105,6 +103,10 @@ static struct rt_times *linux_times;
 
 static RT_TASK *wdog_task[NR_RT_CPUS];
 
+#ifdef CONFIG_RTAI_ADEOS
+static unsigned sched_virq;
+#endif /* CONFIG_RTAI_ADEOS */
+
 #define fpu_task (rt_smp_fpu_task[cpuid])
 
 //#define rt_linux_task (rt_smp_linux_task[cpuid])
@@ -132,35 +134,17 @@ unsigned long sqilter = 0xFFFFFFFF;
 
 #ifdef __USE_APIC__
 
-#define TIMER_FREQ FREQ_APIC
-#define TIMER_LATENCY LATENCY_APIC
-#define TIMER_SETUP_TIME SETUP_TIME_APIC
-
-#ifdef CONFIG_RTAI_ADEOS
-#define set_timer_chip(delay) \
-	{ \
-	        unsigned long flags; \
-		arti_hw_lock(flags); \
-		apic_read(APIC_TMICT); \
-		apic_write(APIC_TMICT, (delay)); \
-		arti_hw_unlock(flags); \
-	}
-#else /* !CONFIG_RTAI_ADEOS */
-#define set_timer_chip(delay) \
-	{ \
-		apic_read(APIC_TMICT); \
-		apic_write(APIC_TMICT, (delay)); \
-	}
-#endif /* CONFIG_RTAI_ADEOS */
-
+#define TIMER_FREQ RTAI_FREQ_APIC
+#define TIMER_LATENCY RTAI_LATENCY_APIC
+#define TIMER_SETUP_TIME RTAI_SETUP_TIME_APIC
 #define update_linux_timer()
 
-extern void broadcast_to_local_timers(int irq,void *dev_id,struct pt_regs *regs);
-#define BROADCAST_TO_LOCAL_TIMERS() broadcast_to_local_timers(-1,NULL,NULL)
+irqreturn_t rtai_broadcast_to_local_timers(int irq,void *dev_id,struct pt_regs *regs);
+#define BROADCAST_TO_LOCAL_TIMERS() rtai_broadcast_to_local_timers(-1,NULL,NULL)
 
-#define rt_request_sched_ipi()  rt_request_cpu_own_irq(SCHED_IPI, rt_schedule);
+#define rt_request_sched_ipi()  rt_request_cpu_own_irq(SCHED_IPI, rt_schedule)
 
-#define rt_free_sched_ipi()     rt_free_cpu_own_irq(SCHED_IPI);
+#define rt_free_sched_ipi()     rt_free_cpu_own_irq(SCHED_IPI)
 
 static atomic_t scheduling_cpus = ATOMIC_INIT(0);
 
@@ -188,11 +172,9 @@ static inline void sched_release_global_lock(int cpuid)
 
 #else
 
-#define TIMER_FREQ FREQ_8254
-#define TIMER_LATENCY LATENCY_8254
-#define TIMER_SETUP_TIME SETUP_TIME_8254
-
-#define set_timer_chip(delay)  rt_set_timer_delay(delay)
+#define TIMER_FREQ RTAI_FREQ_8254
+#define TIMER_LATENCY RTAI_LATENCY_8254
+#define TIMER_SETUP_TIME RTAI_SETUP_TIME_8254
 
 #define update_linux_timer() rt_pend_linux_irq(TIMER_8254_IRQ)
 
@@ -215,7 +197,7 @@ static inline void sched_release_global_lock(int cpuid)
 
 static int tasks_per_cpu[NR_RT_CPUS] = { 0, };
 
-static void rt_startup(void(*rt_thread)(int), int data)
+asmlinkage static void rt_startup(void(*rt_thread)(int), int data)
 {
 	extern int rt_task_delete(RT_TASK *);
 	rt_global_sti();
@@ -232,7 +214,7 @@ int rt_task_init_cpuid(RT_TASK *task, void (*rt_thread)(int), int data,
 	int *st, i;
 	unsigned long flags;
 
-	if (smp_num_cpus <= 1) {
+	if (num_online_cpus() <= 1) {
 		cpuid = 0;
 	}
 	if (task->magic == RT_TASK_MAGIC || cpuid >= NR_RT_CPUS || priority < 0) {
@@ -380,11 +362,11 @@ void rt_set_runnable_on_cpuid(RT_TASK *task, unsigned int cpuid)
 }
 
 
-void rt_set_runnable_on_cpus(RT_TASK *task, unsigned int run_on_cpus)
+void rt_set_runnable_on_cpus(RT_TASK *task, unsigned long run_on_cpus)
 {
 	int cpuid;
 
-	run_on_cpus &= cpu_present_map;
+	run_on_cpus &= CPUMASK(cpu_present_map);
 	cpuid = get_min_tasks_cpuid();
 	if (!test_bit(cpuid, &run_on_cpus)) {
 		cpuid = ffnz(run_on_cpus);
@@ -407,7 +389,7 @@ int rt_check_current_stack(void)
 }
 
 
-#ifdef ALLOW_RR
+#if ALLOW_RR
 #define RR_YIELD() \
 if (rt_current->policy > 0) { \
 	rt_current->rr_remaining = rt_current->yield_time - rt_times.tick_time; \
@@ -451,7 +433,7 @@ if (rt_current->policy > 0) { \
 			rt_times.intr_time = new_task->yield_time; \
 		} \
 	} else { \
-		preempt = preempt_always || prio == RT_SCHED_LINUX_PRIORITY; \
+	   preempt = (preempt_always || prio == RT_SCHED_LINUX_PRIORITY);	\
 	}
 
 #else
@@ -463,7 +445,7 @@ if (rt_current->policy > 0) { \
 do { preempt = 0; } while (0)
 
 #define RR_TPREMP() \
-do { preempt = preempt_always || prio == RT_SCHED_LINUX_PRIORITY; } while (0)
+    do { preempt = (preempt_always || prio == RT_SCHED_LINUX_PRIORITY); } while (0)
 #endif
 
 #define ANTICIPATE
@@ -490,6 +472,14 @@ void rt_schedule(void)
 	RTIME intr_time, now;
 	RT_TASK *task, *new_task;
 	int prio, delay, preempt;
+
+#ifdef CONFIG_RTAI_ADEOS
+	if (adp_current != &rtai_domain)
+	    {
+	    adeos_trigger_irq(sched_virq);
+	    return;
+	    }
+#endif /* CONFIG_RTAI_ADEOS */
 
 	prio = RT_SCHED_LINUX_PRIORITY;
 	ASSIGN_RT_CURRENT;
@@ -528,7 +518,7 @@ void rt_schedule(void)
 				delay = tuned.setup_time_TIMER_UNIT;
 				rt_times.intr_time = now + (tuned.setup_time_TIMER_CPUNIT);
 			}
-			set_timer_chip(delay);
+			rt_set_timer_delay(delay);
 		}
 	} else {
 		TASK_TO_SCHEDULE();
@@ -549,17 +539,22 @@ void rt_schedule(void)
 				restore_fpenv(fpu_task->fpu_reg);
 			}
 		}
-		if (new_task == &rt_linux_task) {
-			rt_switch_to_linux(cpuid);
-			restore_cr0(linux_cr0);
-		}
 		KEXECTIME();
+		if (new_task == &rt_linux_task) {
+			restore_cr0(linux_cr0);
+			rt_switch_to_linux(cpuid);
+			/* From now on, the Linux stage is re-enabled,
+			   but not sync'ed until we have actually
+			   switched to the Linux task, so that we
+			   don't end up running the Linux IRQ handlers
+			   on behalf of a non-Linux stack
+			   context... */
+		}
 		rt_exchange_tasks(rt_smp_current[cpuid], new_task);
 		if (rt_current->signal) {
 			(*rt_current->signal)();
 		}
 	}
-	return;
 }
 
 
@@ -567,7 +562,7 @@ void rt_spv_RMS(int cpuid)
 {
 	RT_TASK *task;
 	int prio;
-	if (cpuid < 0 || cpuid >= smp_num_cpus) {
+	if (cpuid < 0 || cpuid >= num_online_cpus()) {
 		cpuid = hard_cpu_id();
 	}
 	prio = 0;
@@ -761,7 +756,7 @@ static void rt_timer_handler(void)
 				delay = tuned.setup_time_TIMER_UNIT;
 				rt_times.intr_time = now + (tuned.setup_time_TIMER_CPUNIT);
 			}
-			set_timer_chip(delay);
+			rt_set_timer_delay(delay);
 		}
 	} else {
 		rt_times.intr_time += rt_times.periodic_tick;
@@ -792,7 +787,7 @@ static void rt_timer_handler(void)
 }
 
 
-static void recover_jiffies(int irq, void *dev_id, struct pt_regs *regs)
+static irqreturn_t recover_jiffies(int irq, void *dev_id, struct pt_regs *regs)
 {
     
 	rt_global_cli();
@@ -802,13 +797,15 @@ static void recover_jiffies(int irq, void *dev_id, struct pt_regs *regs)
 	}
 	rt_global_sti();
 	BROADCAST_TO_LOCAL_TIMERS();
+	return RTAI_LINUX_IRQ_HANDLED;
 } 
 
 
 int rt_is_hard_timer_running(void)
 {
-	int cpuid, running;
-	for (running = cpuid = 0; cpuid < smp_num_cpus; cpuid++) {
+    int cpuid;
+    unsigned long running;
+	for (running = cpuid = 0; cpuid < num_online_cpus(); cpuid++) {
 		if (rt_time_h) {
 			set_bit(cpuid, &running);
 		}
@@ -858,7 +855,7 @@ void start_rt_apic_timers(struct apic_timer_setup_data *setup_data, unsigned int
 	}
 	linux_times = rt_smp_times + (rcvr_jiffies_cpuid < NR_RT_CPUS ? rcvr_jiffies_cpuid : 0);
 	rt_global_restore_flags(flags);
-	rt_free_linux_irq(TIMER_8254_IRQ, broadcast_to_local_timers);
+	rt_free_linux_irq(TIMER_8254_IRQ, &rtai_broadcast_to_local_timers);
 	rt_request_linux_irq(TIMER_8254_IRQ, recover_jiffies, "rtai_jif_chk", recover_jiffies);
 }
 
@@ -873,12 +870,6 @@ RTIME start_rt_timer(int period)
 	}
 	start_rt_apic_timers(setup_data, hard_cpu_id());
 	return period;
-}
-
-
-RTIME start_rt_timer_cpuid(int period, int cpuid)
-{
-	return start_rt_timer(period);
 }
 
 
@@ -966,6 +957,11 @@ void stop_rt_timer(void)
 
 #endif
 
+RTIME start_rt_timer_cpuid(int period, int cpuid)
+{
+	return start_rt_timer(period);
+}
+
 
 int rt_sched_type(void)
 {
@@ -1022,17 +1018,6 @@ int rt_trap_handler(int vec, int signo, struct pt_regs *regs, void *dummy_data)
 	return 1;
 }
 
-#ifdef CONFIG_RTAI_MALLOC_BUILTIN
-extern unsigned int granularity;
-MODULE_PARM(granularity, "i");
-
-extern int low_chk_ref;
-MODULE_PARM(low_chk_ref, "i");
-
-extern int low_data_mark;
-MODULE_PARM(low_data_mark, "i");
-#endif
-
 static int OneShot = ONE_SHOT;
 MODULE_PARM(OneShot, "i");
 
@@ -1058,107 +1043,13 @@ static void frstk_srq_handler(void)
 
 static void init_sched_entries(void);
 
-int init_module(void)
-{
-	int cpuid;
-	sched_mem_init();
-	init_sched_entries();
-	for (cpuid = 0; cpuid < NR_RT_CPUS; cpuid++) {
-		rt_linux_task.uses_fpu = LinuxFpu != 0 ? 1 : 0;
-		rt_linux_task.magic = 0;
-		rt_linux_task.policy = 0;
-		rt_linux_task.runnable_on_cpus = cpuid;
-		rt_linux_task.state = RT_SCHED_READY;
-		rt_linux_task.msg_queue.prev = &(rt_linux_task.msg_queue);
-		rt_linux_task.msg_queue.next = &(rt_linux_task.msg_queue);
-		rt_linux_task.msg_queue.task = &rt_linux_task;
-		rt_linux_task.msg = 0;
-		rt_linux_task.ret_queue.prev = &(rt_linux_task.ret_queue);
-		rt_linux_task.ret_queue.next = &(rt_linux_task.ret_queue);
-		rt_linux_task.ret_queue.task = NOTHING;
-		rt_linux_task.priority = RT_SCHED_LINUX_PRIORITY;
-		rt_linux_task.base_priority = RT_SCHED_LINUX_PRIORITY;
-		rt_linux_task.signal = 0;
-		rt_linux_task.prev = &rt_linux_task;
-                rt_linux_task.resume_time = RT_TIME_END;
-                rt_linux_task.tprev = rt_linux_task.tnext =
-                rt_linux_task.rprev = rt_linux_task.rnext = &rt_linux_task;
-		rt_linux_task.next = 0;
-		rt_smp_current[cpuid] = &rt_linux_task;
-		rt_smp_fpu_task[cpuid] = &rt_linux_task;
-		oneshot_timer = OneShot ? 1 : 0;
-		oneshot_running = 0;
-		preempt_always = PreemptAlways ? 1 : 0;
-	}
-	tuned.latency = imuldiv(Latency, tuned.cpu_freq, 1000000000);
-	tuned.setup_time_TIMER_CPUNIT = imuldiv( SetupTimeTIMER, 
-						 tuned.cpu_freq, 
-						 1000000000);
-	tuned.setup_time_TIMER_UNIT   = imuldiv( SetupTimeTIMER, 
-						 TIMER_FREQ, 
-						 1000000000);
-	tuned.timers_tol[0] = 0;
-#ifdef CONFIG_PROC_FS
-	rtai_proc_sched_register();
-#endif
-	printk("\n***** STARTING THE MUP REAL TIME SCHEDULER WITH %sLINUX FP SUPPORT *****", LinuxFpu ? "": "NO ");
-	printk("\n***<> LINUX TICK AT %d (HZ) <>***", HZ);
-	printk("\n***<> CALIBRATED CPU FREQUENCY %lu (HZ) <>***", tuned.cpu_freq);
-	printk("\n***<> CALIBRATED APIC_INTERRUPT-TO-SCHEDULER LATENCY %d (ns) <>***", imuldiv(tuned.latency - tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq));
-	printk("\n***<> CALIBRATED ONE SHOT APIC SETUP TIME %d (ns) <>***", imuldiv(tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq));
-	printk("\n***<> COMPILER: %s***\n\n", CONFIG_RTAI_COMPILER);
-	rt_mount_rtai();
-// 0x7dd763ad == nam2num("MEMSRQ").
-	if ((frstk_srq.srq = rt_request_srq(0x7dd763ad, frstk_srq_handler, 0)) < 0) {
-		printk("MEM SRQ: no sysrq available.\n");
-		return frstk_srq.srq;
-	}
-	frstk_srq.in = frstk_srq.out = 0;
-	rt_request_sched_ipi();
-	rt_set_rtai_trap_handler(rt_trap_handler);
-#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
-	rt_set_ihook(&rtai_handle_isched_lock);
-#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
-	return 0;
-}
-
-
-extern void krtai_objects_release(void);
-
-void cleanup_module(void)
-{
-	int cpuid;
-	rt_set_rtai_trap_handler(NULL);
-	stop_rt_timer();
-	for (cpuid = 0; cpuid < NR_RT_CPUS; cpuid++) {
-		while (rt_linux_task.next) {
-			rt_task_delete(rt_linux_task.next);
-		}
-	}
-	krtai_objects_release();
-#ifdef CONFIG_PROC_FS
-        rtai_proc_sched_unregister();
-#endif
-	while (frstk_srq.out != frstk_srq.in);
-	if (rt_free_srq(frstk_srq.srq) < 0) {
-		printk("MEM SRQ: frstk_srq %d illegal or already free.\n", frstk_srq.srq);
-	}
-	rt_free_sched_ipi();
-	sched_mem_end();
-#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
-	rt_set_ihook(NULL);
-#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
-	rt_umount_rtai();
-	printk("\n***** THE MUP REAL TIME SCHEDULER HAS BEEN REMOVED *****\n\n");
-}
-
 /* ++++++++++++++++++++++++++ TIME CONVERSIONS +++++++++++++++++++++++++++++ */
 
 RTIME count2nano(RTIME counts)
 {
 	int sign;
 
-	if (counts > 0) {
+	if (counts >= 0) {
 		sign = 1;
 	} else {
 		sign = 0;
@@ -1175,7 +1066,7 @@ RTIME nano2count(RTIME ns)
 {
 	int sign;
 
-	if (ns > 0) {
+	if (ns >= 0) {
 		sign = 1;
 	} else {
 		sign = 0;
@@ -1191,7 +1082,7 @@ RTIME count2nano_cpuid(RTIME counts, unsigned int cpuid)
 {
 	int sign;
 
-	if (counts > 0) {
+	if (counts >= 0) {
 		sign = 1;
 	} else {
 		sign = 0;
@@ -1208,7 +1099,7 @@ RTIME nano2count_cpuid(RTIME ns, unsigned int cpuid)
 {
 	int sign;
 
-	if (ns > 0) {
+	if (ns >= 0) {
 		sign = 1;
 	} else {
 		sign = 0;
@@ -1262,7 +1153,7 @@ RTIME rt_get_cpu_time_ns(void)
 RT_TASK *rt_get_base_linux_task(RT_TASK **base_linux_tasks)
 {
         int cpuid;
-        for (cpuid = 0; cpuid < smp_num_cpus; cpuid++) {
+        for (cpuid = 0; cpuid < num_online_cpus(); cpuid++) {
                 base_linux_tasks[cpuid] = rt_smp_linux_task + cpuid;
         }
         return rt_smp_linux_task;
@@ -1415,6 +1306,16 @@ static void init_sched_entries(void)
 
 #endif
 
+int set_rt_fun_ext_index(struct rt_fun_entry *fun, int idx)
+{
+	return -EACCES;
+}
+
+void reset_rt_fun_ext_index( struct rt_fun_entry *fun, int idx)
+{
+	return;
+}
+
 /* ++++++++++++++++++++++++++ SCHEDULER PROC FILE +++++++++++++++++++++++++++ */
 
 #ifdef CONFIG_PROC_FS
@@ -1472,7 +1373,7 @@ static int rtai_read_sched(char *page, char **start, off_t off, int count,
 		while ((task = task->tnext) != &rt_linux_task) {
 			PROC_PRINT("> %p ", task);
 		}
-		PROC_PRINT("\READY\n");
+		PROC_PRINT("\nREADY\n");
 		task = &rt_linux_task;
 		while ((task = task->rnext) != &rt_linux_task) {
 			PROC_PRINT("> %p ", task);
@@ -1507,5 +1408,132 @@ static void rtai_proc_sched_unregister(void)
 
 /* ------------------< end of proc filesystem section >------------------*/
 #endif /* CONFIG_PROC_FS */
+
+int __rtai_mup_init(void)
+{
+	int cpuid;
+	sched_mem_init();
+	init_sched_entries();
+	for (cpuid = 0; cpuid < NR_RT_CPUS; cpuid++) {
+		rt_linux_task.uses_fpu = LinuxFpu != 0 ? 1 : 0;
+		rt_linux_task.magic = 0;
+		rt_linux_task.policy = 0;
+		rt_linux_task.runnable_on_cpus = cpuid;
+		rt_linux_task.state = RT_SCHED_READY;
+		rt_linux_task.msg_queue.prev = &(rt_linux_task.msg_queue);
+		rt_linux_task.msg_queue.next = &(rt_linux_task.msg_queue);
+		rt_linux_task.msg_queue.task = &rt_linux_task;
+		rt_linux_task.msg = 0;
+		rt_linux_task.ret_queue.prev = &(rt_linux_task.ret_queue);
+		rt_linux_task.ret_queue.next = &(rt_linux_task.ret_queue);
+		rt_linux_task.ret_queue.task = NOTHING;
+		rt_linux_task.priority = RT_SCHED_LINUX_PRIORITY;
+		rt_linux_task.base_priority = RT_SCHED_LINUX_PRIORITY;
+		rt_linux_task.signal = 0;
+		rt_linux_task.prev = &rt_linux_task;
+                rt_linux_task.resume_time = RT_TIME_END;
+                rt_linux_task.tprev = rt_linux_task.tnext =
+                rt_linux_task.rprev = rt_linux_task.rnext = &rt_linux_task;
+		rt_linux_task.next = 0;
+		rt_smp_current[cpuid] = &rt_linux_task;
+		rt_smp_fpu_task[cpuid] = &rt_linux_task;
+		oneshot_timer = OneShot ? 1 : 0;
+		oneshot_running = 0;
+		preempt_always = PreemptAlways ? 1 : 0;
+	}
+	tuned.latency = imuldiv(Latency, tuned.cpu_freq, 1000000000);
+	tuned.setup_time_TIMER_CPUNIT = imuldiv( SetupTimeTIMER, 
+						 tuned.cpu_freq, 
+						 1000000000);
+	tuned.setup_time_TIMER_UNIT   = imuldiv( SetupTimeTIMER, 
+						 TIMER_FREQ, 
+						 1000000000);
+	tuned.timers_tol[0] = 0;
+#ifdef CONFIG_PROC_FS
+	rtai_proc_sched_register();
+#endif
+	rt_mount_rtai();
+// 0x7dd763ad == nam2num("MEMSRQ").
+	if ((frstk_srq.srq = rt_request_srq(0x7dd763ad, frstk_srq_handler, 0)) < 0) {
+		printk("MEM SRQ: no sysrq available.\n");
+		return frstk_srq.srq;
+	}
+	frstk_srq.in = frstk_srq.out = 0;
+	rt_request_sched_ipi();
+	rt_set_rtai_trap_handler(rt_trap_handler);
+#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
+	rt_set_ihook(&rtai_handle_isched_lock);
+#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
+#ifdef CONFIG_RTAI_ADEOS
+	sched_virq = adeos_alloc_irq();
+
+	adeos_virtualize_irq_from(&rtai_domain,
+				  sched_virq,
+				  (void (*)(unsigned))&rt_schedule,
+				  NULL,
+				  IPIPE_HANDLE_MASK);
+#endif /* CONFIG_RTAI_ADEOS */
+
+	printk(KERN_INFO "RTAI[sched_mup]: loaded.\n");
+	printk(KERN_INFO "RTAI[sched_mup]: fpu=%s, timer=%s (%s).\n",
+	       LinuxFpu ? "yes" : "no",
+	       oneshot_timer ? "oneshot" : "periodic",
+#ifdef __USE_APIC__
+	       "APIC"
+#else /* __USE_APIC__ */
+	       "8254-PIT"
+#endif /* __USE_APIC__ */
+	       );
+	printk(KERN_INFO "RTAI[sched_mup]: standard tick=%d hz, CPU freq=%lu hz.\n",
+	       HZ,
+	       (unsigned long)tuned.cpu_freq);
+	printk(KERN_INFO "RTAI[sched_mup]: timer setup=%d ns, resched latency=%d ns.\n",
+	       imuldiv(tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq),
+	       imuldiv(tuned.latency - tuned.setup_time_TIMER_CPUNIT, 1000000000, tuned.cpu_freq));
+
+	return rtai_init_features(); /* see rtai_schedcore.h */
+}
+
+extern void krtai_objects_release(void);
+
+void __rtai_mup_exit(void)
+{
+	int cpuid;
+	rt_set_rtai_trap_handler(NULL);
+	stop_rt_timer();
+	for (cpuid = 0; cpuid < NR_RT_CPUS; cpuid++) {
+		while (rt_linux_task.next) {
+			rt_task_delete(rt_linux_task.next);
+		}
+	}
+	krtai_objects_release();
+
+#ifdef CONFIG_RTAI_ADEOS
+	if (sched_virq)
+	    {
+	    adeos_virtualize_irq_from(&rtai_domain,sched_virq,NULL,NULL,0);
+	    adeos_free_irq(sched_virq);
+	    }
+#endif /* CONFIG_RTAI_ADEOS */
+
+	rtai_cleanup_features();
+#ifdef CONFIG_PROC_FS
+        rtai_proc_sched_unregister();
+#endif
+	while (frstk_srq.out != frstk_srq.in);
+	if (rt_free_srq(frstk_srq.srq) < 0) {
+		printk("MEM SRQ: frstk_srq %d illegal or already free.\n", frstk_srq.srq);
+	}
+	rt_free_sched_ipi();
+	sched_mem_end();
+#ifdef CONFIG_RTAI_SCHED_ISR_LOCK
+	rt_set_ihook(NULL);
+#endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
+	rt_umount_rtai();
+	printk(KERN_INFO "RTAI[sched_mup]: unloaded.\n");
+}
+
+module_init(__rtai_mup_init);
+module_exit(__rtai_mup_exit);
 
 /* +++++++++++++++++++++++++++++ SCHEDULER END ++++++++++++++++++++++++++++ */

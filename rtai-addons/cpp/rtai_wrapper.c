@@ -1,7 +1,7 @@
 /*
  * Project: rtai_cpp - RTAI C++ Framework 
  *
- * File: $Id: rtai_wrapper.c,v 1.1.1.1 2003/10/14 17:38:51 pgerum Exp $
+ * File: $Id: rtai_wrapper.c,v 1.2 2004/08/15 14:33:07 rpm Exp $
  *
  * Copyright: (C) 2001,2002 Erwin Rol <erwin@muffin.org>
  *
@@ -22,7 +22,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  */
 #include "rtai_wrapper.h"
+
 #include <rtai.h>
+#include <rtai_malloc.h>
+#include "tld_key.h"
 
 void __rt_get_global_lock(void){
 	rt_get_global_lock();
@@ -34,6 +37,45 @@ void __rt_release_global_lock(void){
 
 int __hard_cpu_id( void ){
 	return hard_cpu_id();
+}
+
+/* task functions */
+
+RT_TASK * __rt_task_init(void (*rt_thread)(int), int data,
+                         int stack_size, int priority, int uses_fpu,
+                          void(*signal)(void))
+{
+        RT_TASK * task;
+
+        task = rt_malloc( sizeof(RT_TASK) );
+
+        if(task == 0)
+                return 0;
+
+        memset(task,0,sizeof(RT_TASK));
+
+        rt_task_init(task,rt_thread,data,stack_size,priority,uses_fpu,signal);
+
+       __rt_tld_set_data(task,cpp_key,(void*)data);
+
+       return task;
+}
+
+int __rt_task_delete(RT_TASK *task)
+{
+        int result;
+        rt_printk("__rt_task_delete(%p)\n",task);
+
+        if(task == 0)
+                return -1;
+
+        rt_task_suspend(task);
+
+        result = rt_task_delete(task);
+
+        rt_free(task);
+
+        return result;
 }
 
 #ifdef CONFIG_RTAI_TRACE

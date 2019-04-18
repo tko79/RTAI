@@ -1034,6 +1034,7 @@ Optional Features:
   --enable-fast-install=PKGS  optimize for fast installation default=yes
   --disable-libtool-lock  avoid locking (might break parallel builds)
  --enable-mvm-debug	Enable MVM debug
+ --enable-xenomai-debug	Enable Xenomai debug
  --enable-tclwrap	Wrap Tcl scripts in the executable files
  --enable-vrtai	Build RTAI simulator
  --enable-psos	Build pSOS+ simulator
@@ -5119,7 +5120,7 @@ test "x$enable_libtool_lock" != xno && enable_libtool_lock=yes
 case $host in
 *-*-irix6*)
   # Find out which ABI we are using.
-  echo '#line 5122 "configure"' > conftest.$ac_ext
+  echo '#line 5123 "configure"' > conftest.$ac_ext
   if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
   (eval $ac_compile) 2>&5
   ac_status=$?
@@ -5648,7 +5649,7 @@ chmod -w .
 save_CFLAGS="$CFLAGS"
 CFLAGS="$CFLAGS -o out/conftest2.$ac_objext"
 compiler_c_o=no
-if { (eval echo configure:5651: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>out/conftest.err; } && test -s out/conftest2.$ac_objext; then
+if { (eval echo configure:5652: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>out/conftest.err; } && test -s out/conftest2.$ac_objext; then
   # The compiler can only warn and ignore the option if not recognized
   # So say no if there are warnings
   if test -s out/conftest.err; then
@@ -7480,7 +7481,7 @@ else
     lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<EOF
-#line 7483 "configure"
+#line 7484 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -7578,7 +7579,7 @@ else
     lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<EOF
-#line 7581 "configure"
+#line 7582 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -8606,6 +8607,19 @@ if test x$CONFIG_RTAI_MVM_DEBUG = xy; then
 else
    defaultwrap=no
 fi
+
+echo "$as_me:$LINENO: checking for Xenomai debug support" >&5
+echo $ECHO_N "checking for Xenomai debug support... $ECHO_C" >&6
+# Check whether --enable-xenomai-debug or --disable-xenomai-debug was given.
+if test "${enable_xenomai_debug+set}" = set; then
+  enableval="$enable_xenomai_debug"
+  case "$enableval" in
+	y | yes) CONFIG_RTAI_XENOMAI_DEBUG=y ;;
+	*) unset CONFIG_RTAI_XENOMAI_DEBUG ;;
+	esac
+fi;
+echo "$as_me:$LINENO: result: ${CONFIG_RTAI_XENOMAI_DEBUG:-no}" >&5
+echo "${ECHO_T}${CONFIG_RTAI_XENOMAI_DEBUG:-no}" >&6
 
 echo "$as_me:$LINENO: checking for GCC tarball" >&5
 echo $ECHO_N "checking for GCC tarball... $ECHO_C" >&6
@@ -13152,6 +13166,14 @@ _ACEOF
 
 fi
 
+if test x$CONFIG_RTAI_XENOMAI_DEBUG = xy; then
+
+cat >>confdefs.h <<\_ACEOF
+#define CONFIG_RTAI_XENOMAI_DEBUG 1
+_ACEOF
+
+fi
+
 # The Ultrix 4.2 mips builtin alloca declared by alloca.h only works
 # for constant arguments.  Useless!
 echo "$as_me:$LINENO: checking for working alloca.h" >&5
@@ -15498,7 +15520,7 @@ fi
 subdirs="$subdirs tkimg"
 
 
-                                                                                                                                                                                              ac_config_files="$ac_config_files Makefile vmutils/Makefile vm/Makefile include/Makefile adaptors/Makefile skins/Makefile skins/vrtai/Makefile skins/xenomai/Makefile skins/psos+/Makefile skins/vxworks/Makefile skins/vrtx/Makefile skins/uITRON/Makefile skins/pse51/Makefile skins/pse51/testsuite/Makefile gcic/Makefile scope/Makefile examples/Makefile examples/psos+/Makefile examples/psos+/satch/Makefile"
+                                                                                                                                                                                              ac_config_files="$ac_config_files GNUmakefile vmutils/GNUmakefile vm/GNUmakefile include/GNUmakefile adaptors/GNUmakefile skins/GNUmakefile skins/vrtai/GNUmakefile skins/xenomai/GNUmakefile skins/psos+/GNUmakefile skins/vxworks/GNUmakefile skins/vrtx/GNUmakefile skins/uITRON/GNUmakefile skins/pse51/GNUmakefile skins/pse51/testsuite/GNUmakefile gcic/GNUmakefile scope/GNUmakefile examples/GNUmakefile examples/psos+/GNUmakefile examples/psos+/satch/GNUmakefile"
 
 
 cat >confcache <<\_ACEOF
@@ -16112,25 +16134,25 @@ for ac_config_target in $ac_config_targets
 do
   case "$ac_config_target" in
   # Handling of arguments.
-  "Makefile" ) CONFIG_FILES="$CONFIG_FILES Makefile" ;;
-  "vmutils/Makefile" ) CONFIG_FILES="$CONFIG_FILES vmutils/Makefile" ;;
-  "vm/Makefile" ) CONFIG_FILES="$CONFIG_FILES vm/Makefile" ;;
-  "include/Makefile" ) CONFIG_FILES="$CONFIG_FILES include/Makefile" ;;
-  "adaptors/Makefile" ) CONFIG_FILES="$CONFIG_FILES adaptors/Makefile" ;;
-  "skins/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/Makefile" ;;
-  "skins/vrtai/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/vrtai/Makefile" ;;
-  "skins/xenomai/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/xenomai/Makefile" ;;
-  "skins/psos+/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/psos+/Makefile" ;;
-  "skins/vxworks/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/vxworks/Makefile" ;;
-  "skins/vrtx/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/vrtx/Makefile" ;;
-  "skins/uITRON/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/uITRON/Makefile" ;;
-  "skins/pse51/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/pse51/Makefile" ;;
-  "skins/pse51/testsuite/Makefile" ) CONFIG_FILES="$CONFIG_FILES skins/pse51/testsuite/Makefile" ;;
-  "gcic/Makefile" ) CONFIG_FILES="$CONFIG_FILES gcic/Makefile" ;;
-  "scope/Makefile" ) CONFIG_FILES="$CONFIG_FILES scope/Makefile" ;;
-  "examples/Makefile" ) CONFIG_FILES="$CONFIG_FILES examples/Makefile" ;;
-  "examples/psos+/Makefile" ) CONFIG_FILES="$CONFIG_FILES examples/psos+/Makefile" ;;
-  "examples/psos+/satch/Makefile" ) CONFIG_FILES="$CONFIG_FILES examples/psos+/satch/Makefile" ;;
+  "GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES GNUmakefile" ;;
+  "vmutils/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES vmutils/GNUmakefile" ;;
+  "vm/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES vm/GNUmakefile" ;;
+  "include/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES include/GNUmakefile" ;;
+  "adaptors/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES adaptors/GNUmakefile" ;;
+  "skins/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/GNUmakefile" ;;
+  "skins/vrtai/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/vrtai/GNUmakefile" ;;
+  "skins/xenomai/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/xenomai/GNUmakefile" ;;
+  "skins/psos+/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/psos+/GNUmakefile" ;;
+  "skins/vxworks/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/vxworks/GNUmakefile" ;;
+  "skins/vrtx/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/vrtx/GNUmakefile" ;;
+  "skins/uITRON/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/uITRON/GNUmakefile" ;;
+  "skins/pse51/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/pse51/GNUmakefile" ;;
+  "skins/pse51/testsuite/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES skins/pse51/testsuite/GNUmakefile" ;;
+  "gcic/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES gcic/GNUmakefile" ;;
+  "scope/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES scope/GNUmakefile" ;;
+  "examples/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES examples/GNUmakefile" ;;
+  "examples/psos+/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES examples/psos+/GNUmakefile" ;;
+  "examples/psos+/satch/GNUmakefile" ) CONFIG_FILES="$CONFIG_FILES examples/psos+/satch/GNUmakefile" ;;
   "depfiles" ) CONFIG_COMMANDS="$CONFIG_COMMANDS depfiles" ;;
   "rtai_config.h" ) CONFIG_HEADERS="$CONFIG_HEADERS rtai_config.h" ;;
   *) { { echo "$as_me:$LINENO: error: invalid argument: $ac_config_target" >&5

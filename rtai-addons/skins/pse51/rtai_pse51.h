@@ -19,7 +19,11 @@
 #ifndef RTAI_PSE51_H
 #define RTAI_PSE51_H
 
-#include <limits.h>             /* For INT_MAX */
+#ifndef __KERNEL__
+#include <limits.h>  /* For INT_MAX in user-space, kernel space finds
+			this in linux/kernel.h */
+#endif /* !__KERNEL__ */
+#include <linux/version.h>
 #include <xenomai/xenomai.h>
 
 #ifndef BEGIN_C_DECLS
@@ -57,6 +61,7 @@ typedef void sighandler_t (int sig);
 #undef SIG_DFL
 #undef SIG_ERR
 #undef SIG_IGN
+#undef TIMER_ABSTIME
 
 #ifdef __MVM__
 #include <pse51_overrides.h>
@@ -243,10 +248,16 @@ END_C_DECLS
 
 
 /* Condition variables attributes */
-typedef enum clockid {
+#if !defined(__KERNEL__) || (LINUX_VERSION_CODE < KERNEL_VERSION(2,5,0))
+/* As of 2.6 kernel, clockid_t is defined in linux/types.h, in which case we
+   do not override this definition. */
+#undef CLOCK_MONOTONIC
+#undef CLOCK_REALTIME
+typedef enum pse51_clockid {
     CLOCK_MONOTONIC,            /* For relative timeouts. */
     CLOCK_REALTIME              /* For absolute timeouts. */
 } clockid_t;
+#endif
 
 typedef struct pse51_condattr {
     unsigned magic;

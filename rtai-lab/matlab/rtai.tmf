@@ -18,11 +18,11 @@ COMPUTER        = |>COMPUTER<|
 BUILDARGS       = |>BUILDARGS<|
 MULTITASKING    = |>MULTITASKING<|
 
-LINUX_HOME = /usr/src/linux
-RTAIDIR    = /usr/realtime
+LINUX_HOME = $(shell rtai-config --linux-dir 2>/dev/null)
+RTAIDIR    = $(shell rtai-config --prefix 2>/dev/null)
 RTW_R      = $(MATLAB_ROOT)/rtw/c
 RTAI_RTW   = $(RTW_R)/rtai
-COMEDI_HOME = /usr/src/comedi
+COMEDI_HOME = $(shell rtai-config --comedi-dir 2>/dev/null)
 
 #--------------------------- Tool Specifications -------------------------------
 
@@ -35,8 +35,7 @@ MATLAB_INCLUDES = \
         -I$(MATLAB_ROOT)/extern/include \
 	-I$(MATLAB_ROOT)/rtw/c/src \
 	-I$(MATLAB_ROOT)/rtw/c/libsrc \
-	-I$(MATLAB_ROOT)/rtw/c/rtai/devices \
-        -I$(MATLAB_ROOT)/rtw/c/rtai/include
+	-I$(MATLAB_ROOT)/rtw/c/rtai/devices
  
 USER_INCLUDES = -I$(LINUX_HOME)/include -I$(RTAIDIR)/include -I$(RTAI_RTW)/include -I$(COMEDI_HOME)/include
 
@@ -117,6 +116,9 @@ sfun_comedi%.o : $(MATLAB_ROOT)/rtw/c/rtai/devices/sfun_comedi%.c
 	gcc -c $(CFLAGS) -I$(COMEDI_HOME)/include $<
 
 %.o : $(MATLAB_ROOT)/rtw/c/rtai/devices/%.c
+	gcc -c $(CFLAGS) $<
+
+%.o : $(MATLAB_ROOT)/rtw/c/rtai/lib/%.c
 	gcc -c $(CFLAGS) $<
 
 %.o : $(MATLAB_ROOT)/rtw/c/libsrc/%.c

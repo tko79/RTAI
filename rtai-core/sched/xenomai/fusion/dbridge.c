@@ -108,7 +108,7 @@ static void dbridge_wakeup_proc (void)
 
 	    spin_lock_irqsave(&dbridge_sqlock,slflags);
 
-	    current->need_resched = 1;
+	    set_need_resched();
 	    }
 	else
 	    nholder = nextq(&dbridge_sleepq,holder);
@@ -134,7 +134,7 @@ static void dbridge_wakeup_proc (void)
 	    clrbits(state->status,DBRIDGE_USR_SIGIO);
 	    splexit(s);
 	    kill_fasync(&state->asyncq,dbridge_asyncsig,POLL_IN);
-	    current->need_resched = 1;
+	    set_need_resched();
 	    }
 	else
 	    splexit(s);
@@ -231,7 +231,7 @@ static int dbridge_release (struct inode *inode,
 	fasync_helper(-1,file,0,&state->asyncq);
 	}
 
-    current->need_resched = 1;
+    set_need_resched();
 
     return err;
 }
@@ -301,11 +301,6 @@ static void (*dbridge_exits[])(void) = {
     &linux_msg_exit
 };
 
-#ifdef CONFIG_DEVFS_FS
-#include <linux/devfs_fs_kernel.h>
-static devfs_handle_t dbridge_devfs_dir_handle;
-#endif /* CONFIG_DEVFS_FS */
-
 int __init dbridge_init (void)
 
 {
@@ -340,40 +335,11 @@ int __init dbridge_init (void)
 	    }
 	}
 
-#ifdef CONFIG_DEVFS_FS
-    if (devfs_register_chrdev(DBRIDGE_MAJOR,"dbridge",&dbridge_fops))
-#else  /* !CONFIG_DEVFS_FS */
     if (register_chrdev(DBRIDGE_MAJOR,"dbridge",&dbridge_fops))
-#endif /* CONFIG_DEVFS_FS */
 	{
 	printk(KERN_WARNING "RTAI/fusion: unable to get major %d for domain bridge\n",DBRIDGE_MAJOR);
 	return -EIO;
 	}
-
-#ifdef CONFIG_DEVFS_FS
-    dbridge_devfs_dir_handle = devfs_mk_dir(NULL,"dbridge",NULL);
-
-    devfs_register_series(dbridge_devfs_dir_handle,
-			  "msg%u",
-			  DBRIDGE_MQ_NDEVS,
-			  DEVFS_FL_DEFAULT,
-			  DBRIDGE_MAJOR,
-			  0,
-			  S_IFCHR|S_IRUGO|S_IWUGO,
-			  &dbridge_fops,
-			  NULL);
-
-    devfs_register_series(dbridge_devfs_dir_handle,
-			  "ev%u",
-			  DBRIDGE_EV_NDEVS,
-			  DEVFS_FL_DEFAULT,
-			  DBRIDGE_MAJOR,
-			  DBRIDGE_MQ_NDEVS,
-			  S_IFCHR|S_IRUGO|S_IWUGO,
-			  &dbridge_fops,
-			  NULL);
-
-#endif /* CONFIG_DEVFS_FS */
 
     dbridge_wakeup_srq = rt_request_srq(0,&dbridge_wakeup_proc,NULL);
 
@@ -389,10 +355,5 @@ void __exit dbridge_exit (void)
 	dbridge_exits[n]();
 
     rt_free_srq(dbridge_wakeup_srq);
-#ifdef CONFIG_DEVFS_FS
-    devfs_unregister(dbridge_devfs_dir_handle);
-    devfs_unregister_chrdev(DBRIDGE_MAJOR,"dbridge");
-#else /* CONFIG_DEVFS_FS */
     unregister_chrdev(DBRIDGE_MAJOR,"dbridge");
-#endif /* !CONFIG_DEVFS_FS */
 }

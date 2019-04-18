@@ -27,7 +27,7 @@
 // Dynamic Memory Management for Real Time Linux.
 //
 ///////////////////////////////////////////////////////////////////////////////
-static char id_rt_mem_mgr_c[] __attribute__ ((unused)) = "@(#)$Id: rt_mem_mgr.c,v 1.1 2003/10/31 15:37:26 pgerum Exp $";
+static char id_rt_mem_mgr_c[] __attribute__ ((unused)) = "@(#)$Id: rt_mem_mgr.c,v 1.1.1.1 2004/06/06 14:15:56 rpm Exp $";
 
 #ifdef __MVM__
 

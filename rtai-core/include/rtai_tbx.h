@@ -34,14 +34,6 @@
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_RTAI_TBX_BUILTIN
-#define TBX_INIT_MODULE     tbx_init_module
-#define TBX_CLEANUP_MODULE  tbx_cleanup_module
-#else  /* !CONFIG_RTAI_TBX_BUILTIN */
-#define TBX_INIT_MODULE     init_module
-#define TBX_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_TBX_BUILTIN */
-
 struct rt_typed_mailbox;
 
 #ifndef __cplusplus
@@ -70,9 +62,9 @@ typedef struct rt_typed_mailbox {
 extern "C" {
 #endif /* !__cplusplus */
 
-int TBX_INIT_MODULE(void);
+int __rtai_tbx_init(void);
 
-void TBX_CLEANUP_MODULE(void);
+void __rtai_tbx_exit(void);
 
 /*
  * send_wp and receive_wp are not implemented because 

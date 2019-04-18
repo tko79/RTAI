@@ -19,7 +19,7 @@ static char rcsid[] = "$NetBSD: w_gamma_r.c,v 1.7 1995/11/20 22:06:45 jtc Exp $"
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 
 #ifdef __STDC__

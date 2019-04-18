@@ -20,4 +20,6 @@ void *get_a_name(const char *root, char *name);
 int rtRegisterScope(const char *name, int n);
 int rtRegisterLed(const char *name, int n);
 int rtRegisterMeter(const char *name, int n);
+void exit_on_error(void);
+
 

@@ -44,6 +44,7 @@
 #define RT_SCHED_RPC         64
 #define RT_SCHED_RETURN     128
 #define RT_SCHED_MBXSUSP    256
+#define RT_SCHED_SFTRDY     512
 
 struct rt_task_struct;
 
@@ -79,6 +80,8 @@ typedef struct rt_ExitHandler {
     void *arg1;
     int   arg2;
 } XHDL;
+
+struct rt_heap_t { void *heap, *kadr, *uadr; };
 
 typedef struct rt_task_struct {
 
@@ -156,6 +159,9 @@ typedef struct rt_task_struct {
     RTIME exectime[2];
     struct mcb_t mcb;
 
+	/* Real time heaps. */
+	struct rt_heap_t heap[2];
+
 } RT_TASK __attribute__ ((__aligned__ (16)));
 
 #else /* __cplusplus */
@@ -163,7 +169,8 @@ extern "C" {
 #endif /* !__cplusplus */
 
 int rt_task_init(struct rt_task_struct *task,
-		 void (*rt_thread)(int), int data,
+		 void (*rt_thread)(int),
+		 int data,
 		 int stack_size,
 		 int priority,
 		 int uses_fpu,
@@ -179,7 +186,7 @@ int rt_task_init_cpuid(struct rt_task_struct *task,
 		       unsigned run_on_cpu);
 
 void rt_set_runnable_on_cpus(struct rt_task_struct *task,
-			     unsigned cpu_mask);
+			     unsigned long cpu_mask);
 
 void rt_set_runnable_on_cpuid(struct rt_task_struct *task,
 			      unsigned cpuid);

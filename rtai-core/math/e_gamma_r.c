@@ -19,7 +19,7 @@
  * Method: See __ieee754_lgamma_r
  */
 
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 	//__private_extern__

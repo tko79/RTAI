@@ -18,6 +18,7 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
+#define _XOPEN_SOURCE	600
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,7 @@
 #include <float.h>
 #include <math.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 #include <sys/mman.h>
 #include <sys/poll.h>
@@ -39,7 +41,7 @@
 #include <devstruct.h>
 #include <devices.h>
 
-#define RTAILAB_VERSION   "3.0.1"
+#define RTAILAB_VERSION   "3.1.1"
 #define MAX_ADR_SRCH      500
 #define MAX_NAME_SIZE     256
 #define MAX_SCOPES        100
@@ -48,6 +50,7 @@
 #define MAX_METERS        100
 #define HZ                100
 #define POLL_PERIOD       100 // millisecs
+#define MAX_NTARGETS      1000
 
 #define rt_HostInterfaceTaskPriority  96
 #define rt_MainTaskPriority	      97
@@ -65,6 +68,7 @@ typedef struct rtTargetParamInfo {
     double dataValue[MAX_DATA_SIZE];
 } rtTargetParamInfo;
 
+static sem_t err_sem;
 static pthread_t  rt_HostInterfaceThread, rt_BaseRateThread;
 static RT_TASK    *rt_MainTask, *rt_HostInterfaceTask, *rt_BaseRateTask;
 
@@ -86,7 +90,7 @@ static volatile int stackinc     = 100000;
 static volatile int NUPAR1       = 0;
 static volatile int ClockTick    = 0;
 static volatile int InternTimer  = 1;
-static RTIME rt_BasePeriod       = 0;
+static RTIME rt_BaseRateTick;
 static float FinalTime           = 0.0;
 
 static volatile int endex;
@@ -265,7 +269,7 @@ static unsigned long TimingEventArg;
 
 static inline int rtModifyRParam(int i, double *param)
 {
-    if (i >= 0 && i < NRPAR1) {
+    if (i >= 0 && i < NTOTRPAR1) {
 	set_double(&RPAR1[i], param);
 	if (verbose) {
 	    printf("RPAR1[%d] : %le.\n", i, RPAR1[i]);
@@ -277,7 +281,7 @@ static inline int rtModifyRParam(int i, double *param)
 
 static inline int rtModifyIParam(int i, int param)
 {
-    if (i >= 0 && i < NIPAR1) {
+    if (i >= 0 && i < NTOTIPAR1) {
 	IPAR1[i] = param;
 	if (verbose) {
 	    printf("IPAR1[%d] : %d.\n", i, IPAR1[i]);
@@ -287,98 +291,77 @@ static inline int rtModifyIParam(int i, int param)
     return -1;
 }
 
-static inline int rtModifyUParam(int i, double param)
-{
-  int strindex, parindex;
- 
-    if (i >= 0 && i < NUPAR1) {
-      strindex=i / 5;
-      parindex=i%5;
-      if(strindex<N_SENS) {
-	inpDevStr[strindex].dParam[parindex]=param;
-	if (verbose) {
-	  printf("%s [inp port %d] -> p%d : %le.\n", inpDevStr[strindex].IOName,
-		 strindex,
-		 parindex,
-		 inpDevStr[strindex].dParam[parindex]);
-	}
-	return 0;
-      }
-      else{
-	strindex-=N_SENS;
-	outDevStr[strindex].dParam[parindex]=param;
-	if (verbose) {
-	  printf("%s [inp port %d] -> p%d : %le.\n", outDevStr[strindex].IOName,
-		 strindex,
-		 parindex,
-		 outDevStr[strindex].dParam[parindex]);
-	}
-	return 0;
-
-      }
-    }
-    return -1;
-}
-
 static void *rt_BaseRate(void *args)
 {
-    RTIME now, t0;
-    char name[7] = "BRT";
+    char name[7];
+    int i;
+    static RTIME t0;
+    int nevprt = 1;
 
-    strncat(name, TargetMbxID, 3);
+    for(i = 0; i < MAX_NTARGETS; i++) {
+      sprintf(name,"BRT%d",i);
+      if (!rt_get_adr(nam2num(name))) break;
+    }
     if (!(rt_BaseRateTask = rt_task_init_schmod(nam2num(name), *((int *)args), 0, 0, SCHED_FIFO, CpuMap))) {
-	printf("Cannot init rt_BaseRateTask.\n");
+	fprintf(stderr,"Cannot init rt_BaseRateTask.\n");
 	return (void *)1;
     }
+
+    sem_post(&err_sem);
+
     iopl(3);
     rt_task_use_fpu(rt_BaseRateTask, 1);
-    NAME(MODEL,_init)(z, &TIME, RPAR1, &NRPAR1, IPAR1, &NIPAR1);
+    NAME(MODEL,_init_blk)();
     grow_and_lock_stack(stackinc);
     if (UseHRT) {
 	rt_make_hard_real_time();
     }
     rt_send(rt_MainTask, 0);	
     rt_task_suspend(rt_BaseRateTask);
-    now = rt_get_time();
-    t0 = count2nano(now) + rt_BasePeriod;
-    rt_task_make_periodic(rt_BaseRateTask, now + nano2count(rt_BasePeriod), nano2count(rt_BasePeriod));
+    t0 = rt_get_cpu_time_ns();
+    rt_task_make_periodic(rt_BaseRateTask, rt_get_time() + rt_BaseRateTick, rt_BaseRateTick);
     while (!endBaseRate) {
 	WaitTimingEvent(TimingEventArg);
 	if (endBaseRate) break;
+
 	TIME = (rt_get_cpu_time_ns() - t0)*1.0E-9;
-	set_nevprt(1);
-	NAME(MODEL,main1)(z, &TIME, RPAR1, &NRPAR1, IPAR1, &NIPAR1);
-	NAME(MODEL,main2)(z, &TIME, RPAR1, &NRPAR1, IPAR1, &NIPAR1);
+	set_nevprt(nevprt);
+	NAME(MODEL,main1)(NAME(block_,MODEL),z, &TIME);
+	NAME(MODEL,main2)(NAME(block_,MODEL),z, &TIME);
     }
-    rt_make_soft_real_time();
-    NAME(MODEL,_end)(z, &TIME, RPAR1, &NRPAR1, IPAR1, &NIPAR1);
+    if (UseHRT) {
+      rt_make_soft_real_time();
+    }
+    NAME(MODEL,_end)(NAME(block_,MODEL),z, &TIME);
     rt_task_delete(rt_BaseRateTask);
     return 0;
 }
 
 static inline void modify_any_param(int index, double param)
 {
-    if (index < NRPAR1) {
+    if (index < NTOTRPAR1) {
 	rtModifyRParam(index, &param);
-	NAME(MODEL,_const_update)(z, &TIME, RPAR1, &NRPAR1, IPAR1, &NIPAR1);
-    } else if (index < (NRPAR1 + NIPAR1)) {
-	rtModifyIParam(index -= NRPAR1, (int)param);
     } else {
-	rtModifyUParam(index -= (NRPAR1 + NIPAR1), param);
-        NAME(MODEL,_upar_update)(index/5);
+	rtModifyIParam(index -= NTOTRPAR1, (int)param);
     }
 }
 
 static void *rt_HostInterface(void *args)
 {
-    RT_TASK *task;
-    unsigned int Request;
-    int Reply, len;
+  RT_TASK *task;
+  unsigned int Request;
+  int Reply, len;
+  int totRPar = 0;
+  int totIPar = 0;
+  int i;
+
     if (!(rt_HostInterfaceTask = rt_task_init_schmod(nam2num(HostInterfaceTaskName), rt_HostInterfaceTaskPriority, 0, 0, SCHED_RR, 0xFF))) {
-	printf("Cannot init rt_HostInterfaceTask.\n");
+	fprintf(stderr,"Cannot init rt_HostInterfaceTask.\n");
 	return (void *)1;
     }
-    NUPAR1=5*(N_ACT+N_SENS);
+
+    sem_post(&err_sem);
+
     while (!endInterface) {
 	task = rt_receive(0, &Request);
 	if (endInterface) break;
@@ -388,45 +371,39 @@ static void *rt_HostInterface(void *args)
 		rtTargetParamInfo rtParam;
 		float samplingTime;
 
-		strncpyz(rtParam.modelName, MODELNAME, MAX_NAME_SIZE);
+		strncpyz(rtParam.modelName, STR(MODEL), MAX_NAME_SIZE);
 		rtParam.dataType  = SS_DOUBLE;
 		rtParam.dataClass = rt_SCALAR;
-		rtParam.nRows = 1;
+   	        rtParam.nRows = 1;
 		rtParam.nCols = 1;
-		rt_return(task, (isRunning << 16) | ((NRPAR1 + NIPAR1 + NUPAR1) & 0xFFFF));
-		strncpyz(rtParam.blockName, MODELNAME"/REAL PARAMS", MAX_NAME_SIZE);
+		
+		rt_return(task, (isRunning << 16) | ((NTOTRPAR1 + NTOTIPAR1) & 0xFFFF));
+		rt_receivex(task, &Request, 1, &len);
+	        rt_returnx(task, &rtParam, sizeof(rtParam));
+
 		for (i = 0; i < NRPAR1; i++) {
+		  sprintf(rtParam.blockName,"%s/%s",rtParam.modelName,strRPAR1[i]);
+		  if(i==0) Idx = 0;
+		  else     Idx += lenRPAR1[i-1];
+		  for(j=0;j<lenRPAR1[i];j++) {
 		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName, "RPAR1[%d]", i);
-		    rtParam.dataValue[0] = RPAR1[i];
+		    sprintf(rtParam.paramName, "Value[%d]",j);
+		    rtParam.dataValue[0] = RPAR1[Idx+j];
 		    rt_returnx(task, &rtParam, sizeof(rtParam));
+		  }
 		}
-		strncpyz(rtParam.blockName, MODELNAME"/INTEGER PARAMS", MAX_NAME_SIZE);
 		for (i = 0; i < NIPAR1; i++) {
+		  sprintf(rtParam.blockName,"%s/%s",rtParam.modelName,strIPAR1[i]);
+		  if(i==0) Idx = 0;
+		  else     Idx += lenIPAR1[i-1];
+		  for(j=0;j<lenIPAR1[i];j++) {
 		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName, "IPAR1[%d]", i);
-		    rtParam.dataValue[0] = IPAR1[i];
+		    sprintf(rtParam.paramName, "Value[%d]",j);
+		    rtParam.dataValue[0] = IPAR1[Idx+j];
 		    rt_returnx(task, &rtParam, sizeof(rtParam));
+		  }
 		}
 
-		for (i = 0; i < N_SENS; i++) {
-		  sprintf(rtParam.blockName,"%s/%s [inp port %d]",rtParam.modelName,inpDevStr[i].IOName,i);
-		  for(j=0;j<5;j++) {
-		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName,"p%d",j+1);
-		    rtParam.dataValue[0] = inpDevStr[i].dParam[j];
-		    rt_returnx(task, &rtParam, sizeof(rtParam));
-		  }
-		}
-		for (i = 0; i < N_ACT; i++) {
-		  sprintf(rtParam.blockName,"%s/%s [out port %d]",rtParam.modelName,outDevStr[i].IOName,i);
-		  for(j=0;j<5;j++) {
-		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName,"p%d",j+1);
-		    rtParam.dataValue[0] = outDevStr[i].dParam[j];
-		    rt_returnx(task, &rtParam, sizeof(rtParam));
-		  }
-		}
 		while (1) {
 		    rt_receivex(task, &Idx, sizeof(int), &len);
 		    if (Idx < 0) {
@@ -437,7 +414,7 @@ static void *rt_HostInterface(void *args)
 			rt_receivex(task, &Idx, sizeof(int), &len);
 			rt_returnx(task, rtaiScope[Idx].name, MAX_NAME_SIZE);
 			rt_receivex(task, &Idx, sizeof(int), &len);
-			samplingTime = rt_BasePeriod*1.0E-9;
+			samplingTime = get_tsamp();
 			rt_returnx(task, &samplingTime, sizeof(float));
 		    }
 		}
@@ -453,7 +430,7 @@ static void *rt_HostInterface(void *args)
 			rt_receivex(task, &Idx, sizeof(int), &len);
 			rt_returnx(task, rtaiLogData[Idx].name, MAX_NAME_SIZE);
 			rt_receivex(task, &Idx, sizeof(int), &len);
-			samplingTime = rt_BasePeriod*1.0E-9;
+			samplingTime = get_tsamp();
 			rt_returnx(task, &samplingTime, sizeof(float));
 		    }
 		}
@@ -467,7 +444,7 @@ static void *rt_HostInterface(void *args)
 			rt_receivex(task, &Idx, sizeof(int), &len);
 			rt_returnx(task, rtaiLed[Idx].name, MAX_NAME_SIZE);
 			rt_receivex(task, &Idx, sizeof(int), &len);
-			samplingTime = rt_BasePeriod*1.0E-9;
+			samplingTime = get_tsamp();
 			rt_returnx(task, &samplingTime, sizeof(float));
 		    }
 		}
@@ -479,7 +456,7 @@ static void *rt_HostInterface(void *args)
 		    } else {
 			rt_returnx(task, rtaiMeter[Idx].name, MAX_NAME_SIZE);
 			rt_receivex(task, &Idx, sizeof(int), &len);
-			samplingTime = rt_BasePeriod*1.0E-9;
+			samplingTime = get_tsamp();
 			rt_returnx(task, &samplingTime, sizeof(float));
 		    }
 		}
@@ -508,51 +485,44 @@ static void *rt_HostInterface(void *args)
 		Reply = 1;
 		rt_returnx(task, &Reply, sizeof(int));
 		rt_receivex(task, &mat_ind, sizeof(int), &len);
+
 		modify_any_param(index, param);
 		rt_returnx(task, &Reply, sizeof(int));
 		break;			
 	    }
 	    case 'g': {
-		int i,j;
+		int i, j, Idx;
 		rtTargetParamInfo rtParam;
 
 		rtParam.dataType  = SS_DOUBLE;
 		rtParam.dataClass = rt_SCALAR;
-		rtParam.nRows = 1;
+   	        rtParam.nRows = 1;
 		rtParam.nCols = 1;
 		rt_return(task, isRunning);
-		strncpyz(rtParam.blockName, MODELNAME"/REAL PARAMS", MAX_NAME_SIZE);
+
 		for (i = 0; i < NRPAR1; i++) {
+		  sprintf(rtParam.blockName,"%s/%s",rtParam.modelName,strRPAR1[i]);
+		  if(i==0) Idx = 0;
+		  else     Idx += lenRPAR1[i-1];
+		  for(j=0;j<lenRPAR1[i];j++) {
 		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName, "RPAR1[%d]", i);
-		    rtParam.dataValue[0] = RPAR1[i];
+		    sprintf(rtParam.paramName, "Value[%d]",j);
+		    rtParam.dataValue[0] = RPAR1[Idx+j];
 		    rt_returnx(task, &rtParam, sizeof(rtParam));
+		  }
 		}
-		strncpyz(rtParam.blockName, MODELNAME"/INTEGER PARAMS", MAX_NAME_SIZE);
 		for (i = 0; i < NIPAR1; i++) {
+		  sprintf(rtParam.blockName,"%s/%s",rtParam.modelName,strIPAR1[i]);
+		  if(i==0) Idx = 0;
+		  else     Idx += lenIPAR1[i-1];
+		  for(j=0;j<lenIPAR1[i];j++) {
 		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName, "IPAR1[%d]", i);
-		    rtParam.dataValue[0] = IPAR1[i];
-		    rt_returnx(task, &rtParam, sizeof(rtParam));
-		}
-		for (i = 0; i < N_SENS; i++) {
-		  sprintf(rtParam.blockName,"%s/%s [inp port %d]",rtParam.modelName,inpDevStr[i].IOName,i);
-		  for(j=0;j<5;j++) {
-		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName,"p%d",j+1);
-		    rtParam.dataValue[0] = inpDevStr[i].dParam[j];
+		    sprintf(rtParam.paramName, "Value[%d]",j);
+		    rtParam.dataValue[j] = IPAR1[Idx+j];
 		    rt_returnx(task, &rtParam, sizeof(rtParam));
 		  }
 		}
-		for (i = 0; i < N_ACT; i++) {
-		  sprintf(rtParam.blockName,"%s/%s [out port %d]",rtParam.modelName,outDevStr[i].IOName,i);
-		  for(j=0;j<5;j++) {
-		    rt_receivex(task, &Request, 1, &len);
-		    sprintf(rtParam.paramName,"p%d",j+1);
-		    rtParam.dataValue[0] = outDevStr[i].dParam[j];
-		    rt_returnx(task, &rtParam, sizeof(rtParam));
-		  }
-		}
+
 		break;
 	    }
 	    case 'd': {
@@ -600,32 +570,64 @@ static void *rt_HostInterface(void *args)
 
 static int rt_Main(int priority)
 {
-    SEM *hard_timers_cnt;
-    char name[7] = "MNT";
+  SEM *hard_timers_cnt;
+  char name[7];
+  unsigned int rt_BaseTaskPeriod;
+  struct timespec err_timeout;
+  int i;
 
     rt_allow_nonroot_hrt();
 
-    if(rt_BasePeriod==0) rt_BasePeriod = (RTIME) (1e9*get_tsamp());
+    for(i = 0; i < MAX_NTARGETS; i++) {
+      sprintf(name,"MNT%d",i);
+      if (!rt_get_adr(nam2num(name))) break;
+    }
 
-    strncat(name, TargetMbxID, 3);
     if (!(rt_MainTask = rt_task_init_schmod(nam2num(name), rt_MainTaskPriority, 0, 0, SCHED_RR, 0xFF))) {
-	printf("Cannot init rt_MainTask.\n");
+	fprintf(stderr,"Cannot init rt_MainTask.\n");
 	return 1;
     }
+    sem_init(&err_sem, 0, 0);
+
     printf("TARGET STARTS.\n");
     pthread_create(&rt_HostInterfaceThread, NULL, rt_HostInterface, NULL);
+    err_timeout.tv_sec = (long int)(time(NULL)) + 1;
+    err_timeout.tv_nsec = 0;
+    if ((sem_timedwait(&err_sem, &err_timeout)) != 0) {
+      fprintf(stderr, "Target is terminated.\n");
+      goto finish;
+    }
+
     pthread_create(&rt_BaseRateThread, NULL, rt_BaseRate, &priority);
+    err_timeout.tv_sec = (long int)(time(NULL)) + 1;
+    err_timeout.tv_nsec = 0;
+    if ((sem_timedwait(&err_sem, &err_timeout)) != 0) {
+      endInterface = 1;
+      rt_send(rt_HostInterfaceTask, 0);
+      pthread_join(rt_HostInterfaceThread, NULL);
+      fprintf(stderr, "Target is terminated.\n");
+      goto finish;
+    }
+
+    rt_BaseTaskPeriod = (unsigned int) (1e9*get_tsamp());
     if (InternTimer) {
 	WaitTimingEvent = (void *)rt_task_wait_period;
 	if (!(hard_timers_cnt = rt_get_adr(nam2num("HTMRCN")))) {
-	    if (!ClockTick) {
-		rt_set_oneshot_mode();
-	    }
-	    start_rt_timer(nano2count(ClockTick));
-	    hard_timers_cnt = rt_sem_init(nam2num("HTMRCN"), 0);
+	  if (!ClockTick) {
+	    rt_set_oneshot_mode();
+	    start_rt_timer(0);
+	    rt_BaseRateTick = nano2count(rt_BaseTaskPeriod);
+	  }
+	  else {
+	    rt_set_periodic_mode();
+	    rt_BaseRateTick = start_rt_timer(nano2count(rt_BaseTaskPeriod));
+	  }
+	  hard_timers_cnt = rt_sem_init(nam2num("HTMRCN"), 0);
 	} 
 	else {
-	    rt_sem_signal(hard_timers_cnt);
+	  rt_BaseRateTick = nano2count(rt_BaseTaskPeriod);
+	  hard_timers_cnt = rt_get_adr(nam2num("HTMRCN"));
+	  rt_sem_signal(hard_timers_cnt);
 	}
     }
     else {
@@ -634,9 +636,9 @@ static int rt_Main(int priority)
     }
 
     if (verbose) {
-	printf("Model : %s .\n", MODELNAME);
+	printf("Model : %s .\n", STR(MODEL));
 	printf("Executes on CPU map : %x.\n", CpuMap);
-	printf("Sampling time : %e (s).\n", rt_BasePeriod*1.0E-9);
+	printf("Sampling time : %e (s).\n", get_tsamp());
     }
     {
 	int msg;
@@ -671,10 +673,12 @@ static int rt_Main(int priority)
     pthread_join(rt_HostInterfaceThread, NULL);
     if (InternTimer) {
 	if (!rt_sem_wait_if(hard_timers_cnt)) {
-//			stop_rt_timer();
 	    rt_sem_delete(hard_timers_cnt);
 	}
     }
+
+ finish:
+    sem_destroy(&err_sem);
     rt_task_delete(rt_MainTask);
     printf("TARGET ENDS.\n");
     return 0;
@@ -687,7 +691,6 @@ struct option options[] = {
     { "wait",       0, 0, 'w' },
     { "priority",   1, 0, 'p' },
     { "finaltime",  1, 0, 'f' },
-    { "samptime",   1, 0, 'r' },
     { "name",       1, 0, 'n' },
     { "idscope",    1, 0, 'i' },
     { "idlog",      1, 0, 'l' },
@@ -720,8 +723,6 @@ void print_usage(void)
 	 "      set the priority at which the RT-model's highest priority task will run (default 0)\n"
 	 "  -f <finaltime>, --finaltime <finaltime>\n"
 	 "      set the final time (default infinite)\n"
-	 "  -r <sampling time>, --samptime <sampling time>\n"
-	 "      set the sampling time (default Linux tick 1.0/HZ (s))\n"
 	 "  -n <ifname>, --name <ifname>\n"
 	 "      set the name of the host interface task (default IFTASK)\n"
 	 "  -i <scopeid>, --idscope <scopeid>\n"
@@ -749,7 +750,14 @@ void print_usage(void)
 
 static void endme(int dummy)
 {
-    endex = 1;
+  signal(SIGINT, endme);
+  signal(SIGTERM, endme);
+  endex = 1;
+}
+
+void exit_on_error()
+{
+  endme(0);
 }
 
 int main(int argc, char *argv[])
@@ -761,7 +769,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, endme);
 
     do {
-	c = getopt_long(argc, argv, "euvVswop:f:r:m:n:i:l:t:d:y:c:", options, NULL);
+	c = getopt_long(argc, argv, "euvVswop:f:m:n:i:l:t:d:y:c:", options, NULL);
 	switch (c) {
 	    case 'c':
 		if ((CpuMap = atoi(optarg)) <= 0) {
@@ -810,12 +818,6 @@ int main(int argc, char *argv[])
 		    donotrun = 1;
 		}
 		break;
-	    case 'r':
-		if ((rt_BasePeriod = atoi(optarg)*1000) <= 0) {
-		    fprintf(stderr, "-> Invalid control task period.\n");
-		    donotrun = 1;
-		}
-		break;
 	    case 's':
 		UseHRT = 0;
 		break;
@@ -826,7 +828,7 @@ int main(int argc, char *argv[])
 		print_usage();
 		break;
 	    case 'V':
-		fprintf(stderr, "Version %s.\n", VERSION);
+		fprintf(stderr, "Version %s.\n", RTAILAB_VERSION);
 		return 0;
 		break;
 	    case 'v':

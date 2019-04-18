@@ -28,6 +28,7 @@
 #include <rtai_sem.h>
 #include <rtai_rwl.h>
 #include <rtai_spl.h>
+#include <rtai_scb.h>
 #include <rtai_mbx.h>
 #include <rtai_msg.h>
 #include <rtai_tbx.h>
@@ -39,11 +40,11 @@
 #include <rtai_netrpc.h>
 #include <rtai_shm.h>
 #include <rtai_usi.h>
-#include <rtai_math.h>
 
 #ifdef __KERNEL__
 
 #include <linux/module.h>
+#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/version.h>
 #include <linux/errno.h>
@@ -70,11 +71,10 @@ extern int rt_smp_oneshot_timer[];
 #define sched_mem_end()
 #else  /* CONFIG_RTAI_MALLOC_BUILTIN */
 #define sched_mem_init() \
-	{ if(rt_mem_init() != 0) { \
-                printk("Failed to allocate memory for task stack(s)\n"); \
+	{ if(__rtai_heap_init() != 0) { \
                 return(-ENOMEM); \
         } }
-#define sched_mem_end()			rt_mem_end()
+#define sched_mem_end()		__rtai_heap_exit()
 #endif /* !CONFIG_RTAI_MALLOC_BUILTIN */
 #define call_exit_handlers(task)	        __call_exit_handlers(task)
 #define set_exit_handler(task, fun, arg1, arg2)	__set_exit_handler(task, fun, arg1, arg2)
@@ -105,6 +105,9 @@ extern int rt_smp_oneshot_timer[];
 #define ASSIGN_RT_CURRENT rt_current = rt_smp_current[cpuid = hard_cpu_id()]
 #define RT_CURRENT rt_smp_current[hard_cpu_id()]
 
+#define MAX_LINUX_RTPRIO  99
+#define MIN_LINUX_RTPRIO   1
+
 #ifdef CONFIG_RTAI_SCHED_ISR_LOCK
 void rtai_handle_isched_lock(int nesting);
 #endif /* CONFIG_RTAI_SCHED_ISR_LOCK */
@@ -123,21 +126,12 @@ void rtai_handle_isched_lock(int nesting);
 
 extern unsigned long sqilter;
 
-#define SCHED_IPI     RTAI_3_IPI
-#define SCHED_VECTOR  RTAI_3_VECTOR
-
 static inline void send_sched_ipi(unsigned long dest)
 {
-#ifdef CONFIG_RTAI_ADEOS
         unsigned long flags;
-	arti_hw_lock(flags);
-#endif /* CONFIG_RTAI_ADEOS */
-	apic_wait_icr_idle();
-	apic_write_around(APIC_ICR2, SET_APIC_DEST_FIELD(dest));
-	apic_write_around(APIC_ICR, APIC_DEST_LOGICAL | SCHED_VECTOR);
-#ifdef CONFIG_RTAI_ADEOS
-	arti_hw_unlock(flags);
-#endif /* CONFIG_RTAI_ADEOS */
+	rtai_hw_lock(flags);
+	_send_sched_ipi(dest);
+	rtai_hw_unlock(flags);
 }
 
 #define RT_SCHEDULE_MAP(schedmap) \
@@ -213,7 +207,7 @@ extern struct klist_t wake_up_srq;
 static inline void enq_ready_task(RT_TASK *ready_task)
 {
 	RT_TASK *task;
-	if (ready_task->is_hard || (ready_task->lnxtsk)->state != TASK_HARDREALTIME) {
+	if (ready_task->is_hard) {
 #ifdef CONFIG_SMP
 		task = rt_smp_linux_task[ready_task->runnable_on_cpus & sqilter].rnext;
 #else
@@ -225,6 +219,7 @@ static inline void enq_ready_task(RT_TASK *ready_task)
 		task->rprev = (ready_task->rprev = task->rprev)->rnext = ready_task;
 		ready_task->rnext = task;
 	} else {
+		ready_task->state |= RT_SCHED_SFTRDY;
 		wake_up_srq.task[wake_up_srq.in] = ready_task->lnxtsk;
 		wake_up_srq.in = (wake_up_srq.in + 1) & (MAX_WAKEUP_SRQ - 1);
 		rt_pend_linux_srq(wake_up_srq.srq);
@@ -261,9 +256,7 @@ static inline void rem_ready_task(RT_TASK *task)
 {
 	if (task->state == RT_SCHED_READY) {
 		if (!task->is_hard) {
-			struct task_struct *proc;
-			(proc = task->lnxtsk)->state = TASK_HARDREALTIME;
-			proc->rt_priority = (2*BASE_SOFT_PRIORITY - 1) - task->priority;
+			(task->lnxtsk)->state = TASK_HARDREALTIME;
 		}
 		(task->rprev)->rnext = task->rnext;
 		(task->rnext)->rprev = task->rprev;
@@ -273,9 +266,7 @@ static inline void rem_ready_task(RT_TASK *task)
 static inline void rem_ready_current(RT_TASK *rt_current)
 {
 	if (!rt_current->is_hard) {
-		struct task_struct *proc;
-		(proc = rt_current->lnxtsk)->state = TASK_HARDREALTIME;
-		proc->rt_priority = (2*BASE_SOFT_PRIORITY - 1) - rt_current->priority;
+		(rt_current->lnxtsk)->state = TASK_HARDREALTIME;
 	}
 	(rt_current->rprev)->rnext = rt_current->rnext;
 	(rt_current->rnext)->rprev = rt_current->rprev;
@@ -284,9 +275,6 @@ static inline void rem_ready_current(RT_TASK *rt_current)
 static inline void enq_timed_task(RT_TASK *timed_task)
 {
 	RT_TASK *task;
-	if (!timed_task->is_hard) {
-		(timed_task->lnxtsk)->state = TASK_HARDREALTIME;
-	}
 #ifdef CONFIG_SMP
 	task = rt_smp_linux_task[timed_task->runnable_on_cpus & sqilter].tnext;
 #else
@@ -334,6 +322,8 @@ static inline void rem_timed_task(RT_TASK *task)
 	}
 }
 
+#define get_time() rt_get_time()
+#if 0
 static inline RTIME get_time(void)
 {
 #ifdef CONFIG_SMP
@@ -347,6 +337,7 @@ static inline RTIME get_time(void)
 	return oneshot_timer ? rdtsc(): rt_times.tick_time;
 #endif
 }
+#endif
 
 static inline void enqueue_blocked(RT_TASK *task, QUEUE *queue, int qtype)
 {
@@ -402,6 +393,20 @@ static __volatile__ inline unsigned long pass_prio(RT_TASK *to, RT_TASK *from)
 #endif
 }
 
+static inline RT_TASK *_rt_whoami(void)
+{
+#ifdef CONFIG_SMP
+        RT_TASK *rt_current;
+        unsigned long flags;
+        flags = rt_global_save_flags_and_cli();
+        rt_current = RT_CURRENT;
+        rt_global_restore_flags(flags);
+        return rt_current;
+#else
+        return rt_smp_current[0];
+#endif
+}
+
 static inline void __call_exit_handlers(RT_TASK *task)
 {
 	XHDL *pt, *tmp;
@@ -431,49 +436,47 @@ static inline XHDL *__set_exit_handler(RT_TASK *task, void (*fun) (void *, int),
 	return (task->ExitHook = p);
 }
 
-static inline int rtai_init_features (void) {
+static inline int rtai_init_features (void)
 
+{
 #ifdef CONFIG_RTAI_LEDS_BUILTIN
-	LEDS_INIT_MODULE();
+    __rtai_leds_init();
 #endif /* CONFIG_RTAI_LEDS_BUILTIN */
 #ifdef CONFIG_RTAI_SEM_BUILTIN
-	SEM_INIT_MODULE();
+    __rtai_sem_init();
 #endif /* CONFIG_RTAI_SEM_BUILTIN */
 #ifdef CONFIG_RTAI_MSG_BUILTIN
-	MSG_INIT_MODULE();
+    __rtai_msg_init();
 #endif /* CONFIG_RTAI_MSG_BUILTIN */
 #ifdef CONFIG_RTAI_MBX_BUILTIN
-	MBX_INIT_MODULE();
+    __rtai_mbx_init();
 #endif /* CONFIG_RTAI_MBX_BUILTIN */
 #ifdef CONFIG_RTAI_TBX_BUILTIN
-	TBX_INIT_MODULE();
+    __rtai_tbx_init();
 #endif /* CONFIG_RTAI_TBX_BUILTIN */
 #ifdef CONFIG_RTAI_MQ_BUILTIN
-	MQ_INIT_MODULE();
+    __rtai_mq_init();
 #endif /* CONFIG_RTAI_MQ_BUILTIN */
 #ifdef CONFIG_RTAI_BITS_BUILTIN
-	BITS_INIT_MODULE();
+    __rtai_bits_init();
 #endif /* CONFIG_RTAI_BITS_BUILTIN */
-#ifdef CONFIG_RTAI_WD_BUILTIN
-	WD_INIT_MODULE();
-#endif /* CONFIG_RTAI_WD_BUILTIN */
 #ifdef CONFIG_RTAI_TASKLETS_BUILTIN
-	TASKLETS_INIT_MODULE();
+    __rtai_tasklets_init();
 #endif /* CONFIG_RTAI_TASKLETS_BUILTIN */
 #ifdef CONFIG_RTAI_FIFOS_BUILTIN
-	FIFOS_INIT_MODULE();
+    __rtai_fifos_init();
 #endif /* CONFIG_RTAI_FIFOS_BUILTIN */
 #ifdef CONFIG_RTAI_NETRPC_BUILTIN
-	NETRPC_INIT_MODULE();
+    __rtai_netrpc_init();
 #endif /* CONFIG_RTAI_NETRPC_BUILTIN */
 #ifdef CONFIG_RTAI_SHM_BUILTIN
-	SHM_INIT_MODULE();
+    __rtai_shm_init();
 #endif /* CONFIG_RTAI_SHM_BUILTIN */
 #ifdef CONFIG_RTAI_USI_BUILTIN
-	USI_INIT_MODULE();
+    __rtai_usi_init();
 #endif /* CONFIG_RTAI_USI_BUILTIN */
 #ifdef CONFIG_RTAI_MATH_BUILTIN
-	MATH_INIT_MODULE();
+    __rtai_math_init();
 #endif /* CONFIG_RTAI_MATH_BUILTIN */
 
 	return 0;
@@ -482,48 +485,64 @@ static inline int rtai_init_features (void) {
 static inline void rtai_cleanup_features (void) {
 
 #ifdef CONFIG_RTAI_MATH_BUILTIN
-	MATH_CLEANUP_MODULE();
+    __rtai_math_exit();
 #endif /* CONFIG_RTAI_MATH_BUILTIN */
 #ifdef CONFIG_RTAI_USI_BUILTIN
-	USI_CLEANUP_MODULE();
+    __rtai_usi_exit();
 #endif /* CONFIG_RTAI_USI_BUILTIN */
 #ifdef CONFIG_RTAI_SHM_BUILTIN
-	SHM_CLEANUP_MODULE();
+    __rtai_shm_exit();
 #endif /* CONFIG_RTAI_SHM_BUILTIN */
 #ifdef CONFIG_RTAI_NETRPC_BUILTIN
-	NETRPC_CLEANUP_MODULE();
+    __rtai_netrpc_exit();
 #endif /* CONFIG_RTAI_NETRPC_BUILTIN */
 #ifdef CONFIG_RTAI_FIFOS_BUILTIN
-	FIFOS_CLEANUP_MODULE();
+    __rtai_fifos_exit();
 #endif /* CONFIG_RTAI_FIFOS_BUILTIN */
 #ifdef CONFIG_RTAI_TASKLETS_BUILTIN
-	TASKLETS_CLEANUP_MODULE();
+    __rtai_tasklets_exit();
 #endif /* CONFIG_RTAI_TASKLETS_BUILTIN */
-#ifdef CONFIG_RTAI_WD_BUILTIN
-	WD_CLEANUP_MODULE();
-#endif /* CONFIG_RTAI_WD_BUILTIN */
 #ifdef CONFIG_RTAI_BITS_BUILTIN
-	BITS_CLEANUP_MODULE();
+    __rtai_bits_exit();
 #endif /* CONFIG_RTAI_BITS_BUILTIN */
 #ifdef CONFIG_RTAI_MQ_BUILTIN
-	MQ_CLEANUP_MODULE();
+    __rtai_mq_exit();
 #endif /* CONFIG_RTAI_MQ_BUILTIN */
 #ifdef CONFIG_RTAI_TBX_BUILTIN
-	TBX_CLEANUP_MODULE();
+    __rtai_tbx_exit();
 #endif /* CONFIG_RTAI_TBX_BUILTIN */
 #ifdef CONFIG_RTAI_MBX_BUILTIN
-	MBX_CLEANUP_MODULE();
+    __rtai_mbx_exit();
 #endif /* CONFIG_RTAI_MBX_BUILTIN */
 #ifdef CONFIG_RTAI_MSG_BUILTIN
-	MSG_CLEANUP_MODULE();
+    __rtai_msg_exit();
 #endif /* CONFIG_RTAI_MSG_BUILTIN */
 #ifdef CONFIG_RTAI_SEM_BUILTIN
-	SEM_CLEANUP_MODULE();
+    __rtai_sem_exit();
 #endif /* CONFIG_RTAI_SEM_BUILTIN */
 #ifdef CONFIG_RTAI_LEDS_BUILTIN
-	LEDS_CLEANUP_MODULE();
+    __rtai_leds_exit();
 #endif /* CONFIG_RTAI_LEDS_BUILTIN */
 }
+
+int rt_check_current_stack(void);
+
+int rt_kthread_init(RT_TASK *task,
+		    void (*rt_thread)(int),
+		    int data,
+		    int stack_size,
+		    int priority,
+		    int uses_fpu,
+		    void(*signal)(void));
+
+int rt_kthread_init_cpuid(RT_TASK *task,
+			  void (*rt_thread)(int),
+			  int data,
+			  int stack_size,
+			  int priority,
+			  int uses_fpu,
+			  void(*signal)(void),
+			  unsigned int cpuid);
 
 #endif /* __KERNEL__ */
 

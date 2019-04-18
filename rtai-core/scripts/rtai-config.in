@@ -15,17 +15,21 @@ RTAI_CXX="@CXX@"
 RTAI_TARGET_ARCH="@RTAI_TARGET_ARCH@"
 RTAI_TARGET_SUBARCH="@RTAI_TARGET_SUBARCH@"
 RTAI_CONFIG="${staging}${pkgdatadir}/config-rtai-${RTAI_VERSION}"
-RTAI_LINUX_DIR="@RTAI_LINUX_DIR@"
-RTAI_KERNEL_CFLAGS="-I. @RTAI_COMPAT_CPPFLAGS@ -I${staging}${includedir} @RTAI_KMOD_CFLAGS@ @RTAI_FP_CFLAGS@"
-RTAI_KERNEL_CXXFLAGS="-I. @RTAI_COMPAT_CPPFLAGS@ -I${staging}${includedir} @RTAI_KMOD_CXXFLAGS@ @RTAI_FP_CFLAGS@"
+RTAI_LINUX_DIR="@CONFIG_RTAI_LINUXDIR@"
+RTAI_LINUX_VERSION="@RTAI_LINUX_VERSION@"
+RTAI_KERNEL_CFLAGS="-I. @RTAI_COMPAT_CPPFLAGS@ -I${staging}${includedir} @RTAI_KMOD_APP_CFLAGS@ @RTAI_FP_CFLAGS@"
+RTAI_KERNEL_CXXFLAGS="-I. @RTAI_COMPAT_CPPFLAGS@ -I${staging}${includedir} @RTAI_KMOD_APP_CXXFLAGS@ @RTAI_FP_CFLAGS@"
 RTAI_MODULE_DIR="${staging}@RTAI_MODULE_DIR@"
-RTAI_LXRT_CFLAGS="-I. @RTAI_COMPAT_CPPFLAGS@ -I${staging}${includedir} @RTAI_USER_CFLAGS@"
+RTAI_LXRT_CFLAGS="-I. @RTAI_COMPAT_CPPFLAGS@ -I${staging}${includedir} @RTAI_USER_APP_CFLAGS@"
 RTAI_LXRT_LDFLAGS="-L${staging}${libdir} @RTAI_LXRT_LDADD@ -lpthread"
-RTAI_FUSION_CFLAGS="-I. -I${staging}${includedir} @RTAI_USER_CFLAGS@"
+RTAI_FUSION_CFLAGS="-I. -I${staging}${includedir} @RTAI_USER_APP_CFLAGS@"
 RTAI_FUSION_LDFLAGS="-L${staging}${libdir} -lfusion -lpthread"
-RTAI_VM_CFLAGS="-I. -I${staging}${includedir}/xenomai/vm -I${staging}${includedir} @RTAI_USER_CFLAGS@"
+RTAI_VM_CFLAGS="-I. -I${staging}${includedir}/xenomai/vm -I${staging}${includedir} @RTAI_USER_APP_CFLAGS@"
 RTAI_VM_LDFLAGS="-L${staging}${libdir} -lxenomai -lfusion -lpthread"
 RTAI_LIBRARY_DIR="${staging}${libdir}"
+COMEDI_DIR="@COMEDI_DIR@"
+EFLTK_DIR="@EFLTK_DIR@"
+RTAI_MODULE_EXT="@RTAI_MODULE_EXT@"
 
 unset prefix exec_prefix libdir datadir pkgdatadir includedir
 
@@ -44,6 +48,7 @@ Options :
         --config
         --module-cflags
         --module-cxxflags
+        --module-ext
         --lxrt-cflags
         --lxrt-ldflags
         --fusion-cflags
@@ -51,9 +56,13 @@ Options :
         --vm-cflags
         --vm-ldflags
         --linux-dir
+        --linux-version
         --module-dir
         --library-dir
+        --comedi-dir
+        --efltk-dir
 EOF
+    exit $1
 }
 
 if test $# -eq 0; then
@@ -86,6 +95,9 @@ while test $# -gt 0; do
         --mod*-cflags|--kernel-cflags)
             echo $RTAI_KERNEL_CFLAGS
             ;;
+        --mod*-ext)
+            echo $RTAI_MODULE_EXT
+            ;;
         --mod*-cxxflags|--kernel-cxxflags)
             echo $RTAI_KERNEL_CXXFLAGS
             ;;
@@ -115,6 +127,15 @@ while test $# -gt 0; do
             ;;
         --linux-dir|--linux)
             echo $RTAI_LINUX_DIR
+            ;;
+        --linux-ver*)
+            echo $RTAI_LINUX_VERSION
+            ;;
+        --comedi-dir)
+            echo $COMEDI_DIR
+            ;;
+        --efltk-dir)
+            echo $EFLTK_DIR
             ;;
         *)
          usage 1 1>&2

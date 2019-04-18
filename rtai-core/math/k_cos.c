@@ -50,7 +50,7 @@ static char rcsid[] = "$NetBSD: k_cos.c,v 1.8 1995/05/10 20:46:22 jtc Exp $";
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 static const double 

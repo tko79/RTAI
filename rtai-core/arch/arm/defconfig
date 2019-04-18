@@ -2,14 +2,19 @@
 # Automatically generated make config: don't edit
 #
 CONFIG_MODULES=y
-CONFIG_RTAI_VERSION="3.0 (kilauea)"
+CONFIG_RTAI_VERSION="3.1-test1 (vesuvio)"
 
 #
 # General
 #
 CONFIG_RTAI_INSTALLDIR="/usr/realtime"
 CONFIG_RTAI_LINUXDIR="/usr/src/linux"
-# CONFIG_RTAI_DOC is not set
+
+#
+# RTAI Documentation
+#
+# CONFIG_RTAI_DOX_DOC is not set
+# CONFIG_RTAI_DBX_DOC is not set
 # CONFIG_RTAI_COMPAT is not set
 # CONFIG_RTAI_EXTENDED is not set
 

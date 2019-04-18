@@ -54,8 +54,8 @@ static int __pthread_shadow_helper (struct task_struct *curr,
 				    pid_t syncpid,
 				    int *u_syncp)
 {
+    char name[XNOBJECT_NAME_LEN];
     xnthread_t *thread;
-    char name[32];
 
     if (__xn_reg_arg2(regs) &&
 	!__xn_access_ok(curr,VERIFY_WRITE,__xn_reg_arg2(regs),sizeof(thread)))
@@ -76,7 +76,8 @@ static int __pthread_shadow_helper (struct task_struct *curr,
 
 	__xn_copy_from_user(curr,name,(const char *)__xn_reg_arg1(regs),sizeof(name) - 1);
 	name[sizeof(name) - 1] = '\0';
-	strcpy(curr->comm,name);
+	strncpy(curr->comm,name,sizeof(curr->comm));
+	curr->comm[sizeof(curr->comm) - 1] = '\0';
 	}
     else
 	{
@@ -91,7 +92,7 @@ static int __pthread_shadow_helper (struct task_struct *curr,
 
     xnshadow_map(thread,
 		 name,
-		 curr->policy == SCHED_FIFO ? curr->rt_priority : 1,
+		 curr->policy == SCHED_FIFO ? curr->rt_priority : FUSION_LOW_PRI,
 		 syncpid,
 		 u_syncp,
 		 FUSION_SKIN_MAGIC,

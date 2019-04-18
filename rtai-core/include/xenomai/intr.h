@@ -53,14 +53,7 @@
 #define XN_ISR_SCHED_T   0x2
 #define XN_ISR_ENABLE    0x4
 
-/* Creation flags -- none currently defined */
-
 #define XNINTR_ATTACHED  0x2
-
-/* Error codes thrown by the interrupt management routines */
-#define XNINTR_ERRBASE      0xffff4000
-#define XNERR_INTR_INVALID  (XNINTR_ERRBASE)
-#define XNERR_INTR_BUSY     (XNINTR_ERRBASE + 1)
 
 #define XNINTR_MAX_PRIORITY 15
 
@@ -68,11 +61,12 @@ struct xnintr;
 
 typedef int (*xnisr_t)(struct xnintr *intr);
 
-typedef void (*xnist_t)(struct xnintr *intr);
+typedef void (*xnist_t)(struct xnintr *intr,
+			int hits);
 
 typedef struct xnintr {
 
-    xnflags_t status;		/*!< Status bitmask. */
+    xnflags_t status;	/*!< Status bitmask. */
 
     unsigned irq;	/* IRQ number */
 
@@ -82,7 +76,7 @@ typedef struct xnintr {
 
     xnist_t ist;	/* Interrupt service task */
 
-    int hits;		/* Pending IRQ hits */
+    int pending;	/* Pending IRQ hits */
 
     void *cookie;	/* User-defined cookie value */
 

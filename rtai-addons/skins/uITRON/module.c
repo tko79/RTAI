@@ -74,7 +74,7 @@ static void uitron_shutdown (int xtype)
     xnpod_shutdown(xtype);
 }
 
-int INIT_MODULE (void)
+int __xeno_skin_init (void)
 
 {
     u_long nstick = XNPOD_DEFAULT_TICK;
@@ -104,8 +104,11 @@ int INIT_MODULE (void)
     return 0;
 }
 
-void CLEANUP_MODULE (void) {
+void __xeno_skin_exit (void) {
 
     xnprintf("uITRON/VM: stopping services\n");
     uitron_shutdown(XNPOD_NORMAL_EXIT);
 }
+
+module_init(__xeno_skin_init);
+module_exit(__xeno_skin_exit);

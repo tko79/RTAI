@@ -24,19 +24,11 @@
 
 #include <rtai_types.h>
 
-#ifdef CONFIG_RTAI_WD_BUILTIN
-#define WD_INIT_MODULE     wd_init_module
-#define WD_CLEANUP_MODULE  wd_cleanup_module
-#else /* !CONFIG_RTAI_WD_BUILTIN */
-#define WD_INIT_MODULE     init_module
-#define WD_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_WD_BUILTIN */
-
 // Useful bits and pieces
 #define NSECS_PER_SEC 1000000000
 
 // For logging stuff
-#define WDLOG(fmt, args...) rt_printk("RTAI watchdog: " fmt, ##args)
+#define WDLOG(fmt, args...) rt_printk("RTAI[watchdog]: " fmt, ##args)
 
 // What should happen to misbehaving tasks
 typedef enum watchdog_policy { 
@@ -67,9 +59,9 @@ typedef struct bad_rt_task {
 extern "C" {
 #endif /* __cplusplus */
 
-int WD_INIT_MODULE(void);
+int __rtai_wd_init(void);
 
-void WD_CLEANUP_MODULE(void);
+void __rtai_wd_exit(void);
 
 // API for setting parameters
 int rt_wdset_grace(int new_value);

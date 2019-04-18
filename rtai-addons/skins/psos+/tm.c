@@ -285,8 +285,7 @@ u_long tm_cancel (u_long tmid)
 
 u_long tm_tick (void) {
 
-    nkclock.hits = 1;
-    xnpod_announce_tick(&nkclock);
+    xnpod_announce_tick(&nkclock,1);
     return SUCCESS;
 }
 

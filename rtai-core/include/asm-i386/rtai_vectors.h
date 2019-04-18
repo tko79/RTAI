@@ -32,41 +32,25 @@
 
 #include <rtai_config.h>
 
-#ifdef CONFIG_RTAI_ADEOS
-
 /* On Linux x86, Adeos reserves vectors from 0xdf-0xee for domain
    usage. */
 
-#define RTAI_APIC1_VECTOR  reserved
-#define RTAI_APIC2_VECTOR  reserved
-#define RTAI_APIC3_VECTOR  0xe1
-#define RTAI_APIC4_VECTOR  0xe9
+#define RTAI_APIC1_VECTOR  0xe1
+#define RTAI_APIC2_VECTOR  0xe9
 
-#define RTAI_APIC1_IPI     reserved
-#define RTAI_APIC2_IPI     reserved
-#define RTAI_APIC3_IPI     193
-#define RTAI_APIC4_IPI     201
+#define RTAI_APIC1_IPI     193
+#define RTAI_APIC2_IPI     201
 
 #define RTAI_SYS_VECTOR    0xe2
 #define RTAI_LXRT_VECTOR   0xe3
 #define RTAI_SHM_VECTOR    0xe4
 
-#else /* CONFIG_RTHAL */
+#define __rtai_stringize0(_s_) #_s_
+#define __rtai_stringize(_s_)  __rtai_stringize0(_s_)
+#define __rtai_trap_call(_t_)  _t_
+#define __rtai_do_trap0(_t_)   __rtai_stringize(int $ _t_)
+#define __rtai_do_trap(_t_)    __rtai_do_trap0(__rtai_trap_call(_t_))
 
-#define RTAI_APIC1_VECTOR  0xe1
-#define RTAI_APIC2_VECTOR  0xe9
-#define RTAI_APIC3_VECTOR  0xf1
-#define RTAI_APIC4_VECTOR  0xf9
+#define RTAI_DO_TRAP(v, r, a1, a2)  do { __asm__ __volatile__ ( __rtai_do_trap(v): "=A" (r): "a" (a1), "d" (a2): "memory"); } while (0)
 
-#define RTAI_LXRT_VECTOR   0xfc
-#define RTAI_SHM_VECTOR    0xfd
-#define RTAI_SYS_VECTOR    0xfe
-
-#endif /* CONFIG_RTAI_ADEOS */
-
-#define __rtai_stringify(x)  #x
-#define __rtai_do_trap(v)    __rtai_stringify(int $ ## v)
-
-#define RTAI_DO_TRAP(v,r,a1,a2)  __asm__ __volatile__ ( __rtai_do_trap(v) \
-						       : "=A" (r) : "a" (a1), "d" (a2))
 #endif /* !_RTAI_ASM_I386_VECTORS_H */

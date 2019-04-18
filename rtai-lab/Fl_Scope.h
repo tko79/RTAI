@@ -41,7 +41,6 @@ class Fl_Scope : public Fl_Gl_Window
 {
 	public:
 		Fl_Scope(int x, int y, int w, int h, int ntr, const char *title="rtScope");
-
 		void sampling_frequency(float);
 		float sampling_frequency();
 		void setdx();
@@ -61,9 +60,15 @@ class Fl_Scope : public Fl_Gl_Window
 		void grid_color(float r, float g, float b);
 		Fl_Color grid_color();
 		void grid_free_color();
+		float grid_r();
+		float grid_g();
+		float grid_b();
 		void bg_color(float r, float g, float b);
 		Fl_Color bg_color();
 		void bg_free_color();
+		float bg_r();
+		float bg_g();
+		float bg_b();
 		void time_range(float range);
 		float time_range();
 		void show_trace(int , int);
@@ -72,8 +77,10 @@ class Fl_Scope : public Fl_Gl_Window
 		void trace_color(int, float r, float g, float b);
 		Fl_Color trace_color(int);
 		void trace_free_color(int);
+		float tr_r(int);
+		float tr_g(int);
+		float tr_b(int);
 		void trace_offset(int, float);
-
 	private:
 		float Sampling_Frequency;
 		float dx;
@@ -96,7 +103,6 @@ class Fl_Scope : public Fl_Gl_Window
 		Fl_Color *Trace_Color;
 		float *Trace_Offset;
 		float *Trace_Offset_Value;
-
 	protected:
 		void initgl();
 		void drawticks();

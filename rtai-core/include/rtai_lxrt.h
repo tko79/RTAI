@@ -285,12 +285,21 @@
 // a semaphore extension
 #define COND_SIGNAL		       186
 
-// shm extensions
-#define NAMED_MALLOC		       187
-#define NAMED_FREE		       188
-#define NAMED_SIZE		       189
+// new shm
+#define SHM_ALLOC                      187
+#define SHM_FREE                       188
+#define SHM_SIZE                       189
+#define HEAP_SET                       190
+#define HEAP_ALLOC                     191
+#define HEAP_FREE                      192
+#define HEAP_NAMED_ALLOC               193
+#define HEAP_NAMED_FREE                194
+#define MALLOC                         195
+#define FREE                           196
+#define NAMED_MALLOC                   197
+#define NAMED_FREE                     198
 
-#define MAX_LXRT_FUN 		       190
+#define MAX_LXRT_FUN                   200
 
 // not recovered yet 
 // Qblk's 
@@ -466,15 +475,19 @@ struct rt_native_fun_entry {
 
 extern struct rt_fun_entry rt_fun_lxrt[];
 
+void reset_rt_fun_entries(struct rt_native_fun_entry *entry);
+
+int set_rt_fun_entries(struct rt_native_fun_entry *entry);
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-#if __CONFIG_RTAI_LXRT_SUPPORT
+#if CONFIG_RTAI_INTERNAL_LXRT_SUPPORT
  
 static inline struct rt_task_struct *pid2rttask(pid_t pid)
 {
-        return ((unsigned long)pid) > PID_MAX ? (struct rt_task_struct *)pid : find_task_by_pid(pid)->this_rt_task[0];
+        return ((unsigned long)pid) > PID_MAX_LIMIT ? (struct rt_task_struct *)pid : find_task_by_pid(pid)->this_rt_task[0];
 }
 
 static inline pid_t rttask2pid(struct rt_task_struct * task)
@@ -482,7 +495,7 @@ static inline pid_t rttask2pid(struct rt_task_struct * task)
     return task->lnxtsk ? task->lnxtsk->pid : (int) task;
 }
 
-#else /* !__CONFIG_RTAI_LXRT_SUPPORT */
+#else /* !CONFIG_RTAI_INTERNAL_LXRT_SUPPORT */
 
 static inline struct rt_task_struct *pid2rttask(pid_t pid)
 {
@@ -496,13 +509,11 @@ static inline pid_t rttask2pid(struct rt_task_struct * task)
     return (int) task;
 }
 
-#endif /* __CONFIG_RTAI_LXRT_SUPPORT */
+#endif /* CONFIG_RTAI_INTERNAL_LXRT_SUPPORT */
 
 int set_rtai_callback(void (*fun)(void));
 
 void remove_rtai_callback(void (*fun)(void));
-
-void linux_process_termination(void);
 
 RT_TASK *rt_lxrt_whoami(void);
 
@@ -843,9 +854,9 @@ RTAI_PROTO(RTIME,rt_get_cpu_time_ns,(void))
 #define rt_named_task_init_cpuid(task_name, thread, data, stack_size, prio, uses_fpu, signal, run_on_cpu) \
 	rt_task_init_cpuid(nam2num(task_name), thread, data, stack_size, prio, uses_fpu, signal, run_on_cpu)
 
-RTAI_PROTO(void,rt_set_runnable_on_cpus,(RT_TASK *task, unsigned int cpu_mask))
+RTAI_PROTO(void,rt_set_runnable_on_cpus,(RT_TASK *task, unsigned long cpu_mask))
 {
-	struct { RT_TASK *task; unsigned int cpu_mask; } arg = { task, cpu_mask };
+	struct { RT_TASK *task; unsigned long cpu_mask; } arg = { task, cpu_mask };
 	rtai_lxrt(BIDX, SIZARG, SET_RUNNABLE_ON_CPUS, &arg);
 }
 

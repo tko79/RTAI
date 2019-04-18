@@ -21,3 +21,6 @@
 #include <rtai_lxrt.h>
 #include <rtai_schedcore.h>
 #include <rtai_posix.h>
+#ifdef CONFIG_RTAI_SERIAL
+#include <rtai_serial.h>
+#endif /* CONFIG_RTAI_SERIAL */

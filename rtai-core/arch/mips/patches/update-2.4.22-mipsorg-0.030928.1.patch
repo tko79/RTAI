@@ -15557,7 +15557,7 @@ diff -Naur --exclude='*.orig' --exclude=CVS --exclude=.cvsignore --exclude='.#*'
 + *	as published by the Free Software Foundation; either version
 + *	2 of the License, or (at your option) any later version.
   *
-  *	$Id: update-2.4.22-mipsorg-0.030928.1.patch,v 1.1 2004/01/02 15:21:06 pgerum Exp $
+  *	$Id: update-2.4.22-mipsorg-0.030928.1.patch,v 1.1.1.1 2004/06/06 14:14:18 rpm Exp $
   */
 @@ -29,7 +29,7 @@
  
@@ -16016,7 +16016,7 @@ diff -Naur --exclude='*.orig' --exclude=CVS --exclude=.cvsignore --exclude='.#*'
 - * modify it under the terms of the GNU General Public License version
 - * 2 as published by the Free Software Foundation.
 - *
-- * $Id: update-2.4.22-mipsorg-0.030928.1.patch,v 1.1 2004/01/02 15:21:06 pgerum Exp $
+- * $Id: update-2.4.22-mipsorg-0.030928.1.patch,v 1.1.1.1 2004/06/06 14:14:18 rpm Exp $
 - *
   */
  
@@ -16357,7 +16357,7 @@ diff -Naur --exclude='*.orig' --exclude=CVS --exclude=.cvsignore --exclude='.#*'
 + * 
 + * (C) 2003 Pete Popov <ppopov@mvista.com>
 + * 
-+ * $Id: update-2.4.22-mipsorg-0.030928.1.patch,v 1.1 2004/01/02 15:21:06 pgerum Exp $
++ * $Id: update-2.4.22-mipsorg-0.030928.1.patch,v 1.1.1.1 2004/06/06 14:14:18 rpm Exp $
 + */
 +
 +#include <linux/config.h>

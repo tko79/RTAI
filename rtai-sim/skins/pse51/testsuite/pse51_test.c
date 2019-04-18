@@ -21,7 +21,7 @@
 
 static pthread_t root_thread_tcb;
 
-int USER_INIT_MODULE (void)
+int __xeno_user_init (void)
 {
     int rc;
     pthread_attr_t attr;
@@ -37,7 +37,7 @@ int USER_INIT_MODULE (void)
     return rc;
 }
 
-void USER_CLEANUP_MODULE (void)
+void __xeno_user_exit (void)
 {
     pthread_kill(root_thread_tcb, 30);
     pthread_join(root_thread_tcb, NULL);

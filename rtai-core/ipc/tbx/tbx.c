@@ -790,7 +790,6 @@ int rt_tbx_delete_u(TBX *tbx)
 	rt_free(tbx);
 	return rt_drg_on_adr(tbx);
 }
-/* ++++++++++++++++++++++ TYPED MAIL BOXES ENTRIES ++++++++++++++++++++++++++ */
 
 struct rt_native_fun_entry rt_tbx_entries[] = {
 	{ { 0, rt_tbx_init_u },                     TBX_INIT },
@@ -816,17 +815,42 @@ struct rt_native_fun_entry rt_tbx_entries[] = {
 	{ { 0, 0 },  		                  000 }
 };
 
-extern int set_rt_fun_entries(struct rt_native_fun_entry *entry);
-extern void reset_rt_fun_entries(struct rt_native_fun_entry *entry);
-
-int TBX_INIT_MODULE (void)
+int __rtai_tbx_init (void)
 {
 	return set_rt_fun_entries(rt_tbx_entries);
 }
 
-void TBX_CLEANUP_MODULE (void)
+void __rtai_tbx_exit (void)
 {
 	reset_rt_fun_entries(rt_tbx_entries);
 }
 
-/* +++++++++++++++++++++++ END OF TYPED MAILBOXES ++++++++++++++++++++++++++ */ 
+#ifndef CONFIG_RTAI_TBX_BUILTIN
+module_init(__rtai_tbx_init);
+module_exit(__rtai_tbx_exit);
+#endif /* !CONFIG_RTAI_TBX_BUILTIN */
+
+#ifdef CONFIG_KBUILD
+EXPORT_SYMBOL(rt_tbx_init);
+EXPORT_SYMBOL(rt_tbx_delete);
+EXPORT_SYMBOL(rt_tbx_send);
+EXPORT_SYMBOL(rt_tbx_send_if);
+EXPORT_SYMBOL(rt_tbx_send_until);
+EXPORT_SYMBOL(rt_tbx_send_timed);
+EXPORT_SYMBOL(rt_tbx_receive);
+EXPORT_SYMBOL(rt_tbx_receive_if);
+EXPORT_SYMBOL(rt_tbx_receive_until);
+EXPORT_SYMBOL(rt_tbx_receive_timed);
+EXPORT_SYMBOL(rt_tbx_broadcast);
+EXPORT_SYMBOL(rt_tbx_broadcast_if);
+EXPORT_SYMBOL(rt_tbx_broadcast_until);
+EXPORT_SYMBOL(rt_tbx_broadcast_timed);
+EXPORT_SYMBOL(rt_tbx_urgent);
+EXPORT_SYMBOL(rt_tbx_urgent_if);
+EXPORT_SYMBOL(rt_tbx_urgent_until);
+EXPORT_SYMBOL(rt_tbx_urgent_timed);
+EXPORT_SYMBOL(rt_named_tbx_init);
+EXPORT_SYMBOL(rt_named_tbx_delete);
+EXPORT_SYMBOL(rt_tbx_init_u);
+EXPORT_SYMBOL(rt_tbx_delete_u);
+#endif /* CONFIG_KBUILD */

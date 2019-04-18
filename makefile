@@ -4,8 +4,8 @@ CC := gcc
 ifneq ($(MAKECMDGOALS),help)
 ifeq ($(srctree),)
 ifneq ($(MAKEFILE_LIST),)
-# Since 3.80, we can know which Makefile is currently processed, and
-# infere the location of the source tree using MAKEFILE_LIST.
+# Since 3.80, we can find out which Makefile is currently processed,
+# and infere the location of the source tree using MAKEFILE_LIST.
 srctree := $(dir $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST)))
 else
 ifeq ($(srctree),)
@@ -65,6 +65,7 @@ config.status: .rtai_config
 	--build=$(build_alias) \
 	--host=$(host_alias) \
 	--with-kconfig-file=$< \
+	--with-linux-dir=$(RTAI_LINUX_DIR) \
 	--prefix=$$CONFIG_RTAI_INSTALLDIR \
 	$$confopts ; \
 	if test $$? = 0; then \
@@ -78,27 +79,27 @@ config.status: .rtai_config
 
 qconf: $(KCONFIG_DIR)
 	@$(MAKE) -C $(KCONFIG_DIR) \
-	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kc xconfig \
+	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kconfig xconfig \
 	srctree=$(srctree) ARCH=$(ARCH)
 
 gconf: $(KCONFIG_DIR)
 	@$(MAKE) -C $(KCONFIG_DIR) \
-	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kc gconfig \
+	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kconfig gconfig \
 	srctree=$(srctree) ARCH=$(ARCH)
 
 mconf: $(KCONFIG_DIR)
 	@$(MAKE) -C $(KCONFIG_DIR) \
-	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kc menuconfig \
+	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kconfig menuconfig \
 	srctree=$(srctree) ARCH=$(ARCH)
 
 conf: $(KCONFIG_DIR)
 	@$(MAKE) -C $(KCONFIG_DIR) \
-	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kc config \
+	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kconfig config \
 	srctree=$(srctree) ARCH=$(ARCH)
 
 oldconf: $(KCONFIG_DIR)
 	@$(MAKE) -C $(KCONFIG_DIR) \
-	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kc oldconfig \
+	-f $(srctree)/$(KCONFIG_DIR)/Makefile.kconfig oldconfig \
 	srctree=$(srctree) ARCH=$(ARCH)
 
 $(KCONFIG_DIR):
@@ -120,17 +121,17 @@ help:
 	echo '$$ make {xconfig,gconfig,menuconfig,config}' ; echo
 
 clean distclean:
-	if test -r $(KCONFIG_DIR)/Makefile.kc ; then \
-	$(MAKE) -C $(KCONFIG_DIR) -f Makefile.kc clean ; fi
-	if test -r Makefile ; then \
-	$(MAKE) -f Makefile $@ ; else \
-	$(MAKE) -C $(KCONFIG_DIR) -f $(srctree)/$(KCONFIG_DIR)/Makefile.kc clean ; \
+	if test -r $(KCONFIG_DIR)/Makefile.kconfig ; then \
+	$(MAKE) -C $(KCONFIG_DIR) -f Makefile.kconfig clean ; fi
+	if test -r GNUmakefile ; then \
+	$(MAKE) -f GNUmakefile $@ ; else \
+	$(MAKE) -C $(KCONFIG_DIR) -f $(srctree)/$(KCONFIG_DIR)/Makefile.kconfig clean ; \
 	fi
 	@find . -name autom4te.cache | xargs rm -fr
 
 all %::
-	@if test -r Makefile ; then \
-	$(MAKE) -f Makefile $@ ; else \
+	@if test -r GNUmakefile ; then \
+	$(MAKE) -f GNUmakefile $@ ; else \
 	echo "*** Please configure RTAI first (running 'make help' in RTAI's toplevel dir might help)." ; \
 	exit 1; fi
 

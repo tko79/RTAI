@@ -65,6 +65,9 @@
 #define FUSION_RTAI_DOMAIN   0
 #define FUSION_LINUX_DOMAIN  1
 
+#define FUSION_LOW_PRI       1	/* We (must) conform to the standard POSIX */
+#define FUSION_HIGH_PRI      99	/* RT priority range used by Linux. */
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */

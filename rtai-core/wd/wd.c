@@ -89,11 +89,12 @@
  * 5. Keeps a record of bad tasks (apart from those that have been killed) that 
  *    can be examined via a /proc interface. (/proc/rtai/watchdog)
  * 
- * ID: @(#)$Id: wd.c,v 1.3 2003/11/14 10:42:31 pgerum Exp $
+ * ID: @(#)$Id: wd.c,v 1.2 2004/07/24 17:01:24 rpm Exp $
  *
  *******************************************************************************/
 
 #include <linux/module.h>
+#include <linux/init.h>
 #include <linux/version.h>
 #include <asm/io.h>
 
@@ -136,7 +137,7 @@ static BAD_RT_TASK bad_task_pool[BAD_TASK_MAX];
 #endif
 
 // The current version number
-static char version[] = "$Revision: 1.3 $";
+static char version[] = "$Revision: 1.2 $";
 static char ver[10];
 
 // User friendly policy names
@@ -564,153 +565,6 @@ static void dummy(int wd)
     }
 }
 
-// ----------------------------- MODULE CONTROL --------------------------------
-int WD_INIT_MODULE(void)
-{
-    RTIME 	 period;
-    int		 dog;
-    RT_TASK	*lnx0;
-    struct apic_timer_setup_data apic_data[NR_RT_CPUS];
-    char	*c;
-
-    // Some parameters have to be forced
-    if (Policy <= WD_STRETCH) Grace  = GraceDiv = 1;
-    if (Policy == WD_DEBUG)   Safety = Limit = -1;
-
-    // Deduce number of watchdogs needed from scheduler type
-    switch (sched = rt_sched_type()) {
-	case RT_SCHED_UP  : 			 // Fall through
-	case RT_SCHED_SMP : num_wdogs = 1;          break;
-	case RT_SCHED_MUP : num_wdogs = NR_RT_CPUS; break;
-    }
-
-    // Fill array of pointers to scheduler's task lists
-    lnx0 = rt_get_base_linux_task(tlists);
-
-    // Register watchdogs with scheduler (SMP returns pointer to rt_smp_current)
-    for (dog = 0; dog < NR_RT_CPUS; dog++) {
-	if ((smp_current = rt_register_watchdog(&wdog[dog], dog)) < 0) {
-	    WDLOG("Failed to register watchdog %d with RTAI scheduler\n", dog);
-	    for (dog--; dog >= 0; dog--) rt_deregister_watchdog(&wdog[dog], dog);
-	    return -EBUSY;
-	}
-    }
-
-    // Set up chosen timer mode - MUP lets you have different modes per CPU, 
-    // but you'll have to edit the code below a bit if that's what you want.
-    if (sched == RT_SCHED_MUP) {
-	for (dog = 0; dog < num_wdogs; dog++) {
-	    apic_data[dog].mode  = !wd_OneShot;	 // <--- This bit...
-	    apic_data[dog].count = TickPeriod;
-	    if (wd_OneShot) {
-		rt_preempt_always_cpuid(1, dog); // <--- ...and this!
-	    }
-	}
-	start_rt_apic_timers(apic_data, 0);
-    } else {
-	if (wd_OneShot) {
-	    rt_set_oneshot_mode();
-	    rt_preempt_always(1);
-	} else {
-	    rt_set_periodic_mode();
-	}
-	start_rt_timer((int)nano2count(TickPeriod));
-    }
-
-    // Set up and start watchdog tasks (on separate CPUs if MP). We run as 
-    // many real watchdogs as there are task lists. However we must protect 
-    // the remaining CPUs with dummy watchdogs to prevent them being hogged 
-    // by overrunning tasks (only relevant on SMP not MUP).
-    for (dog = 0; dog < NR_RT_CPUS; dog++) {
-	rt_task_init_cpuid( 	&wdog[dog], 
-			    	(dog < num_wdogs) ? watchdog : dummy, 
-			    	dog, 2000, RT_SCHED_HIGHEST_PRIORITY, 0, 0, dog);
-    }
-    for (dog = 0; dog < num_wdogs; dog++) {
-	period = nano2count_cpuid(TickPeriod, dog);
-	rt_task_make_periodic( 	&wdog[dog], 
-			       	rt_get_time_cpuid(dog) + period, 
-			       	period);
-    }
-
-    // Tidy up version number
-    if ((c = strchr(version, ' '))) {
-	*(strchr(c, '$')) = '\0';
-	strcpy(ver, c + 1);
-    } else {
-	strcpy(ver, "? ");
-    }
-
-    // Log initial parameters
-    WDLOG( "\n==== RTAI Watchdog v%s(%s, %s) Loaded ====\n", 
-	   ver, __TIME__, __DATE__);
-    WDLOG( "%d Watchdog task%s running @ %dHz in %s mode\n", 
-	   num_wdogs, num_wdogs > 1 ? "s" : "",
-	   imuldiv(NSECS_PER_SEC, 1, TickPeriod), 
-	   wd_OneShot ? "oneshot" : "periodic");
-#ifdef MY_ALLOC
-    WDLOG( "Using static memory management (%d entries)\n", BAD_TASK_MAX);
-#else
-    WDLOG( "Using dynamic memory management\n");
-#endif
-    WDLOG( "Policy         : '%s'\n", policy_name[Policy]);
-    WDLOG( "Grace periods  : %d%s\n", Grace, 
-	   (Policy <= WD_STRETCH) ? " (forced)" : "");
-    WDLOG( "Grace divisor  : %d%s\n", GraceDiv, 
-	   (Policy <= WD_STRETCH) ? " (forced)" : "");
-    WDLOG( "Safety limit   : ");
-    if (Safety < 0) {
-	rt_printk("(disabled)\n");
-    } else {
-	rt_printk("%d period%s\n", Safety, Safety > 1 ? "s" : " ");
-    }
-    WDLOG( "Slip factor    : %d%%\n", Slip);
-    WDLOG( "Stretch factor : %d%%\n", Stretch);
-    WDLOG( "Offense limit  : ");
-    if (Limit < 0) {
-	rt_printk("(disabled)\n");
-    } else {
-	rt_printk("%d\n", Limit);
-    }
-
-#ifdef CONFIG_PROC_FS
-    // Register /proc interface
-    wd_proc = create_proc_entry("watchdog", 0, rtai_proc_root);
-    wd_proc->read_proc = wdog_read_proc;
-#endif
-    return 0;
-}
-
-void WD_CLEANUP_MODULE(void)
-{
-    BAD_RT_TASK	*bt;
-    int		 dog;
-
-#ifdef CONFIG_PROC_FS
-    // Remove /proc interface
-    remove_proc_entry("watchdog", rtai_proc_root);
-#endif
-    // Deregister all watchdogs and shutdown the timer
-    for (dog = 0; dog < NR_RT_CPUS; dog++) {
-	rt_deregister_watchdog(&wdog[dog], dog);
-    }
-    stop_rt_timer();
-    rt_busy_sleep(TickPeriod);
-
-    // Cleanup and remove all watchdogs and bad task lists
-    for (dog = 0; dog < NR_RT_CPUS; dog++) {
-	rt_task_delete(&wdog[dog]);
-	if (dog < num_wdogs) {
-	    for (bt = bad_tl[dog]; bt;) {
-		bt = delete_bad_task(&bad_tl[dog], bt);
-	    }
-	}
-    }
-
-    // It's all over :(
-    WDLOG("==== RTAI Watchdog v%sUnloaded ====\n", ver);
-}
-
 // ----------------------------- PROC INTERFACE --------------------------------
 #ifdef CONFIG_PROC_FS
 static int wdog_read_proc(char *page, char **start, off_t off, int count,
@@ -806,3 +660,160 @@ static int wdog_read_proc(char *page, char **start, off_t off, int count,
     PROC_PRINT_DONE;
 }
 #endif
+
+// ----------------------------- MODULE CONTROL --------------------------------
+int __rtai_wd_init(void)
+{
+    RTIME 	 period;
+    int		 dog;
+    RT_TASK	*lnx0;
+    struct apic_timer_setup_data apic_data[NR_RT_CPUS];
+    char	*c;
+
+    // Some parameters have to be forced
+    if (Policy <= WD_STRETCH) Grace  = GraceDiv = 1;
+    if (Policy == WD_DEBUG)   Safety = Limit = -1;
+
+    // Deduce number of watchdogs needed from scheduler type
+    switch (sched = rt_sched_type()) {
+	case RT_SCHED_UP  : 			 // Fall through
+	case RT_SCHED_SMP : num_wdogs = 1;          break;
+	case RT_SCHED_MUP : num_wdogs = NR_RT_CPUS; break;
+    }
+
+    // Fill array of pointers to scheduler's task lists
+    lnx0 = rt_get_base_linux_task(tlists);
+
+    // Register watchdogs with scheduler (SMP returns pointer to rt_smp_current)
+    for (dog = 0; dog < NR_RT_CPUS; dog++) {
+	if ((smp_current = rt_register_watchdog(&wdog[dog], dog)) < 0) {
+	    WDLOG("Failed to register watchdog %d with RTAI scheduler\n", dog);
+	    for (dog--; dog >= 0; dog--) rt_deregister_watchdog(&wdog[dog], dog);
+	    return -EBUSY;
+	}
+    }
+
+    // Set up chosen timer mode - MUP lets you have different modes per CPU, 
+    // but you'll have to edit the code below a bit if that's what you want.
+    if (sched == RT_SCHED_MUP) {
+	for (dog = 0; dog < num_wdogs; dog++) {
+	    apic_data[dog].mode  = !wd_OneShot;	 // <--- This bit...
+	    apic_data[dog].count = TickPeriod;
+	    if (wd_OneShot) {
+		rt_preempt_always_cpuid(1, dog); // <--- ...and this!
+	    }
+	}
+	start_rt_apic_timers(apic_data, 0);
+    } else {
+	if (wd_OneShot) {
+	    rt_set_oneshot_mode();
+	    rt_preempt_always(1);
+	} else {
+	    rt_set_periodic_mode();
+	}
+	start_rt_timer((int)nano2count(TickPeriod));
+    }
+
+    // Set up and start watchdog tasks (on separate CPUs if MP). We run as 
+    // many real watchdogs as there are task lists. However we must protect 
+    // the remaining CPUs with dummy watchdogs to prevent them being hogged 
+    // by overrunning tasks (only relevant on SMP not MUP).
+    for (dog = 0; dog < NR_RT_CPUS; dog++) {
+	rt_task_init_cpuid( 	&wdog[dog], 
+			    	(dog < num_wdogs) ? watchdog : dummy, 
+			    	dog, 2000, RT_SCHED_HIGHEST_PRIORITY, 0, 0, dog);
+    }
+    for (dog = 0; dog < num_wdogs; dog++) {
+	period = nano2count_cpuid(TickPeriod, dog);
+	rt_task_make_periodic( 	&wdog[dog], 
+			       	rt_get_time_cpuid(dog) + period, 
+			       	period);
+    }
+
+    // Tidy up version number
+    if ((c = strchr(version, ' '))) {
+	*(strchr(c, '$')) = '\0';
+	strcpy(ver, c + 1);
+    } else {
+	strcpy(ver, "? ");
+    }
+
+    // Log initial parameters
+    WDLOG( "loaded.\n");
+    WDLOG( "%d Watchdog task%s running @ %dHz in %s mode\n", 
+	   num_wdogs, num_wdogs > 1 ? "s" : "",
+	   imuldiv(NSECS_PER_SEC, 1, TickPeriod), 
+	   wd_OneShot ? "oneshot" : "periodic");
+#ifdef MY_ALLOC
+    WDLOG( "Using static memory management (%d entries)\n", BAD_TASK_MAX);
+#else
+    WDLOG( "Using dynamic memory management\n");
+#endif
+    WDLOG( "Policy         : '%s'\n", policy_name[Policy]);
+    WDLOG( "Grace periods  : %d%s\n", Grace, 
+	   (Policy <= WD_STRETCH) ? " (forced)" : "");
+    WDLOG( "Grace divisor  : %d%s\n", GraceDiv, 
+	   (Policy <= WD_STRETCH) ? " (forced)" : "");
+    WDLOG( "Safety limit   : ");
+    if (Safety < 0) {
+	rt_printk("(disabled)\n");
+    } else {
+	rt_printk("%d period%s\n", Safety, Safety > 1 ? "s" : " ");
+    }
+    WDLOG( "Slip factor    : %d%%\n", Slip);
+    WDLOG( "Stretch factor : %d%%\n", Stretch);
+    WDLOG( "Offense limit  : ");
+    if (Limit < 0) {
+	rt_printk("(disabled)\n");
+    } else {
+	rt_printk("%d\n", Limit);
+    }
+
+#ifdef CONFIG_PROC_FS
+    // Register /proc interface
+    wd_proc = create_proc_entry("watchdog", 0, rtai_proc_root);
+    wd_proc->read_proc = wdog_read_proc;
+#endif
+    return 0;
+}
+
+void __rtai_wd_exit(void)
+{
+    BAD_RT_TASK	*bt;
+    int		 dog;
+
+#ifdef CONFIG_PROC_FS
+    // Remove /proc interface
+    remove_proc_entry("watchdog", rtai_proc_root);
+#endif
+    // Deregister all watchdogs and shutdown the timer
+    for (dog = 0; dog < NR_RT_CPUS; dog++) {
+	rt_deregister_watchdog(&wdog[dog], dog);
+    }
+    stop_rt_timer();
+    rt_busy_sleep(TickPeriod);
+
+    // Cleanup and remove all watchdogs and bad task lists
+    for (dog = 0; dog < NR_RT_CPUS; dog++) {
+	rt_task_delete(&wdog[dog]);
+	if (dog < num_wdogs) {
+	    for (bt = bad_tl[dog]; bt;) {
+		bt = delete_bad_task(&bad_tl[dog], bt);
+	    }
+	}
+    }
+
+    // It's all over :(
+    WDLOG("unloaded.\n");
+}
+
+module_init(__rtai_wd_init);
+module_exit(__rtai_wd_exit);
+
+EXPORT_SYMBOL(rt_wdset_grace);
+EXPORT_SYMBOL(rt_wdset_gracediv);
+EXPORT_SYMBOL(rt_wdset_safety);
+EXPORT_SYMBOL(rt_wdset_policy);
+EXPORT_SYMBOL(rt_wdset_slip);
+EXPORT_SYMBOL(rt_wdset_stretch);
+EXPORT_SYMBOL(rt_wdset_limit);

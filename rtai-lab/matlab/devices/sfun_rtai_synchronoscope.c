@@ -35,8 +35,9 @@
 #include <rtai_msg.h>
 #include <rtai_mbx.h>
 
+#define MAX_RTAI_SYNCHS               1000
 #define MBX_RTAI_SYNCHRONOSCOPE_SIZE           5000
-extern SimStruct *rtaiSynchronoscope;
+extern SimStruct *rtaiSynchronoscope[];
 extern char *TargetSynchronoscopeMbxID;
 
 #endif
@@ -73,12 +74,18 @@ static void mdlStart(SimStruct *S)
 {
 #ifndef MATLAB_MEX_FILE
 	MBX *mbx;
+	int i;
+	char name[7];
 
-	rtaiSynchronoscope = S;
-	if (!(mbx = (MBX *)rt_mbx_init(nam2num(TargetSynchronoscopeMbxID), (MBX_RTAI_SYNCHRONOSCOPE_SIZE/(sizeof(float))*(sizeof(float)))))) {
-		printf("Cannot init mailbox\n");
-		exit(1);
-	}
+        for (i = 0; i < MAX_RTAI_SYNCHS; i++) {
+                sprintf(name, "%s%d", TargetSynchronoscopeMbxID, i);
+                if (!rt_get_adr(nam2num(name))) break;
+        }
+        rtaiSynchronoscope[i] = S;
+        if (!(mbx = (MBX *)rt_mbx_init(nam2num(name), (MBX_RTAI_SYNCHRONOSCOPE_SIZE/(sizeof(float))*(sizeof(float)))))) {
+                printf("Cannot init mailbox\n");
+                exit(1);
+        }
 	ssGetPWork(S)[0]= (void *)mbx;
 #endif
 }

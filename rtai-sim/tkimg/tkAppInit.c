@@ -10,7 +10,7 @@
  * See the file "license.terms" for information on usage and redistribution
  * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
  *
- * RCS: @(#) $Id: tkAppInit.c,v 1.1 2003/10/31 15:37:26 pgerum Exp $
+ * RCS: @(#) $Id: tkAppInit.c,v 1.1.1.1 2004/06/06 14:16:00 rpm Exp $
  */
 
 #undef TCL_USE_STUBS

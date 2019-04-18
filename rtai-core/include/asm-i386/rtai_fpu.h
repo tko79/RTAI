@@ -52,10 +52,10 @@ typedef union i387_union FPU_ENV;
 	do { \
 		if (x & 8) { \
                        unsigned long flags; \
-                       arti_hw_lock(flags); \
+                       rtai_hw_lock(flags); \
 			__asm__ __volatile__ ("movl %%cr0, %0": "=r" (x)); \
 			__asm__ __volatile__ ("movl %0, %%cr0": :"r" (8 | x)); \
-                       arti_hw_unlock(flags); \
+                       rtai_hw_unlock(flags); \
 		} \
 	} while (0)
 

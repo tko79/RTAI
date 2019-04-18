@@ -37,17 +37,20 @@ struct rt_registry_entry_struct {
         struct task_struct *tsk; // Linux task owner of the resource
         int pid;                 // Linux task pid
         int type;                // Type of resource
+        int count;               // Usage registry
 };
 
-#define MAX_SLOTS  100          // Max number of registered objects
-#define IS_TASK 0               // Used to identify registered resources
-#define IS_SEM  1
-#define IS_RWL  2
-#define IS_SPL  3
-#define IS_MBX  4
-#define IS_PRX  5
-#define IS_BIT  6
-#define IS_TBX  7
+#define MAX_SLOTS  CONFIG_RTAI_SCHED_LXRT_NUMSLOTS // Max number of registered objects
+
+#define IS_TASK  0               // Used to identify registered resources
+#define IS_SEM   1
+#define IS_RWL   2
+#define IS_SPL   3
+#define IS_MBX   4
+#define IS_PRX   5
+#define IS_BIT   6
+#define IS_TBX   7
+#define IS_HPCK  8
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,17 +65,19 @@ int rt_register(unsigned long nam,
 
 int rt_drg_on_name(unsigned long name);
 
+int rt_drg_on_name_cnt(unsigned long name);
+
 int rt_drg_on_adr(void *adr);
+
+int rt_drg_on_adr_cnt(void *adr);
 
 unsigned long rt_get_name(void *adr);
 
 void *rt_get_adr(unsigned long name);
 
+void *rt_get_adr_cnt(unsigned long name);
+
 int rt_get_type(unsigned long name);
-
-int rt_inc_count(unsigned long name);
-
-int rt_dec_count(unsigned long name);
 
 #ifdef CONFIG_PROC_FS
 int rt_get_registry_slot(int slot,

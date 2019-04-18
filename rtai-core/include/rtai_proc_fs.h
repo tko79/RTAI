@@ -25,21 +25,6 @@ extern struct proc_dir_entry *rtai_proc_root;
 
 // proc print macros - Contributed by: Erwin Rol (erwin@muffin.org)
 
-// WARNING! 
-// these are all macros, even is some might look like a function.
-// when using them in if, for, while etc. statements one should
-// _ALWAYS_ do it like this:
-// if( ... ){
-//   PROC_PRINT(....);
-// }
-//
-// and _NEVER_ like this:
-// if( ... )
-//    PROC_PRINT( ... );
-//
-// The { and } are _EXTREMLY_ important!
-
-
 // macro that holds the local variables that
 // we use in the PROC_PRINT_* macros. We have
 // this macro so we can add variables with out
@@ -56,7 +41,8 @@ extern struct proc_dir_entry *rtai_proc_root;
 // static int FOO(char *page, char **start, 
 //                off_t off, int count, int *eof, void *data)
 
-#define PROC_PRINT(fmt,args...)                         \
+#define PROC_PRINT(fmt,args...) \
+do {	\
     len += sprintf(page + len , fmt, ##args);           \
     pos += len;                                         \
     if(pos < off) {                                     \
@@ -64,18 +50,22 @@ extern struct proc_dir_entry *rtai_proc_root;
         begin = pos;                                    \
     }                                                   \
     if(pos > off + count)                               \
-        goto done;
+        goto done; \
+} while(0)
 
 // macro to leave the read function for a other
 // place than at the end. 
 #define PROC_PRINT_RETURN                              \
+do {	\
     *eof = 1;                                          \
-    goto done // no ";"
+    goto done; \
+} while(0)
 
 // macro that should only used ones at the end of the
 // read function, to return from a other place in the 
 // read function use the PROC_PRINT_RETURN macro. 
 #define PROC_PRINT_DONE                                 \
+do {	\
         *eof = 1;                                       \
     done:                                               \
         *start = page + (off - begin);                  \
@@ -84,7 +74,8 @@ extern struct proc_dir_entry *rtai_proc_root;
             len = count;                                \
         if(len < 0)                                     \
             len = 0;                                    \
-        return len // no ";"
+        return len; \
+} while(0)
 
 // End of proc print macros
 

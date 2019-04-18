@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 #ifndef _FL_METER_WINDOW_H_
 #define _FL_METER_WINDOW_H_
 
-#include "Fl_Meter.h"
+#include <Fl_Meter.h>
 #include <efltk/Fl_MDI_Window.h>
 
 class Fl_Meter_Window
@@ -27,6 +27,11 @@ class Fl_Meter_Window
 	public:
 		Fl_Meter_Window(int x, int y, int w, int h, Fl_MDI_Viewport *s, const char *name);
 		Fl_Meter *Meter;
+		int x();
+		int y();
+		int w();
+		int h();
+		void resize(int, int, int, int);
 		void show();
 		void hide();
 		int is_visible();

@@ -54,9 +54,9 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/errno.h>
-#include <linux/wrapper.h>
 #include <linux/adeos.h>
 #include <asm/uaccess.h>
+#include <asm/param.h>
 #include <asm/mmu_context.h>
 #include <rtai_config.h>
 #include <asm/rtai_hal.h>
@@ -68,23 +68,19 @@
 #define MODULE_LICENSE(s)
 #endif /* MODULE_LICENSE */
 
-#define MAIN_INIT_MODULE     init_module
-#define MAIN_CLEANUP_MODULE  cleanup_module
-#define SKIN_INIT_MODULE     init_module
-#define SKIN_CLEANUP_MODULE  cleanup_module
-#define USER_INIT_MODULE     init_module
-#define USER_CLEANUP_MODULE  cleanup_module
-
 typedef unsigned long spl_t;
 
-#define splhigh(x)  arti_local_irq_save(x)
-#define splexit(x)  arti_local_irq_restore(x)
-#define splnone()   arti_sti()
-#define spltest()   arti_local_irq_test()
-#define splget(x)   arti_local_irq_flags(x)
+#define splhigh(x)  rtai_local_irq_save(x)
+#define splexit(x)  rtai_local_irq_restore(x)
+#define splnone()   rtai_sti()
+#define spltest()   rtai_local_irq_test()
+#define splget(x)   rtai_local_irq_flags(x)
 
-#define XNARCH_DEFAULT_TICK  1000000 /* ns, i.e. 1ms */
-#define XNARCH_IRQ_MAX       NR_IRQS
+#define XNARCH_DEFAULT_TICK   1000000 /* ns, i.e. 1ms */
+#define XNARCH_IRQ_MAX        NR_IRQS
+#define XNARCH_HOST_TICK      (1000000000UL/HZ)
+#define XNARCH_APERIODIC_PREC 1000 /* 1us, aperiodic precision */
+#define XNARCH_SCHED_LATENCY  CONFIG_RTAI_SCHED_8254_LATENCY
 
 #define XNARCH_THREAD_COOKIE  (THIS_MODULE)
 #define XNARCH_THREAD_STACKSZ 4096
@@ -92,10 +88,10 @@ typedef unsigned long spl_t;
 
 #define xnarch_printf                printk /* Yup! This is safe under ARTI */
 #define xnarch_ullmod(ull,uld,rem)   (xnarch_ulldiv(ull,uld,rem), (*rem))
-#define xnarch_ulldiv                arti_ulldiv
-#define xnarch_imuldiv               arti_imuldiv
-#define xnarch_llimd                 arti_llimd
-#define xnarch_get_cpu_tsc           arti_rdtsc
+#define xnarch_ulldiv                rtai_ulldiv
+#define xnarch_imuldiv               rtai_imuldiv
+#define xnarch_llimd                 rtai_llimd
+#define xnarch_get_cpu_tsc           rtai_rdtsc
 
 struct xnthread;
 struct xnmutex;
@@ -103,6 +99,7 @@ struct module;
 struct task_struct;
 
 #define xnarch_stack_size(tcb)  ((tcb)->stacksize)
+#define xnarch_fpu_ptr(tcb)     ((tcb)->fpup)
 
 typedef struct xnarchtcb {	/* Per-thread arch-dependent block */
 
@@ -112,7 +109,6 @@ typedef struct xnarchtcb {	/* Per-thread arch-dependent block */
     unsigned long *stackbase;	/* Stack space */
     unsigned long esp;		/* Saved ESP for kernel-based threads */
     unsigned long eip;		/* Saved EIP for kernel-based threads */
-    int cr0;			/* A (somewhat phony) version of the cr0 register */
     struct module *module;	/* Creator's module */
 
     /* User mode side */
@@ -137,11 +133,34 @@ typedef struct xnarch_fltinfo {
 #define xnarch_fault_code(fi)  ((fi)->errcode)
 #define xnarch_fault_pc(fi)    ((fi)->regs->eip)
 
-extern adomain_t xeno_domain;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+static inline unsigned long long xnarch_tsc_to_ns (unsigned long long ts) {
+    return xnarch_llimd(ts,1000000000,RTAI_CPU_FREQ);
+}
+
+static inline unsigned long long xnarch_ns_to_tsc (unsigned long long ns) {
+    return xnarch_llimd(ns,RTAI_CPU_FREQ,1000000000);
+}
+
+static inline unsigned long long xnarch_get_cpu_time (void) {
+    return xnarch_tsc_to_ns(xnarch_get_cpu_tsc());
+}
+
+static inline unsigned long long xnarch_get_cpu_freq (void) {
+    return RTAI_CPU_FREQ;
+}
+
+#define xnarch_halt(emsg) \
+do { \
+    adeos_set_printk_sync(adp_current); \
+    xnarch_printf("Xenomai: fatal: %s\n",emsg); \
+    BUG(); \
+} while(0)
+
+int xnarch_setimask(int imask);
 
 #ifdef XENO_INTR_MODULE
 
@@ -202,53 +221,39 @@ void xnpod_welcome_thread(struct xnthread *);
 void xnpod_delete_thread(struct xnthread *,
 			 struct xnmutex *mutex);
 
-static void xnarch_recover_jiffies (int irq,
-				    void *dev_id,
-				    struct pt_regs *regs)
-{
-    spl_t s;
-
-    splhigh(s);
-
-    if (rt_times.tick_time >= rt_times.linux_time)
-	{
-	rt_times.linux_time += rt_times.linux_tick;
-	rt_pend_linux_irq(TIMER_8254_IRQ);
-	}
-
-    splexit(s);
-} 
-
 static inline void xnarch_start_timer (int ns, void (*tickhandler)(void))
 
 {
-    unsigned period = (unsigned)llimd(ns,ARTI_FREQ_8254,1000000000);
-    /* Always use periodic mode. */
-    arti_tunables.timers_tol[0] = (rt_times.periodic_tick + 1) >> 1;
-    rt_request_timer(tickhandler,period > LATCH ? LATCH : period,0);
+    if (ns > 0)	/* Periodic setup. */
+	{
+	unsigned period = (unsigned)xnarch_llimd(ns,RTAI_FREQ_8254,1000000000);
+	rt_request_timer(tickhandler,period > LATCH ? LATCH : period,0);
+	}
+    else  /* Aperiodic setup. */
+	rt_request_timer(tickhandler,0,0);
 }
 
-static inline void xnarch_stop_timer (void)
+static inline void xnarch_leave_root (xnarchtcb_t *rootcb)
 
 {
-    rt_free_linux_irq(TIMER_8254_IRQ,&xnarch_recover_jiffies);
-    rt_free_timer();
-}
-
-static inline void xnarch_leave_root (xnarchtcb_t *rootcb) {
     TRACE_RTAI_SWITCHTO_RT(0);
-    set_bit(0,&arti_cpu_realtime);
+    set_bit(0,&rtai_cpu_realtime);
     /* Remember the preempted non-RT task pointer. */
-    rootcb->user_task = rootcb->active_task = arti_get_current(0);
+    rootcb->user_task = rootcb->active_task = rtai_get_current(0);
+    /* So that xnarch_save_fpu() will operate on the right FPU area. */
+    rootcb->fpup = &rootcb->user_task->thread.i387;
 }
 
 static inline void xnarch_enter_root (xnarchtcb_t *rootcb) {
     TRACE_RTAI_SWITCHTO_LINUX(0);
-    clear_bit(0,&arti_cpu_realtime);
+    clear_bit(0,&rtai_cpu_realtime);
 }
 
-#define __switch_threads(out_tcb, in_tcb, outproc, inproc) \
-do { \
+static inline void __switch_threads(xnarchtcb_t *out_tcb,
+				    xnarchtcb_t *in_tcb,
+				    struct task_struct *outproc,
+				    struct task_struct *inproc)
+{
 	__asm__ __volatile__( \
         "pushl %%ecx\n\t" \
         "pushl %%edi\n\t" \
@@ -275,21 +280,49 @@ do { \
         "b" (out_tcb), \
         "S" (in_tcb), \
         "a" (outproc), \
-        "d" (inproc)); \
-} while (0)
+        "d" (inproc));
+}
 
 static inline void xnarch_switch_to (xnarchtcb_t *out_tcb,
 				     xnarchtcb_t *in_tcb)
 {
     struct task_struct *outproc = out_tcb->active_task;
     struct task_struct *inproc = in_tcb->user_task;
+    static int cr0;
+
+    if (out_tcb->user_task)
+	{
+	__asm__ __volatile__ ("movl %%cr0,%0": "=r" (cr0));
+	clts();
+	}
 
     in_tcb->active_task = inproc ?: outproc;
 
     if (inproc && inproc != outproc)
-	arti_switch_linux_mm(outproc,inproc,0);
+	{
+	struct mm_struct *oldmm = outproc->active_mm;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	switch_mm(oldmm,inproc->active_mm,inproc,0);
+#else /* >= 2.6.0 */
+	switch_mm(oldmm,inproc->active_mm,inproc);
+#endif /* < 2.6.0 */
+
+	if (!inproc->mm)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+	    enter_lazy_tlb(oldmm,inproc,0);
+#else /* >= 2.6.0 */
+	    enter_lazy_tlb(oldmm,inproc);
+#endif /* < 2.6.0 */
+	}
 
     __switch_threads(out_tcb,in_tcb,outproc,inproc);
+
+    /* If TS was set for the restored user-space thread, set it
+       back. */
+
+    if (out_tcb->user_task && (cr0 & 0x8) != 0)
+	stts();
 }
 
 static inline void xnarch_finalize_and_switch (xnarchtcb_t *dead_tcb,
@@ -306,21 +339,14 @@ static inline void xnarch_save_fpu (xnarchtcb_t *tcb)
 {
 #ifdef CONFIG_RTAI_FPU_SUPPORT
 
-    /* If EM(bit 2) is cleared (i.e. FPU emulate is false), then this
-       is a real cr0 value, so we are considering a user-space thread
-       (root or shadow).  Otherwise, it is a phony cr0 register, so it
-       is a kernel-based thread. */
-
-    if (!(tcb->cr0 & 0x4))
+    if (!tcb->user_task) /* __switch_to() will take care otherwise. */
 	{
-	__asm__ __volatile__ ("movl %%cr0,%0": "=r" (tcb->cr0));
-	clts();
+	if (cpu_has_fxsr)
+	    __asm__ __volatile__ ("fxsave %0; fnclex" : "=m" (*tcb->fpup));
+	else
+	    __asm__ __volatile__ ("fnsave %0; fwait" : "=m" (*tcb->fpup));
 	}
 
-    if (cpu_has_fxsr)
-	__asm__ __volatile__ ("fxsave %0; fnclex" : "=m" (*tcb->fpup));
-    else
-	__asm__ __volatile__ ("fnsave %0; fwait" : "=m" (*tcb->fpup));
 #endif /* CONFIG_RTAI_FPU_SUPPORT */
 }
 
@@ -328,6 +354,20 @@ static inline void xnarch_restore_fpu (xnarchtcb_t *tcb)
 
 {
 #ifdef CONFIG_RTAI_FPU_SUPPORT
+
+    if (tcb->user_task)
+	{
+	if (!tcb->user_task->used_math)
+	    return;	/* Uninit fpu area -- do not restore. */
+
+	/* Tell Linux that this task has altered the state of the FPU
+	   hardware. */
+	set_tsk_used_fpu(tcb->user_task);
+	}
+
+    /* Restore the FPU hardware with valid fp registers from a
+       user-space or kernel thread. */
+
     clts();
 
     if (cpu_has_fxsr)
@@ -335,12 +375,6 @@ static inline void xnarch_restore_fpu (xnarchtcb_t *tcb)
     else
 	__asm__ __volatile__ ("frstor %0": /* no output */ : "m" (*tcb->fpup));
 
-    /* If TS was set for the user-space thread before it yielded
-       control to a kernel-based one, reset this bit in cr0 before
-       control is given back to the user-space thread. */
-       
-    if ((tcb->cr0 & 0xc) == 0x8) /* EM=0 and TS=1? */
-	stts();
 #endif /* CONFIG_RTAI_FPU_SUPPORT */
 }
 
@@ -354,8 +388,7 @@ static inline void xnarch_init_root_tcb (xnarchtcb_t *tcb,
     tcb->esp = 0;
     tcb->espp = &tcb->esp;
     tcb->eipp = &tcb->eip;
-    tcb->fpup = &tcb->fpuenv;
-    tcb->cr0 = 0; /* Clear EM so we know it is a user-space thread */
+    tcb->fpup = &current->thread.i387;
 }
 
 static inline void xnarch_init_tcb (xnarchtcb_t *tcb, void *adcookie) {
@@ -366,7 +399,6 @@ static inline void xnarch_init_tcb (xnarchtcb_t *tcb, void *adcookie) {
     tcb->espp = &tcb->esp;
     tcb->eipp = &tcb->eip;
     tcb->fpup = &tcb->fpuenv;
-    tcb->cr0 = 0x4; /* Set EM so we know it is a phony cr0 */
     /* Must be followed by xnarch_init_thread(). */
 }
 
@@ -375,7 +407,7 @@ static void xnarch_thread_redirect (struct xnthread *self,
 				    void(*entry)(void *),
 				    void *cookie)
 {
-    arti_local_irq_restore(!!imask);
+    rtai_local_irq_restore(!!imask);
     xnpod_welcome_thread(self);
     entry(cookie);
     xnpod_delete_thread(self,NULL);
@@ -406,6 +438,9 @@ static inline void xnarch_init_thread (xnarchtcb_t *tcb,
 static inline void xnarch_init_fpu (xnarchtcb_t *tcb)
 
 {
+    /* Initialize the FPU for an emerging kernel-based RT thread. This
+       must be run on behalf of the emerging thread. */
+
     __asm__ __volatile__ ("clts; fninit");
 
     if (cpu_has_xmm)
@@ -428,18 +463,9 @@ int xnarch_setimask (int imask)
     return !!s;
 }
 
-static inline void xnarch_announce_tick (void)
+static inline void xnarch_relay_tick (void) {
 
-{
-    rt_times.tick_time = rt_times.intr_time;
-
-    if (rt_times.tick_time >= rt_times.linux_time)
-	{
-	rt_times.linux_time += rt_times.linux_tick;
-	rt_pend_linux_irq(TIMER_8254_IRQ);
-	}
-
-    rt_times.intr_time += rt_times.periodic_tick;
+    rt_pend_linux_irq(RTAI_TIMER_8254_IRQ);
 }
 
 #define xnarch_notify_ready() /* Nullified */
@@ -461,7 +487,6 @@ static inline void xnarch_init_shadow_tcb (xnarchtcb_t *tcb,
     tcb->espp = &task->thread.esp;
     tcb->eipp = &task->thread.eip;
     tcb->fpup = &task->thread.i387;
-    tcb->cr0 = 0;
 }
 
 #endif /* XENO_SHADOW_MODULE */
@@ -487,13 +512,41 @@ void xnarch_sysfree(void *chunk,
 
 #endif /* XENO_HEAP_MODULE */
 
+#ifdef XENO_TIMER_MODULE
+
+static unsigned long xnarch_timer_calibration;
+
+void xnarch_calibrate_timer (void) {
+    /* Compute the time needed to program the 8254 PIT in aperiodic
+       mode. The stored value is expressed in CPU ticks. */
+    xnarch_timer_calibration = xnarch_ns_to_tsc(rtai_calibrate_8254());
+}
+
+static void xnarch_program_timer_shot (unsigned long long delay) /* <= in CPU ticks */
+
+{
+    if (delay < xnarch_timer_calibration)
+	/* If the delay value is lower than the time needed to program
+	   the PIT, increase it to a sane minimum so that we don't
+	   lose a tick. */
+	delay = xnarch_timer_calibration;
+
+    rt_set_timer_delay(rtai_imuldiv(delay,RTAI_FREQ_8254,RTAI_CPU_FREQ));
+}
+
+static inline void xnarch_stop_timer (void) {
+    rt_free_timer();
+}
+
+#endif /* XENO_TIMER_MODULE */
+
 #ifdef XENO_MAIN_MODULE
 
+int xnpod_trap_fault(xnarch_fltinfo_t *fltinfo);
+
+void xnarch_calibrate_timer(void);
+
 static RT_TRAP_HANDLER xnarch_old_trap_handler;
-
-adomain_t xeno_domain;
-
-extern int xnpod_trap_fault(xnarch_fltinfo_t *fltinfo);
 
 static int xnarch_trap_fault (int vector,
 			      int signo,
@@ -509,80 +562,21 @@ static int xnarch_trap_fault (int vector,
     return xnpod_trap_fault(&fltinfo);
 }
 
-static void xnarch_irq_trampoline (unsigned irq) {
-    adeos_propagate_irq(irq);
-}
-
-static void xnarch_domain_entry (int iflag)
-
-{
-    unsigned irq;
-
-    if (iflag)
-	for (irq = 0; irq < NR_IRQS; irq++)
-	    adeos_virtualize_irq(irq,
-				 &xnarch_irq_trampoline,
-				 NULL,
-				 IPIPE_DYNAMIC_MASK);
-    for (;;)
-	adeos_suspend_domain();
-}
-
 static inline int xnarch_init (void)
 
 {
-    adattr_t attr;
-
-    if (!boot_cpu_data.wp_works_ok) /* Needed by the shadow support. */
-	{
-	printk(KERN_ERR "Sorry, a functional WP bit is needed to run Xenomai/x86");
-	return -ENOSYS;
-	}
-
     xnarch_old_trap_handler = rt_set_trap_handler(&xnarch_trap_fault);
-
-    adeos_init_attr(&attr);
-    attr.name = "Xenomai";
-    attr.domid = 0x59454e4f;
-    attr.entry = &xnarch_domain_entry;
-    attr.priority = ADEOS_ROOT_PRI + 50;
-
-    if (adeos_register_domain(&xeno_domain,&attr))
-	return 1;
-
-    xnshadow_init();
-
-    return 0;
+    xnarch_calibrate_timer();
+    return xnshadow_init();
 }
 
 static inline void xnarch_exit (void) {
 
     xnshadow_cleanup();
-    rt_set_rtai_trap_handler(xnarch_old_trap_handler);
-    adeos_unregister_domain(&xeno_domain);
+    rt_set_trap_handler(xnarch_old_trap_handler);
 }
 
 #endif /* XENO_MAIN_MODULE */
-
-static inline unsigned long long xnarch_tsc_to_ns (unsigned long long ts) {
-    return xnarch_llimd(ts,1000000000,ARTI_CPU_FREQ);
-}
-
-static inline unsigned long long xnarch_get_cpu_time (void) {
-    return xnarch_tsc_to_ns(xnarch_get_cpu_tsc());
-}
-
-static inline unsigned long long xnarch_get_cpu_freq (void) {
-    return ARTI_CPU_FREQ;
-}
-
-#define xnarch_halt(emsg) \
-do { \
-    xnarch_printf("Xenomai: fatal: %s\n",emsg); \
-    BUG(); \
-} while(0)
-
-int xnarch_setimask(int imask);
 
 #ifdef __cplusplus
 }

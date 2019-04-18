@@ -52,7 +52,7 @@ MvmTimed *MvmScheduler::schedule ()
     MvmTimed *t = get();
 
     if (!t)
-	MvmManager::This->fatal("MvmScheduler::schedule() - empty scheduler");
+	MvmManager::This->fatal("MvmScheduler::schedule() - nothing to schedule?");
 
     activeObject = t;
     t->activate();
@@ -80,7 +80,7 @@ MvmTimed *MvmScheduler::exchange ()
     MvmTimed *t = get();
 
     if (!t)
-	MvmManager::This->fatal("MvmScheduler::exchange() - empty scheduler");
+	MvmManager::This->fatal("MvmScheduler::exchange() - nothing to schedule?");
 
     t->setTime(MvmClock);
     prepend(activeObject);

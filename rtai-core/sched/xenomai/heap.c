@@ -62,11 +62,10 @@
 
 #define XENO_HEAP_MODULE
 
-#include "rtai_config.h"
-#include "xenomai/pod.h"
-#include "xenomai/mutex.h"
-#include "xenomai/thread.h"
-#include "xenomai/heap.h"
+#include <xenomai/pod.h>
+#include <xenomai/mutex.h>
+#include <xenomai/thread.h>
+#include <xenomai/heap.h>
 
 /*
  * Description: Implements the nanokernel memory allocator based
@@ -156,8 +155,8 @@ static void init_extent (xnheap_t *heap,
  *
  * @return XN_OK is returned upon success, or one of the following
  * error codes:
- * - XNERR_HEAP_PARAM is returned whenever a parameter is invalid.
- * - XNERR_HEAP_NOMEM is returned if no initial extent can be allocated
+ * - XNERR_PARAM is returned whenever a parameter is invalid.
+ * - XNERR_NOMEM is returned if no initial extent can be allocated
  * for a dynamically extendable heap (i.e. heapaddr == NULL).
  *
  * Side-effect: This routine does not call the rescheduling procedure.
@@ -192,7 +191,7 @@ int xnheap_init (xnheap_t *heap,
 	heapsize <= sizeof(xnextent_t) ||
 	heapsize > XNHEAP_MAXEXTSZ ||
 	(heapsize & (pagesize - 1)) != 0)
-	return XNERR_HEAP_PARAM;
+	return XNERR_PARAM;
 
     /* Determine the page map overhead inside the given extent
        size. We need to reserve a byte in a page map for each page
@@ -208,7 +207,7 @@ int xnheap_init (xnheap_t *heap,
     /* An extent must contain at least two addressable pages to cope
        with allocation sizes between pagesize and 2 * pagesize. */
     if (hdrsize + 2 * pagesize > heapsize)
-	return XNERR_HEAP_PARAM;
+	return XNERR_PARAM;
 
     /* Compute the page shiftmask from the page size (i.e. log2 value). */
     for (pageshift = 0, shiftsize = pagesize;
@@ -247,7 +246,7 @@ int xnheap_init (xnheap_t *heap,
 	extent = (xnextent_t *)xnarch_sysalloc(heapsize);
 
 	if (!extent)
-	    return XNERR_HEAP_NOMEM;
+	    return XNERR_NOMEM;
 
 	setbits(heap->flags,XNHEAP_EXTENDABLE);
 	}
@@ -298,7 +297,7 @@ void xnheap_destroy (xnheap_t *heap)
  * get_free_range() -- Obtain a range of contiguous free pages to
  * fulfill an allocation of 2 ** log2size. Each extent is searched,
  * and a new one is allocated if needed, provided the heap is
- * extendable.
+ * extendable. Must be called with the heap mutex locked.
  */
 
 static caddr_t get_free_range (xnheap_t *heap,
@@ -310,8 +309,6 @@ static caddr_t get_free_range (xnheap_t *heap,
     u_long pagenum, pagecont, freecont;
     xnholder_t *holder;
     xnextent_t *extent;
-
-    xnmutex_lock(&heap->mutex);
 
     holder = getheadq(&heap->extents);
 
@@ -358,8 +355,6 @@ searchrange:
 	holder = nextq(&heap->extents,holder);
 	}
 
-    xnmutex_unlock(&heap->mutex);
-
     /* No available free range in the existing extents so far. If we
        cannot extend the heap, we have failed and we are done with
        this request. */
@@ -383,15 +378,11 @@ searchrange:
 
     init_extent(heap,extent);
 
-    xnmutex_lock(&heap->mutex);
-
     appendq(&heap->extents,&extent->link);
 
     goto searchrange;	/* Always successful at the first try */
 
 splitpage:
-
-    xnmutex_unlock(&heap->mutex);
 
     /* At this point, headpage is valid and points to the first page
        of a range of contiguous free pages larger or equal than
@@ -414,8 +405,6 @@ splitpage:
 
     pagenum = (headpage - extent->membase) >> heap->pageshift;
 
-    xnmutex_lock(&heap->mutex);
-
     /* Update the extent's page map.  If log2size is non-zero
        (i.e. bsize <= 2 * pagesize), store it in the first page's slot
        to record the exact block size (which is a power of
@@ -429,8 +418,6 @@ splitpage:
 
     for (pagecont = bsize >> heap->pageshift; pagecont > 1; pagecont--)
 	extent->pagemap[pagenum + pagecont - 1] = XNHEAP_PCONT;
-
-    xnmutex_unlock(&heap->mutex);
 
     return headpage;
 }
@@ -521,14 +508,10 @@ void *xnheap_alloc (xnheap_t *heap, u_long size, xnflags_t flags)
 
 	if (block == NULL)
 	    {
-	    xnmutex_unlock(&heap->mutex);
-
 	    block = get_free_range(heap,bsize,log2size,flags);
 
 	    if (block == NULL)
-		return NULL; 
-
-	    xnmutex_lock(&heap->mutex);
+		goto release_and_exit;
 	    }
 
 	heap->buckets[log2size - XNHEAP_MINLOG2] = *((caddr_t *)block);
@@ -536,17 +519,19 @@ void *xnheap_alloc (xnheap_t *heap, u_long size, xnflags_t flags)
 	}
     else
         {
-        if(size>heap->maxcont)
+        if (size > heap->maxcont)
             return NULL;
+
+	xnmutex_lock(&heap->mutex);
 
 	/* Directly request a free page range. */
 	block = get_free_range(heap,size,0,flags);
 
-	xnmutex_lock(&heap->mutex);
-
 	if (block)   
 	    heap->ubytes += size;
 	}
+
+release_and_exit:
 
     xnmutex_unlock(&heap->mutex);
 
@@ -566,12 +551,8 @@ void *xnheap_alloc (xnheap_t *heap, u_long size, xnflags_t flags)
  * @param block The address of the region to release returned by a
  * previous call to xnheap_alloc().
  *
- * @return XN_OK is returned upon success, or one of the possible
- * error codes is returned upon failure:
- * - XNERR_HEAP_NOTINH is returned whenever block does not belong
- * to the specified heap.
- * - XNERR_HEAP_BADBLK is returned whenever block is not a valid
- * region from the specified heap.
+ * @return XN_OK is returned upon success, or XNERR_PARAM is returned
+ * whenever the block is not a valid region of the specified heap.
  *
  * Side-effect: This routine does not call the rescheduling procedure.
  *
@@ -591,7 +572,9 @@ int xnheap_free (xnheap_t *heap, void *block)
     xnmutex_lock(&heap->mutex);
 
     /* Find the extent from which the returned block is
-       originating. */
+       originating. If the heap is non-extendable, then a single
+       extent is scanned at most. */
+
     for (holder = getheadq(&heap->extents);
 	 holder != NULL; holder = nextq(&heap->extents,holder))
 	{
@@ -602,10 +585,8 @@ int xnheap_free (xnheap_t *heap, void *block)
 	    break;
 	}
 
-    xnmutex_unlock(&heap->mutex);
-
     if (!holder)
-	return XNERR_HEAP_NOTINH;
+	goto unlock_and_fail;
 
     /* Compute the heading page number in the page map. */
     pagenum = ((caddr_t)block - extent->membase) >> heap->pageshift;
@@ -616,7 +597,10 @@ int xnheap_free (xnheap_t *heap, void *block)
 	case XNHEAP_PFREE: /* Unallocated page? */
 	case XNHEAP_PCONT:  /* Not a range heading page? */
 
-	    return XNERR_HEAP_BADBLK;
+unlock_and_fail:
+
+	    xnmutex_unlock(&heap->mutex);
+	    return XNERR_PARAM;
 
 	case XNHEAP_PLIST:
 
@@ -634,8 +618,6 @@ int xnheap_free (xnheap_t *heap, void *block)
 		     tailpage = (caddr_t)block + bsize - heap->pagesize;
 		 freepage < tailpage; freepage += heap->pagesize)
 		*((caddr_t *)freepage) = freepage + heap->pagesize;
-
-	    xnmutex_lock(&heap->mutex);
 
 	    /* Mark the released pages as free in the extent's page map. */
 
@@ -665,11 +647,9 @@ int xnheap_free (xnheap_t *heap, void *block)
 	    bsize = (1 << log2size);
 
 	    if ((boffset & (bsize - 1)) != 0) /* Not a block start? */
-		return XNERR_HEAP_BADBLK;
+		goto unlock_and_fail;
 
 	    /* Return the block to the bucketed memory space. */
-
-	    xnmutex_lock(&heap->mutex);
 
 	    *((caddr_t *)block) = heap->buckets[log2size - XNHEAP_MINLOG2];
 	    heap->buckets[log2size - XNHEAP_MINLOG2] = block;
@@ -720,3 +700,10 @@ int xnheap_free (xnheap_t *heap, void *block)
  */
 
 /*@}*/
+
+EXPORT_SYMBOL(xnheap_alloc);
+EXPORT_SYMBOL(xnheap_destroy);
+EXPORT_SYMBOL(xnheap_free);
+EXPORT_SYMBOL(xnheap_init);
+
+EXPORT_SYMBOL(kheap);

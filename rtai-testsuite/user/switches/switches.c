@@ -56,7 +56,6 @@ static void *thread_fun(void *arg)
 		exit(1);
 	}
 
-//	printf("TASK %d BEGINS\n", mytask_indx);
 	mlockall(MCL_CURRENT | MCL_FUTURE);
 	rt_make_hard_real_time();
 	hrt[mytask_indx] = 1;
@@ -71,7 +70,6 @@ static void *thread_fun(void *arg)
 
 	rt_task_delete(mytask[mytask_indx]);
 	hrt[mytask_indx] = 0;
-//	printf("TASK %d ENDS\n", mytask_indx);
 
 	return (void*)0;
 }

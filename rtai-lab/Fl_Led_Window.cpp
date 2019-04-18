@@ -17,11 +17,36 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
 #include <efltk/Fl.h>
-#include "Fl_Led_Window.h"
+#include <Fl_Led_Window.h>
 #include <efltk/Fl_Group.h>
 #include <efltk/fl_draw.h>
 #include <efltk/fl_math.h>
 #include <stdlib.h>
+
+int Fl_Led_Window::x()
+{
+	return LWin->x();
+}
+
+int Fl_Led_Window::y()
+{
+	return LWin->y();
+}
+
+int Fl_Led_Window::w()
+{
+	return LWin->w();
+}
+
+int Fl_Led_Window::h()
+{
+	return LWin->h();
+}
+
+void Fl_Led_Window::resize(int x, int y, int w, int h)
+{
+	LWin->resize(x,y,w,h);
+}
 
 void Fl_Led_Window::show()
 {

@@ -51,7 +51,7 @@ union rtai_tsc {
 	unsigned long long tsc;
 	unsigned long hltsc[2];
 };
-extern union rtai_tsc rtai_tsc;
+extern volatile union rtai_tsc rtai_tsc;
 
 static inline RTIME rdtsc(void)
 {

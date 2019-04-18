@@ -38,9 +38,6 @@ Nov. 2001, Jan Kiszka (Jan.Kiszka@web.de) fix a tiny bug in __task_init.
 #include <rtai_rwl.h>
 #include <rtai_spl.h>
 
-extern int rtai_proc_lxrt_register(void);
-extern void rtai_proc_lxrt_unregister(void);
-
 #include <rtai_registry.h>
 #include <rtai_proxies.h>
 #include <rtai_msg.h>
@@ -49,6 +46,8 @@ extern void rtai_proc_lxrt_unregister(void);
 #define MAX_FUN_EXT  16
 static struct rt_fun_entry *rt_fun_ext[MAX_FUN_EXT];
 
+static struct desc_struct sidt;
+
 /*
  * WATCH OUT for the max expected size of messages and arguments of rtai funs;
  */
@@ -56,16 +55,35 @@ static struct rt_fun_entry *rt_fun_ext[MAX_FUN_EXT];
 #define MSG_SIZE    256  // Default max message size.
 #define MAX_ARGS    10   // Max number of 4 bytes args in rtai functions.
 
-DEFINE_LXRT_HANDLER
+#ifdef CONFIG_RTAI_TRACE
+/****************************************************************************/
+/* Trace functions. These functions have to be used rather than insert
+the macros as-is. Otherwise the system crashes ... You've been warned. K.Y. */
+void trace_true_lxrt_rtai_syscall_entry(void);
+void trace_true_lxrt_rtai_syscall_exit(void);
+/****************************************************************************/
+#endif /* CONFIG_RTAI_TRACE */
 
-extern int get_min_tasks_cpuid(void);
-extern int set_rtext(RT_TASK *, int, int, void(*)(void), unsigned int, struct task_struct *);
-extern int clr_rtext(RT_TASK *);
-extern void steal_from_linux(RT_TASK *);
-extern void give_back_to_linux(RT_TASK *);
-extern void rt_schedule_soft(RT_TASK *);
+DEFINE_LXRT_HANDLER();
 
-extern void *rt_get_lxrt_fun_entry(int index);
+int get_min_tasks_cpuid(void);
+
+int set_rtext(RT_TASK *task,
+	      int priority,
+	      int uses_fpu,
+	      void(*signal)(void),
+	      unsigned int cpuid,
+	      struct task_struct *relink);
+
+int clr_rtext(RT_TASK *task);
+
+void steal_from_linux(RT_TASK *task);
+
+void give_back_to_linux(RT_TASK *task);
+
+void rt_schedule_soft(RT_TASK *task);
+
+void *rt_get_lxrt_fun_entry(int index);
 
 static inline void lxrt_typed_sem_init(SEM *sem, int count, int type)
 {
@@ -236,7 +254,7 @@ static inline RT_TASK* __task_init(unsigned long name, int prio, int stack_size,
 	rt_task = rt_malloc(sizeof(RT_TASK) + 3*sizeof(struct fun_args)); 
 	if (rt_task) {
 	    rt_task->magic = 0;
-	    if (smp_num_cpus > 1 && cpus_allowed) {
+	    if (num_online_cpus() > 1 && cpus_allowed) {
 	    cpus_allowed = hweight32(cpus_allowed) > 1 ? get_min_tasks_cpuid() : ffnz(cpus_allowed);
 	    } else {
 	    cpus_allowed = 0;
@@ -248,9 +266,6 @@ static inline RT_TASK* __task_init(unsigned long name, int prio, int stack_size,
 		rt_task->max_msg_size[0] =
 		rt_task->max_msg_size[1] = max_msg_size;
 		if (rt_register(name, rt_task, IS_TASK, 0)) {
-			extern void *sys_call_table[];
-/* mlockalls can be many without any harm, so we'll give a hint anyhow */
-			((void (*)(int))sys_call_table[__NR_mlockall])(MCL_CURRENT | MCL_FUTURE);
 			return rt_task;
 		} else {
 			clr_rtext(rt_task);
@@ -265,6 +280,9 @@ static inline RT_TASK* __task_init(unsigned long name, int prio, int stack_size,
 static int __task_delete(RT_TASK *rt_task)
 {
 	struct task_struct *process;
+	if (current == rt_task->lnxtsk && rt_task->is_hard == 1) {
+		give_back_to_linux(rt_task);
+	}
 	if (clr_rtext(rt_task)) {
 		return -EFAULT;
 	}
@@ -283,6 +301,7 @@ static int __task_delete(RT_TASK *rt_task)
 #define SYSW_DIAG_MSG(x)
 #endif
 
+#if 1
 static inline void __force_soft(RT_TASK *task)
 {
 	if (task && task->force_soft) {
@@ -291,8 +310,12 @@ static inline void __force_soft(RT_TASK *task)
 		give_back_to_linux(task);
 	}
 }
+#else 
+static inline void __force_soft(RT_TASK *task) { }
+#endif
 
-long long lxrt_handler(unsigned int lxsrq, void *arg, struct pt_regs regs)
+static inline long long handle_lxrt_request (unsigned int lxsrq, void *arg)
+
 {
 #define larg ((struct arg *)arg)
 #define ar   ((unsigned long *)arg)
@@ -319,15 +342,16 @@ long long lxrt_handler(unsigned int lxsrq, void *arg, struct pt_regs regs)
 
 		if (!funcm) {
 			rt_printk("BAD: null rt_fun_ext[%d]\n", idx);
-			return 0;
+			return -ENOSYS;
 		}
 
 		if ((type = funcm[srq].type)) {
 			int net_rpc;
 			if ((int)task->is_hard > 1) {
-				task->is_hard = 1;
-				SYSW_DIAG_MSG(rt_printk("GOING BACK TO HARD, PID = %d.\n", current->pid););
+				SYSW_DIAG_MSG(rt_printk("GOING BACK TO HARD (SYSLXRT), PID = %d.\n", current->pid););
+				task->is_hard = 0;
 				steal_from_linux(task);
+				SYSW_DIAG_MSG(rt_printk("GONE BACK TO HARD (SYSLXRT),  PID = %d.\n", current->pid););
 			}
 			net_rpc = idx == 2 && !srq;
 			lxrt_resume(funcm[srq].fun, NARG(lxsrq), (int *)arg, net_rpc ? ((long long *)((int *)arg + 2))[0] : type, task, net_rpc);
@@ -457,7 +481,7 @@ long long lxrt_handler(unsigned int lxsrq, void *arg, struct pt_regs regs)
 		}
 
 		case MAKE_HARD_RT: {
-			if (!(task = current->this_rt_task[0]) || (int)task->is_hard > 0) {
+			if (!(task = current->this_rt_task[0]) || (int)task->is_hard == 1) {
 				 return 0;
 			}
 			steal_from_linux(task);
@@ -502,11 +526,11 @@ long long lxrt_handler(unsigned int lxsrq, void *arg, struct pt_regs regs)
 			struct arg { RT_TASK *task; int use_fpu; };
 			if(!larg->use_fpu) {
 				((larg->task)->lnxtsk)->used_math = 0;
-				((larg->task)->lnxtsk)->flags |= PF_USEDFPU;
+				set_tsk_used_fpu(((larg->task)->lnxtsk));
 			} else {
 				init_xfpu();
 				((larg->task)->lnxtsk)->used_math = 1;
-				((larg->task)->lnxtsk)->flags |= PF_USEDFPU;
+				set_tsk_used_fpu(((larg->task)->lnxtsk));
 			}
 			return 0;
 		}
@@ -514,7 +538,6 @@ long long lxrt_handler(unsigned int lxsrq, void *arg, struct pt_regs regs)
                 case GET_USP_FLAGS: {
                         return arg0.rt_task->usp_flags;
                 }
-
                 case SET_USP_FLAGS: {
                         struct arg { RT_TASK *task; unsigned long flags; };
                         arg0.rt_task->usp_flags = larg->flags;
@@ -532,14 +555,14 @@ long long lxrt_handler(unsigned int lxsrq, void *arg, struct pt_regs regs)
                         return 0;
                 }
 
-#ifndef  FORCE_TASK_SOFT
-#define  FORCE_TASK_SOFT 1023
-#endif
                 case FORCE_TASK_SOFT: {
+			extern void rt_do_force_soft(RT_TASK *rt_task);
                         struct task_struct *ltsk;
                         if ((ltsk = find_task_by_pid(arg0.name)))  {
                                 if ((arg0.rt_task = ltsk->this_rt_task[0])) {
-                                        arg0.rt_task->force_soft = ((int)arg0.rt_task->is_hard > 0) && FORCE_SOFT;
+					if ((arg0.rt_task->force_soft = ((int)arg0.rt_task->is_hard > 0) && FORCE_SOFT)) {
+						rt_do_force_soft(arg0.rt_task);
+					}
                                         return (unsigned long)arg0.rt_task;
                                 }
                         }
@@ -567,8 +590,40 @@ long long lxrt_handler(unsigned int lxsrq, void *arg, struct pt_regs regs)
 	        default:
 
 		    rt_printk("RTAI/LXRT: Unknown srq #%d\n", srq);
-		    return -1;
+		    return -ENOSYS;
 	}
+	return 0;
+}
+
+asmlinkage long long rtai_lxrt_invoke (unsigned int lxsrq, void *arg)
+
+{
+    long long retval;
+
+#ifdef CONFIG_RTAI_TRACE
+    trace_true_lxrt_rtai_syscall_entry();
+#endif /* CONFIG_RTAI_TRACE */
+    retval = handle_lxrt_request(lxsrq,arg);
+#ifdef CONFIG_RTAI_TRACE
+    trace_true_lxrt_rtai_syscall_exit();
+#endif /* CONFIG_RTAI_TRACE */
+
+    return retval;
+}
+
+asmlinkage int rtai_lxrt_fastpath (void)
+
+{
+    /* Returns zero if we may process pending Linux work on our return
+       path (i.e. long return path through reschedule), or non-zero if
+       we may not (fast return path). In the former case, also unstall
+       the Linux stage into the Adeos pipeline so that interrupts can
+       flow anew. */
+
+	if (test_bit(hard_cpu_id(), &rtai_cpu_realtime)) {
+		return 1;
+	}
+	rtai_linux_sti();
 	return 0;
 }
 
@@ -588,7 +643,8 @@ void reset_rt_fun_ext_index( struct rt_fun_entry *fun, int idx)
 	}
 }
 
-void linux_process_termination(void)
+static void linux_process_termination(void)
+
 {
 	unsigned long num;
 	void *adr;
@@ -648,40 +704,30 @@ void linux_process_termination(void)
 	}
 }
 
-static struct desc_struct sidt;
+int lxrt_init_archdep (void)
 
-int lxrt_init_module(void)
 {
-	RT_TASK *rt_linux_tasks[NR_RT_CPUS];
+    RT_TASK *rt_linux_tasks[NR_RT_CPUS];
 
-	sidt = rt_set_full_intr_vect(RTAI_LXRT_VECTOR, 15, 3, (void *)RTAI_LXRT_HANDLER);
-	if(set_rtai_callback(linux_process_termination)) {
-		printk("Could not setup rtai_callback\n");
-		return -ENODEV;
+    sidt = rt_set_full_intr_vect(RTAI_LXRT_VECTOR, 15, 3, (void *)&RTAI_LXRT_HANDLER);
+
+    if (set_rtai_callback(linux_process_termination))
+	{
+	printk("Could not setup rtai_callback\n");
+	return -ENODEV;
 	}
-	rt_fun_ext[0] = rt_fun_lxrt;
-	rt_get_base_linux_task(rt_linux_tasks);
-	rt_linux_tasks[0]->task_trap_handler[0] = (void *)set_rt_fun_ext_index;
-	rt_linux_tasks[0]->task_trap_handler[1] = (void *)reset_rt_fun_ext_index;
 
-#ifdef CONFIG_PROC_FS
-	rtai_proc_lxrt_register();
-#endif
-#ifdef CONFIG_RTAI_ADEOS
-	arti_attach_lxrt();
-#endif /* CONFIG_RTAI_ADEOS */
-	return 0 ;
+    rt_fun_ext[0] = rt_fun_lxrt;
+    rt_get_base_linux_task(rt_linux_tasks);
+    rt_linux_tasks[0]->task_trap_handler[0] = (void *)set_rt_fun_ext_index;
+    rt_linux_tasks[0]->task_trap_handler[1] = (void *)reset_rt_fun_ext_index;
+
+    return 0;
 }
 
-void lxrt_cleanup_module(void)
+void lxrt_exit_archdep (void)
+
 {
-#ifdef CONFIG_RTAI_ADEOS
-	arti_detach_lxrt();
-#endif /* CONFIG_RTAI_ADEOS */
-#ifdef CONFIG_PROC_FS
-	rtai_proc_lxrt_unregister();
-#endif
-	rt_reset_full_intr_vect(RTAI_LXRT_VECTOR, sidt);
-	remove_rtai_callback(linux_process_termination);
-	return;
+    rt_reset_full_intr_vect(RTAI_LXRT_VECTOR, sidt);
+    remove_rtai_callback(linux_process_termination);
 }

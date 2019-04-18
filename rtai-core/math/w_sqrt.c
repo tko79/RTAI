@@ -19,7 +19,7 @@ static char rcsid[] = "$NetBSD: w_sqrt.c,v 1.6 1995/05/10 20:49:55 jtc Exp $";
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 	double sqrt(double x)		/* wrapper sqrt */

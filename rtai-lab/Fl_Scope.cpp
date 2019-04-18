@@ -17,7 +17,7 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
-#include "Fl_Scope.h"
+#include <Fl_Scope.h>
 
 void Fl_Scope::show_trace(int n, int value)
 {
@@ -68,6 +68,21 @@ void Fl_Scope::grid_free_color()
 	Grid_Color = FL_FREE_COLOR;
 }
 
+float Fl_Scope::grid_r()
+{
+	return Grid_rgb[0];
+}
+
+float Fl_Scope::grid_g()
+{
+	return Grid_rgb[1];
+}
+
+float Fl_Scope::grid_b()
+{
+	return Grid_rgb[2];
+}
+
 void Fl_Scope::bg_color(float r, float g, float b)
 {
 	Bg_rgb[0] = r;
@@ -83,6 +98,21 @@ Fl_Color Fl_Scope::bg_color()
 void Fl_Scope::bg_free_color()
 {
 	Bg_Color = FL_FREE_COLOR;
+}
+
+float Fl_Scope::bg_r()
+{
+	return Bg_rgb[0];
+}
+
+float Fl_Scope::bg_g()
+{
+	return Bg_rgb[1];
+}
+
+float Fl_Scope::bg_b()
+{
+	return Bg_rgb[2];
 }
 
 void Fl_Scope::trace_color(int n, float r, float g, float b)
@@ -106,6 +136,21 @@ void Fl_Scope::trace_free_color(int n)
 	if (n < num_of_traces) {
 		Trace_Color[n] = FL_FREE_COLOR;
 	}
+}
+
+float Fl_Scope::tr_r(int n)
+{
+	return Trace_rgb[n][0];
+}
+
+float Fl_Scope::tr_g(int n)
+{
+	return Trace_rgb[n][1];
+}
+
+float Fl_Scope::tr_b(int n)
+{
+	return Trace_rgb[n][2];
 }
 
 void Fl_Scope::sampling_frequency(float freq)
@@ -264,6 +309,7 @@ void Fl_Scope::drawgrid()
 
 void Fl_Scope::draw()
 {
+//	char secdiv[20];
 	if (!valid()) {
 		initgl();
 		dxGrid = w()/(float)((int)(w()/(w()/((float)NDIV_GRID_X))));

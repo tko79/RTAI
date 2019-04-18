@@ -21,6 +21,12 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 
 #include <asm/processor.h>
 
+typedef struct ppc_fpu_env { unsigned long fpu_reg[66]; } FPU_ENV;
+
+#define save_cr0_and_clts(x)
+#define restore_cr0(x)
+#define enable_fpu()
+
 #ifdef CONFIG_RTAI_FPU_SUPPORT
 /*
  * Saving/restoring the FPU environment in PPC is like eating a cake, very simple. Just save/restore all of the floating 

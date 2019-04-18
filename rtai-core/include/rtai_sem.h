@@ -25,6 +25,8 @@
 #define _RTAI_SEM_H
 
 #include <rtai_types.h>
+#include <rtai_nam2num.h>
+#include <rtai_sched.h>
 
 #define RT_SEM_MAGIC 0xaabcdeff
 
@@ -33,8 +35,6 @@
 #define SEM_ERR (0xFfff)
 
 #if defined(__KERNEL__) && !defined(__cplusplus)
-
-#include <rtai_sched.h>
 
 typedef struct rt_semaphore {
     struct rt_queue queue; /* <= Must be first in struct. */
@@ -59,14 +59,6 @@ typedef SEM CND;
 
 #include <linux/errno.h>
 
-#ifdef CONFIG_RTAI_SEM_BUILTIN
-#define SEM_INIT_MODULE     sem_init_module
-#define SEM_CLEANUP_MODULE  sem_cleanup_module
-#else  /* !CONFIG_RTAI_SEM_BUILTIN */
-#define SEM_INIT_MODULE     init_module
-#define SEM_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_SEM_BUILTIN */
-
 typedef SEM psem_t;
 
 typedef SEM pmutex_t;
@@ -75,17 +67,23 @@ typedef SEM pmutex_t;
 extern "C" {
 #endif /* __cplusplus */
 
-int SEM_INIT_MODULE(void);
+int __rtai_sem_init(void);
 
-void SEM_CLEANUP_MODULE(void);
+void __rtai_sem_exit(void);
 
 void rt_typed_sem_init(SEM *sem,
 		       int value,
 		       int type);
 
-SEM *rt_typed_named_sem_init(const char *sem_name,
+SEM *_rt_typed_named_sem_init(unsigned long sem_name,
 			     int value,
 			     int type);
+
+static inline SEM *rt_typed_named_sem_init(const char *sem_name,
+					   int value,
+					   int type) {
+    return _rt_typed_named_sem_init(nam2num(sem_name), value, type);
+}
 
 void rt_sem_init(SEM *sem,
 		 int value);
@@ -160,7 +158,7 @@ static inline int rt_psem_trywait(psem_t *sem) {
 }
 
 static inline int rt_psem_post(psem_t *sem) {
-    return rt_sem_wait(sem) < SEM_TIMOUT ? 0 : -ERANGE;
+    return rt_sem_signal(sem);
 }
 
 static inline int rt_psem_getvalue(psem_t *sem, int *sval)
@@ -199,7 +197,7 @@ static inline int rt_pmutex_timedlock(pmutex_t *sem, struct timespec *abstime) {
 }
 
 static inline int rt_pmutex_unlock(pmutex_t *mutex) {
-    return rt_sem_wait(mutex) < SEM_TIMOUT ? 0 : -EINVAL;
+    return rt_sem_signal(mutex);
 }
 
 #define rt_mutex_init(mtx)             rt_typed_sem_init(mtx, 1, RES_SEM)
@@ -267,7 +265,7 @@ RTAI_PROTO(int, rt_sem_delete,(SEM *sem))
 
 RTAI_PROTO(SEM *, rt_typed_named_sem_init,(const char *name, int value, int type))
 {
-	struct { const char *name; int value, type; } arg = { name, value, type };
+	struct { unsigned long name; int value, type; } arg = { nam2num(name), value, type };
 	return (SEM *)rtai_lxrt(BIDX, SIZARG, NAMED_SEM_INIT, &arg).v[LOW];
 }
 
@@ -325,7 +323,22 @@ RTAI_PROTO(int, rt_sem_count,(SEM *sem))
 	return rtai_lxrt(BIDX, SIZARG, SEM_COUNT, &arg).i[LOW];
 }
 
-#define rt_cond_init(cnd)                  rt_typed_sem_init(cnd, 0, BIN_SEM)
+/**
+ * @ingroup lxrt
+ * Initialize a condition variable.
+ *
+ * Allocates and initializes a condition variable to be referred by @a name.
+ *
+ * @param name name of the condition variable.
+ *
+ * It is important to remark that the returned pointer cannot be used
+ * directly, it is for kernel space data, but just passed as arguments when
+ * needed.
+ *
+ * @return a pointer to the condition variable to be used in related calls or 0
+ * if an error has occured.
+ */ 
+#define rt_cond_init(name)                 rt_typed_sem_init(name, 0, BIN_SEM)
 #define rt_cond_delete(cnd)                rt_sem_delete(cnd)
 #define rt_cond_destroy(cnd)               rt_sem_delete(cnd)
 #define rt_cond_broadcast(cnd)             rt_sem_broadcast(cnd)

@@ -124,8 +124,8 @@ typedef struct _dbridge_state {
 
     union {
 	struct {
-	    xnqueue_t inq;	/* From Linux to real-time */
-	    xnqueue_t outq;	/* From real-time to Linux */
+	    xnqueue_t inq;	/* From user-space to kernel */
+	    xnqueue_t outq;	/* From kernel to user-space */
 	    dbridge_io_handler *o_handler;
 	    dbridge_io_handler *i_handler;
 	    dbridge_alloc_handler *alloc_handler;
@@ -170,7 +170,7 @@ void dbridge_enqueue_wait(dbridge_state_t *state,
 void dbridge_dequeue_wait(dbridge_state_t *state,
 			  int flags);
 
-/* The real-time interface entry points. */
+/* Entry points of the kernel interface. */
 
 void dbridge_msetup(dbridge_session_handler *open_handler,
 		    dbridge_session_handler *close_handler);

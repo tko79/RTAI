@@ -67,7 +67,7 @@ int psosrn_init (u_long rn0size)
     rn0addr = xnmalloc(rn0size);
 
     if (!rn0addr)
-	return XNERR_POD_NOMEM;
+	return XNERR_NOMEM;
 
     rn_create("RN#0",
 	      rn0addr,
@@ -326,7 +326,7 @@ u_long rn_retseg (u_long rnid,
 	return ERR_NOTINRN;
 	}
 
-    if (xnheap_free(&rn->heapbase,chunk) == XNERR_HEAP_BADBLK)
+    if (xnheap_free(&rn->heapbase,chunk) == XNERR_PARAM)
 	{
 	xnmutex_unlock(&__imutex);
 	return ERR_SEGADDR;

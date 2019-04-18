@@ -22,6 +22,11 @@
 #include <asm/pgtable.h>
 #include <asm/io.h>
 #include <asm/rtai_vectors.h>
+#include <rtai_wrappers.h>
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#define VMALLOC_VMADDR(x) ((unsigned long)(x))
+#endif /* >= 2.6.0 */
 
 #define __SHM_USE_VECTOR 1
 
@@ -71,7 +76,11 @@ static inline unsigned long uvirt_to_kva(pgd_t *pgd, unsigned long adr)
 	if(!pgd_none(*pgd)) {
 		pmd = pmd_offset(pgd, adr);
 		if (!pmd_none(*pmd)) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 			ptep = pte_offset(pmd, adr);
+#else /* >= 2.6.0 */
+			ptep = pte_offset_kernel(pmd, adr);
+#endif /* < 2.6.0 */
 			pte = *ptep;
 			if(pte_present(pte)){
 				ret = (unsigned long) page_address(pte_page(pte));

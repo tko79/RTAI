@@ -1,7 +1,7 @@
 /*
  * Project: rtai_cpp - RTAI C++ Framework 
  *
- * File: $Id: sem.cc,v 1.1.1.1 2003/10/14 17:38:51 pgerum Exp $
+ * File: $Id: sem.cc,v 1.1.1.1 2004/06/06 14:13:43 rpm Exp $
  *
  * Copyright: (C) 2001,2002 Erwin Rol <erwin@muffin.org>
  *

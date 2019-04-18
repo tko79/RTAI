@@ -60,21 +60,13 @@
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_RTAI_USI_BUILTIN
-#define USI_INIT_MODULE     usi_init_module
-#define USI_CLEANUP_MODULE  usi_cleanup_module
-#else  /* !CONFIG_RTAI_USI_BUILTIN */
-#define USI_INIT_MODULE     init_module
-#define USI_CLEANUP_MODULE  cleanup_module
-#endif /* CONFIG_RTAI_USI_BUILTIN */
-
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-int USI_INIT_MODULE(void);
+int __rtai_usi_init(void);
 
-void USI_CLEANUP_MODULE(void);
+void __rtai_usi_exit(void);
 
 #ifdef __cplusplus
 }

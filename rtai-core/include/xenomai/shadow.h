@@ -57,8 +57,10 @@ extern "C" {
 struct xnthread;
 struct xnmutex;
 struct pt_regs;
+struct timespec;
+struct timeval;
 
-void xnshadow_init(void);
+int xnshadow_init(void);
 
 void xnshadow_cleanup(void);
 
@@ -71,12 +73,6 @@ void xnshadow_map(struct xnthread *thread,
 		  struct xnmutex *imutex);
 
 void xnshadow_unmap(struct xnthread *thread);
-
-void xnshadow_sync_post(pid_t pid,
-			int *u_syncp,
-			int err);
-
-int xnshadow_sync_wait(int *u_syncp);
 
 void xnshadow_relax(void);
 
@@ -96,9 +92,21 @@ int xnshadow_register_skin(unsigned magic,
 
 int xnshadow_unregister_skin(int muxid);
 
+void xnshadow_exit(void);
+
 static inline void xnshadow_schedule (void) {
     XENOMAI_SYSCALL0(__xn_sys_sched);
 }
+
+unsigned long long xnshadow_ts2ticks(const struct timespec *v);
+
+void xnshadow_ticks2ts(unsigned long long ticks,
+		       struct timespec *v);
+
+unsigned long long xnshadow_tv2ticks(const struct timeval *v);
+
+void xnshadow_ticks2tv(unsigned long long ticks,
+		       struct timeval *v);
 
 #ifdef __cplusplus
 }

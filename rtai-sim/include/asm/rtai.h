@@ -16,9 +16,9 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef _nslib_include_asm_rtai_h
-#define _nslib_include_asm_rtai_h
+#ifndef _mvm_include_asm_rtai_h
+#define _mvm_include_asm_rtai_h
 
 #include "vrtai/vrtai.h"
 
-#endif /* !_nslib_include_asm_rtai_h */
+#endif /* !_mvm_include_asm_rtai_h */

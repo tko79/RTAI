@@ -68,18 +68,18 @@ int vrtxheap_init (u_long heap0size)
     heap0addr = (char *)xnmalloc(heap0size);
 
     if (!heap0addr)
-	return XNERR_POD_NOMEM;
+	return XNERR_NOMEM;
 
     heapid = sc_hcreate(heap0addr, heap0size, 7, &err);
     if ( err != RET_OK )
 	{
 	if ( err == ER_IIP)
 	    {
-	    return XNERR_HEAP_PARAM;
+	    return XNERR_PARAM;
 	    }
 	else
 	    {
-	    return XNERR_HEAP_NOMEM;
+	    return XNERR_NOMEM;
 	    }
 	}
   
@@ -143,7 +143,7 @@ int sc_hcreate(char *heapaddr,
     err = xnheap_init(&heap->sysheap, heapaddr, heapsize, pagesize);
     if (err != XN_OK)
 	{
-	    if (err == XNERR_HEAP_PARAM)
+	    if (err == XNERR_PARAM)
 	        {
 		*perr = ER_IIP;
 		}

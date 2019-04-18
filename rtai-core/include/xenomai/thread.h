@@ -74,14 +74,13 @@
 #define XNASDI    0x00080000	/* ASR are disabled */
 
 #define XNFPU     0x00100000	/* Thread uses FPU */
-#define XNDEBUG   0x00200000	/* Debugger thread -- Don't freeze */
-#define XNISVC    0x00400000	/* Interrupt svc thread -- Don't freeze */
-#define XNSHADOW  0x00800000	/* Shadow thread */
-#define XNROOT    0x01000000	/* Root thread (i.e. Linux/IDLE) */
+#define XNISVC    0x00200000	/* Interrupt svc thread -- Don't freeze */
+#define XNSHADOW  0x00400000	/* Shadow thread */
+#define XNROOT    0x00800000	/* Root thread (i.e. Linux/IDLE) */
 
 #define XNTHREAD_BLOCK_BITS  (XNSUSP|XNPEND|XNDELAY|XNDORMANT|XNFROZEN|XNRELAX)
 #define XNTHREAD_MODE_BITS   (XNLOCK|XNRRB|XNASDI)
-#define XNTHREAD_SYSTEM_BITS (XNISVC|XNDEBUG|XNROOT)
+#define XNTHREAD_SYSTEM_BITS (XNISVC|XNROOT)
 
 /* These flags are available to the real-time interfaces */
 #define XNTHREAD_SPARE0  0x10000000
@@ -104,6 +103,8 @@ typedef void (*xnasr_t)(xnsigmask_t sigs);
 
 typedef struct xnthread {
 
+    xnarchtcb_t tcb;		/* Architecture-dependent block -- Must be first */
+
     xnflags_t status;		/* Thread status flags */
 
     struct xnsched *sched;	/* Thread scheduler */
@@ -111,6 +112,8 @@ typedef struct xnthread {
     int bprio;			/* Base priority (before PIP boost) */
 
     int cprio;			/* Current priority */
+
+    unsigned magic;		/* Skin magic. */
 
     char name[XNOBJECT_NAME_LEN]; /* Symbolic name of thread */
 
@@ -163,10 +166,6 @@ typedef struct xnthread {
     void *extinfo;		/* Extended information -- user-defined */
 
     void *adcookie;		/* Arch-dependent system cookie. */
-
-    unsigned magic;		/* Skin magic. */
-
-    xnarchtcb_t tcb;		/* Architecture-dependent block */
 
     XNARCH_DECL_DISPLAY_CONTEXT();
 

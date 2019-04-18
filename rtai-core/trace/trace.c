@@ -119,7 +119,7 @@ int rt_trace_event(uint8_t  pmEventID,
 }
 
 /*******************************************************
- * Function: init_module()
+ * Function: __rtai_trace_init()
  * Description:
  *   Initializes the RTAI trace module
  * Parameters :
@@ -127,13 +127,13 @@ int rt_trace_event(uint8_t  pmEventID,
  * Return values :
  *   0, all is OK
  *******************************************************/
-int init_module(void)
+int __rtai_trace_init(void)
 {
   return 0;
 }
 
 /*******************************************************
- * Function: cleanup_module()
+ * Function: __rtai_trace_exit()
  * Description:
  *   Cleans-up the RTAI trace module
  * Parameters :
@@ -141,6 +141,9 @@ int init_module(void)
  * Return values :
  *   NONE
  *******************************************************/
-void cleanup_module(void)
+void __rtai_trace_exit(void)
 {
 }
+
+module_init(__rtai_trace_init);
+module_exit(__rtai_trace_exit);

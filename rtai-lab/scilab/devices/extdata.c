@@ -18,21 +18,28 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "devstruct.h"
+#include "rtmain.h"
 
 extern devStr inpDevStr[];
 extern devStr outDevStr[];
 
-void inp_extdata_init(int port,int nch,char * sName,double p1,
+void inp_extdata_init(int port,int nch,char * sName,char * sParam,double p1,
 		      double p2, double p3, double p4, double p5)
 {
   FILE * fp;
   double * pData;
   int i;
   int id=port-1;
+
+  if(nch==0) {
+    fprintf(stderr, "Error - Data length is 0!\n");
+    exit_on_error();
+  }
   strcpy(inpDevStr[id].IOName,"extdata");
-  inpDevStr[id].ptr=(void *)calloc(nch,sizeof(double));
-  pData=(double *) inpDevStr[id].ptr;
+  inpDevStr[id].ptr1=(void *)calloc(nch,sizeof(double));
+  pData=(double *) inpDevStr[id].ptr1;
   fp=fopen(sName,"r");
   if(fp!=NULL){
     inpDevStr[id].i1=0;
@@ -44,8 +51,9 @@ void inp_extdata_init(int port,int nch,char * sName,double p1,
     fclose(fp);
   }
   else{
-    printf("File %s not found!\n",sName);
+    fprintf(stderr, "File %s not found!\n",sName);
     inpDevStr[id].i1=-1;
+    exit_on_error();
   }
 }
 
@@ -54,7 +62,7 @@ void inp_extdata_input(int port, double * y, double t)
   int id=port-1;
   int index=inpDevStr[id].i1;
   if(index>=0) {
-    double * pData=(double *) inpDevStr[id].ptr;
+    double * pData=(double *) inpDevStr[id].ptr1;
     y[0]=pData[index];
     index=(index+1) % inpDevStr[id].nch;
     inpDevStr[id].i1=index;
@@ -68,6 +76,7 @@ void inp_extdata_update(void)
 
 void inp_extdata_end(int port)
 {
+  printf("%s closed\n",inpDevStr[port-1].IOName);
 }
 
 

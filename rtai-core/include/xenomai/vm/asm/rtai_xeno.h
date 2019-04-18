@@ -43,8 +43,8 @@
  * notice.
  */
 
-#ifndef _vm_asm_rtai_xeno_h
-#define _vm_asm_rtai_xeno_h
+#ifndef _VM_ASM_RTAI_XENO_H
+#define _VM_ASM_RTAI_XENO_H
 
 #include <sys/time.h>
 #include <errno.h>
@@ -58,9 +58,12 @@
 #include <asm/rtai_xnatomic.h>
 #include <xenomai/fusion.h>
 
-#define XNARCH_DEFAULT_TICK  1000000 /* ns, i.e. 1ms */
-#define XNARCH_IRQ_MAX       32
-#define XNARCH_SIG_RESTART   SIGUSR1
+#define XNARCH_DEFAULT_TICK   1000000 /* ns, i.e. 1ms */
+#define XNARCH_IRQ_MAX        32
+#define XNARCH_SIG_RESTART    SIGUSR1
+#define XNARCH_HOST_TICK      0	/* No host ticking service */
+#define XNARCH_APERIODIC_PREC 0	/* No aperiodic support */
+#define XNARCH_SCHED_LATENCY  0 /* No scheduling latency */
 
 struct xnthread;
 
@@ -106,7 +109,9 @@ typedef void *xnarch_fltinfo_t;	/* Unused but required */
 #define xnarch_imuldiv(i,m,d)      ((int)(i) * (int)(m) / (int)(d))
 #define xnarch_ulldiv(ull,uld,rem) (((*rem) = ((ull) % (uld))), (ull) / (uld))
 #define xnarch_ullmod(ull,uld,rem) ((*rem) = ((ull) % (uld)))
+
 #define xnarch_stack_size(tcb)     ((tcb)->stacksize)
+#define xnarch_fpu_ptr(tcb)        (NULL)
 
 static inline int __attribute__ ((unused))
 xnarch_read_environ (const char *name, const char **ptype, void *pvar)
@@ -172,13 +177,8 @@ typedef int spl_t;
 
 /* Nullify other kernel macros */
 #define EXPORT_SYMBOL(sym);
-
-#define MAIN_INIT_MODULE     vml_init_nanokernel
-#define MAIN_CLEANUP_MODULE  vml_cleanup_nanokernel
-#define SKIN_INIT_MODULE     vml_init_skin
-#define SKIN_CLEANUP_MODULE  vml_cleanup_skin
-#define USER_INIT_MODULE     vml_init_application
-#define USER_CLEANUP_MODULE  vml_cleanup_application
+#define module_init(sym);
+#define module_exit(sym);
 
 #ifdef __cplusplus
 extern "C" {
@@ -233,6 +233,18 @@ static inline void xnarch_isr_enable_irq (unsigned irq) {
 
 #ifdef XENO_MAIN_MODULE
 
+int __xeno_main_init(void);
+
+void __xeno_main_exit(void);
+
+int __xeno_skin_init(void);
+
+void __xeno_skin_exit(void);
+
+int __xeno_user_init(void);
+
+void __xeno_user_exit(void);
+
 int vml_done = 0;
 
 static inline int xnarch_init (void) {
@@ -241,13 +253,6 @@ static inline int xnarch_init (void) {
 
 static inline void xnarch_exit (void) {
 }
-
-int vml_init_nanokernel(void);
-void vml_cleanup_nanokernel(void);
-int vml_init_skin(void);
-void vml_cleanup_skin(void);
-int vml_init_application(void);
-void vml_cleanup_application(void);
 
 static void xnarch_restart_handler (int sig) {
 
@@ -274,27 +279,27 @@ int main (int argc, char *argv[])
 	exit(1);
 	}
 
-    err = vml_init_nanokernel();
+    err = __xeno_main_init();
 
     if (err)
 	{
-        fprintf(stderr,"init_nanokernel() failed, err=%x\n",err);
+        fprintf(stderr,"main_init() failed, err=%x\n",err);
         exit(2);
 	}
 
-    err = vml_init_skin();
+    err = __xeno_skin_init();
 
     if (err)
 	{
-        fprintf(stderr,"init_skin() failed, err=%x\n",err);
+        fprintf(stderr,"skin_init() failed, err=%x\n",err);
         exit(3);
 	}
 
-    err = vml_init_application();
+    err = __xeno_user_init();
 
     if (err)
 	{
-        fprintf(stderr,"init_application() failed, err=%x\n",err);
+        fprintf(stderr,"user_init() failed, err=%x\n",err);
         exit(4);
 	}
 
@@ -312,9 +317,9 @@ int main (int argc, char *argv[])
     while (!vml_done)
 	__pthread_idle_vm(&vml_irqlock);
 
-    vml_cleanup_application();
-    vml_cleanup_skin();
-    vml_cleanup_nanokernel();
+    __xeno_user_exit();
+    __xeno_skin_exit();
+    __xeno_main_exit();
 
     exit(0);
 }
@@ -340,15 +345,27 @@ void xnarch_sysfree(void *chunk,
 
 #endif /* XENO_HEAP_MODULE */
 
+#ifdef XENO_TIMER_MODULE
+
+void *vml_timer_handle;
+
+static inline void xnarch_stop_timer (void) {
+    __pthread_cancel_vm(vml_timer_handle,NULL);
+}
+
+#endif /* XENO_TIMER_MODULE */
+
 #ifdef XENO_POD_MODULE
 
-static void *vml_timer_handle;
+extern void *vml_timer_handle;
 
 xnsysinfo_t vml_info;
 
 xnarchtcb_t *vml_root;
 
 xnarchtcb_t *vml_current;
+
+#define xnarch_relay_tick()  /* Nullified. */
 
 /* NOTES:
 
@@ -437,10 +454,6 @@ static inline void xnarch_start_timer (unsigned long nstick,
     pthread_create(&thid,&thattr,&xnarch_timer_thread,&parms);
     pthread_sync_rt(&parms.syncflag);
     pthread_start_rt(vml_timer_handle);
-}
-
-static inline void xnarch_stop_timer (void) {
-    __pthread_cancel_vm(vml_timer_handle,NULL);
 }
 
 static inline void xnarch_leave_root(xnarchtcb_t *rootcb) {
@@ -569,8 +582,6 @@ int xnarch_setimask (int imask)
     return !!s;
 }
 
-#define xnarch_announce_tick() /* Nullified */
-
 #define xnarch_notify_ready()  /* Nullified */
 
 #endif /* XENO_POD_MODULE */
@@ -581,6 +592,10 @@ void xnarch_exit_handler(int);
 
 static inline unsigned long long xnarch_tsc_to_ns (unsigned long long ts) {
     return ts;
+}
+
+static inline unsigned long long xnarch_ns_to_tsc (unsigned long long ns) {
+    return ns;
 }
 
 static inline unsigned long long xnarch_get_cpu_time (void) {
@@ -616,4 +631,4 @@ static inline void xnarch_halt (const char *emsg) {
 #define xnarch_post_graph(obj,state)
 #define xnarch_post_graph_if(obj,state,cond)
 
-#endif /* !_vm_asm_rtai_xeno_h */
+#endif /* !_VM_ASM_RTAI_XENO_H */

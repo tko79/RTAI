@@ -51,20 +51,25 @@
 #ifdef __KERNEL__
 
 #include <asm/uaccess.h>
+#include <rtai_wrappers.h>
 
 #define __xn_copy_from_user(task,dstP,srcP,n)  __copy_from_user(dstP,srcP,n)
 #define __xn_copy_to_user(task,dstP,srcP,n)    __copy_to_user(dstP,srcP,n)
 #define __xn_put_user(task,src,dstP)           __put_user(src,dstP)
 #define __xn_get_user(task,dst,srcP)           __get_user(dst,srcP)
+
 #define __xn_range_ok(task,addr,size) ({ \
 	unsigned long flag,sum; \
 	asm("addl %3,%1 ; sbbl %0,%0; cmpl %1,%4; sbbl $0,%0" \
 		:"=&r" (flag), "=r" (sum) \
-		:"1" (addr),"g" ((int)(size)),"g" ((task)->addr_limit.seg)); \
+	        :"1" (addr),"g" ((int)(size)),"g" get_tsk_addr_limit(task)); \
 	flag; })
+
 /* WP bit must work for using the shadow support, so we only need
    trivial range checking here. */
 #define __xn_access_ok(task,type,addr,size)    (__xn_range_ok(task,addr,size) == 0)
+
+#define XNARCH_MAX_SYSENT 255
 
 typedef struct _xnsysent {
 
@@ -206,7 +211,7 @@ asm (".L__X'%ebx = 1\n\t"
 #define __xn_reg_mux_p(regs)        ((__xn_reg_mux(regs) & 0xffff) == __xn_sys_mux)
 #define __xn_mux_id(regs)           ((__xn_reg_mux(regs) >> 16) & 0xff)
 #define __xn_mux_op(regs)           ((__xn_reg_mux(regs) >> 24) & 0xff)
-#define __xn_mux_code(id,op)        ((op << 24)|(id << 16)|__xn_sys_mux)
+#define __xn_mux_code(id,op)        ((op << 24)|((id << 16) & 0xff0000)|(__xn_sys_mux & 0xffff))
 
 #define XENOMAI_SYSCALL0(op)                XENOMAI_SYS_MUX(0,op)
 #define XENOMAI_SYSCALL1(op,a1)             XENOMAI_SYS_MUX(1,op,a1)

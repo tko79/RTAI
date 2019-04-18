@@ -135,8 +135,6 @@ static struct sysrq_t {
 
 static RT_TRAP_HANDLER rtai_trap_handler[NR_TRAPS];
 
-volatile unsigned long lxrt_hrt_flags;
-
 // The main items to be saved-restored to make Linux our humble slave
 
 static struct rt_hal linux_rthal;

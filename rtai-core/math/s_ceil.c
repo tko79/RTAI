@@ -25,7 +25,7 @@ static char rcsid[] = "$NetBSD: s_ceil.c,v 1.8 1995/05/10 20:46:53 jtc Exp $";
  */
 
 #include "math.h"
-#include "math_private.h"
+#include "mathP.h"
 
 #ifdef __STDC__
 static const double huge = 1.0e300;
