@@ -1,0 +1,74 @@
+Shared Memory
+=============
+
+This directory contains an RTAI specific module that allows sharing memory
+inter-intra real time tasks and Linux processes. In fact it can be an
+alternative to SYSTEM V shared memory, the services are symmetricall, i.e.
+the same calls can be used anywhere in real time tasks, i.e. within the kernel,
+and Linux processes.
+
+The function calls for Linux processes are inlined in the file "rtai_shm.h".  
+This approach has been preferred to a library since: is simpler, more 
+effective, the calls are short, simple and just a few per process. See the 
+related README in directory Documentation.
+
+It is important to remark that this implementation of shared memory can now
+be seen as an extension/integration of the standard real time RTAI memory 
+allocator.
+It provides the same two functions (malloc/free), in an extended named form 
+by using the standard centralised RTAI registry support.
+It must be remarked that the integration is available only if "vmalloc"
+support for the real time memory manager has been set at RTAI configuration.
+If it is not the standard shared memory support is used.
+
+The functions provided are:
+- void *rt_named_malloc(unsigned long name, int size, int suprt);
+- void *rt_named_malloc_adr(void *start, unsigned long name, int size, 
+  int suprt);
+- int rt_named_free(unsigned long name, void *adr);
+
+"rt_named_malloc_adr" is nonsense in kernel space and is provided just for
+compatibilty reasons. "adr" is not used when "rt_named_free" is called in 
+kernel space, but must be given a value anyhow, for symmetry of usage.
+
+"suprt" can be (definitions in rtai_shm.h):
+- USE_RT_MALLOC, to use rt_malloc/rt_free;
+- USE_NOT_SHARD, as for USE_RT_MALLOC but for memory to be used just in kernel 
+  space;
+- USE_RTAI_SHM,  to use the stand alone shared memory support.
+
+USE_RT_MALLOC grants real time performances in kernel space. Such a support
+cannot be afforded in user space because of the need to mmap/munmap. Using
+the shared memory support in user space while in hard real time will not 
+break anything but will force a soft execution till the requested memory is
+either allocated/freed or mmapped/munmapped.
+
+With USE_RT_MALLOC "rt_named_malloc" uses "rt_malloc" in such a way to 
+impose the satisfaction of PAGE_SIZE boundaries, for "adr" and "size", in
+view of a possible subsequent mapping in user space. Such am alignement comes
+by defaults with "USE_RTAI_SHM". USE_RT_MALLOC is the usual "rt_malloc" with
+naming and registry.
+
+As already said USE_RT_MALLOC requires configuring "vmalloc" for RTAI memory
+manager. If it is not any USE_RT_MALLOC request is forced to USE_RTAI_SHM
+internally.
+
+User space support comes with either standard Linux calls or LXRT support, the 
+former if SHM_USE_LXRT is defined, the latter if it is not. It is again 
+remarked that no real time performances in user space are to be expected in 
+any case.
+
+This rewrite of rtai_shm provides full compatibility with previous APIs, i.e.
+rtai_kmalloc/rtai_kfree and rtai_malloc/rtai_free, through appropriate defines
+in rtai_shm.h. New applications should use rt_named_malloc/free.
+
+Informations about memory allocated with "rt_named_malloc" are displayed by
+the "registry" proc file system.
+
+Those used to "SYS V" shared memory can see "rt_named_malloc" as a combination
+of "shmid/shmat", with "name" used in place of "shmid". 
+On the other hand "rt_named_free" is functionally equivalent to "shmdt", 
+albeit with a different calling sintax, related to the different registry
+informations being stored.
+
+Paolo Mantegazza (mantegazza@aero.polimi.it)
