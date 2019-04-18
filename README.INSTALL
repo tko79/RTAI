@@ -1,34 +1,18 @@
 Installing RTAI-3.x
 ===================
 
-0. Interrupt dispatching mode
-=============================
+0. RTAI 3.3
+================================
 
-It is important to note that RTAI comes with ADEOS, or "piped",
-dispatching by default and that the "immediate" variant builds
-upon a given version of an official ADEOS patch but departs from
-there by adding 3.x-specific support.
-
-In "piped" mode, interrupts are dispatched by ADEOS while in
-"immediate" mode RTAI dispatches real time interrupts by itself
-and defers other interrupts to ADEOS. The "immediate" mode will
-likely be worth having only on low end CPUs, e.g.: 486, small ARM;
-on which it has proven useful already.
-
-Once such a choice has been made go to the base/scripts directory
-and type:
-- "./mode-control immed" for immediate dispatching;
-- "./mode-control piped" for piped dispatching;
-- "./mode-control check" to check the current mode;
-then go on with the configuration/installation.
-
-This procedure must be done in full conscience, so it is likely it
-will never become part of the configuration process described below.
-It is important to note that RTAI comes with "piped" dispatching by
-default and that the "immediate" mode requires the mentioned minimal
-change to ADEOS which, nonetheless, imposes using only ADEOS
-patches accompanying RTAI (and not from the ADEOS CVS or any other
-source).
+RTAI uses only the leanest and fastest RTAI+Linux combination now, i.e. it 
+dispatches real time interrupts immediately. Moreover within such a scheme 
+i386 has the possibility of completely avoiding the dispatching of critical 
+internal timers and interprocessor scheduling interrupts by vectoring them 
+directly to their handlers. Such an option strongly enhances performances
+on low end machines and comes by default. You can disable it while configuring 
+RTAI though. See the related configuration helper.
+What above requires you to patch Linux just with patches found wihin this 
+distribution. Notice also that this release is for use with i386s only.
 
 1. How to build
 ===============
@@ -36,7 +20,7 @@ source).
 1.1 Standard procedure
 ----------------------
 
-The new RTAI build system is a merge of Linux's Kconfig with
+The RTAI build system is a merge of Linux's Kconfig with
 autoconf/automake/libtool. Therefore, you can either build RTAI:
 
 1.1.1 Interactive configuration
@@ -283,12 +267,12 @@ OPTIONS:
   -s<y/n>, --scope<y/n>
       toggle parport bit to monitor scheduling on a scope, default y(es)
 
-2. Bootstrapping with magma in 7 steps
+2. Bootstrapping with vulcano in 7 steps
 ========================================
 
 >1. patch and build a vanilla Linux kernel tree with the RTAI support as
     usual. Patches for x86 are available from
-    magma/base/arch/i386/patches/. Apply only one of them
+    vulcano/base/arch/i386/patches/. Apply only one of them
     that matches the Linux kernel version ("hal" selects Adeos,
     "legacy" selects the old RTHAL), like this:
     $ cd $linux-src-dir
@@ -296,7 +280,7 @@ OPTIONS:
 
 >2. $ mkdir $builddir && cd $builddir
 
->3. $ make -f ../magma/makefile srctree=../magma
+>3. $ make -f ../vulcano/makefile srctree=../vulcano
 
 >4. a GUI should pop up, allowing you to configure RTAI:
     o default settings should be ok for most platforms

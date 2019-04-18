@@ -123,7 +123,11 @@ MODULE_LICENSE("GPL");
 DEFINE_LINUX_CR0
 
 static struct rt_tasklet_struct timers_list =
-{ &timers_list, &timers_list, RT_SCHED_LOWEST_PRIORITY, 0, RT_TIME_END, 0LL, 0, 0, 0 };
+{ &timers_list, &timers_list, RT_SCHED_LOWEST_PRIORITY, 0, RT_TIME_END, 0LL, 0, 0, 0, 
+#ifdef  CONFIG_RTAI_LONG_TIMED_LIST
+/**/0, NULL, NULL, { NULL } 
+#endif
+};
 
 static struct rt_tasklet_struct tasklets_list =
 { &tasklets_list, &tasklets_list, };
@@ -151,6 +155,61 @@ static struct rt_fun_entry rt_tasklet_fun[] = {
 	{ 0, rt_set_tasklet_priority },  	//  14
 	{ 0, rt_register_task },	  	//  15
 };
+
+#ifdef CONFIG_RTAI_LONG_TIMED_LIST
+
+/* BINARY TREE */
+static inline void enq_timer(struct rt_tasklet_struct *timed_timer)
+{
+	struct rt_tasklet_struct *timerh, *tmrnxt, *timer;
+	rb_node_t **rbtn, *rbtpn = NULL;
+	timer = timerh = &timers_list;
+	rbtn = &timerh->rbr.rb_node;
+
+	while (*rbtn) {
+		rbtpn = *rbtn;
+		tmrnxt = rb_entry(rbtpn, struct rt_tasklet_struct, rbn);
+		if (timer->firing_time > tmrnxt->firing_time) {
+			rbtn = &(rbtpn)->rb_right;
+		} else {
+			rbtn = &(rbtpn)->rb_left;
+			timer = tmrnxt;
+		}
+	}
+	rb_link_node(&timed_timer->rbn, rbtpn, rbtn);
+	rb_insert_color(&timed_timer->rbn, &timerh->rbr);
+	timer->prev = (timed_timer->prev = timer->prev)->next = timed_timer;
+	timed_timer->next = timer;
+}
+
+static inline void rem_timer(struct rt_tasklet_struct *timer)
+{
+	(timer->next)->prev = timer->prev;
+	(timer->prev)->next = timer->next;
+	timer->next = timer->prev = timer;
+	rb_erase(&timer->rbn, &timers_list.rbr);
+}
+
+#else /* !CONFIG_RTAI_LONG_TIMED_LIST */
+
+/* LINEAR */
+static inline void enq_timer(struct rt_tasklet_struct *timed_timer)
+{
+	struct rt_tasklet_struct *timer;
+	timer = &timers_list;
+        while (timed_timer->firing_time >= (timer = timer->next)->firing_time);
+	timer->prev = (timed_timer->prev = timer->prev)->next = timed_timer;
+	timed_timer->next = timer;
+}
+
+static inline void rem_timer(struct rt_tasklet_struct *timer)
+{
+	(timer->next)->prev = timer->prev;
+	(timer->prev)->next = timer->next;
+	timer->next = timer->prev = timer;
+}
+
+#endif /* CONFIG_RTAI_LONG_TIMED_LIST */
 
 /**
  * Insert a tasklet in the list of tasklets to be processed.
@@ -181,8 +240,8 @@ static struct rt_fun_entry rt_tasklet_fun[] = {
  * @return a negative number to indicate that an invalid handler address has
  * been passed.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 int rt_insert_tasklet(struct rt_tasklet_struct *tasklet, int priority, void (*handler)(unsigned long), unsigned long data, unsigned long id, int pid)
 {
 	unsigned long flags;
@@ -200,7 +259,7 @@ int rt_insert_tasklet(struct rt_tasklet_struct *tasklet, int priority, void (*ha
 		tasklet->task = 0;
 	} else {
 		(tasklet->task)->priority = priority;
-		copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
+		rt_copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
 	}
 // tasklet insertion tasklets_list
 	flags = rt_spin_lock_irqsave(&tasklets_lock);
@@ -220,8 +279,8 @@ int rt_insert_tasklet(struct rt_tasklet_struct *tasklet, int priority, void (*ha
  * @param tasklet is the pointer to the tasklet structure to be used to manage
  * the tasklet at hand.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 void rt_remove_tasklet(struct rt_tasklet_struct *tasklet)
 {
 	if (tasklet->next != tasklet && tasklet->prev != tasklet) {
@@ -246,8 +305,8 @@ void rt_remove_tasklet(struct rt_tasklet_struct *tasklet)
  * @retval 0 to indicate that @a id is not a valid identifier so that the
  * related tasklet was not found.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 struct rt_tasklet_struct *rt_find_tasklet_by_id(unsigned long id)
 {
 	struct rt_tasklet_struct *tasklet;
@@ -279,8 +338,8 @@ struct rt_tasklet_struct *rt_find_tasklet_by_id(unsigned long id)
  * calling rt_find_tasklet_by_id() to get the tasklet address to be used
  * in rt_tasklet_exec().
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 int rt_exec_tasklet(struct rt_tasklet_struct *tasklet)
 {
 	if (tasklet && tasklet->next != tasklet && tasklet->prev != tasklet) {
@@ -309,7 +368,7 @@ int rt_set_tasklet_handler(struct rt_tasklet_struct *tasklet, void (*handler)(un
 	}
 	tasklet->handler = handler;
 	if (tasklet->task) {
-		copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
+		rt_copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
 	}
 	return 0;
 }
@@ -318,7 +377,7 @@ void rt_set_tasklet_data(struct rt_tasklet_struct *tasklet, unsigned long data)
 {
 	tasklet->data = data;
 	if (tasklet->task) {
-		copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
+		rt_copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
 	}
 }
 
@@ -343,6 +402,8 @@ static inline void asgn_min_prio(void)
 		if (timer->priority < priority) {
 			priority = timer->priority;
 		}
+		rt_spin_unlock_irqrestore(flags, &timers_lock);
+		flags = rt_spin_lock_irqsave(&timers_lock);
 	}
 	rt_spin_unlock_irqrestore(flags, &timers_lock);
 	flags = rt_global_save_flags_and_cli();
@@ -360,18 +421,11 @@ static inline void set_timer_firing_time(struct rt_tasklet_struct *timer, RTIME 
 {
 	if (timer->next != timer && timer->prev != timer) {
 		unsigned long flags;
-		struct rt_tasklet_struct *tmr;
 
-		tmr = &timers_list;
 		timer->firing_time = firing_time;
 		flags = rt_spin_lock_irqsave(&timers_lock);
-		(timer->next)->prev = timer->prev;
-		(timer->prev)->next = timer->next;
-		while (firing_time >= (tmr = tmr->next)->firing_time);
-		timer->next     = tmr;
-		timer->prev     = tmr->prev;
-		(tmr->prev)->next = timer;
-		tmr->prev         = timer;
+		rem_timer(timer);
+		enq_timer(timer);
 		rt_spin_unlock_irqrestore(flags, &timers_lock);
 	}
 }
@@ -411,12 +465,11 @@ static inline void set_timer_firing_time(struct rt_tasklet_struct *timer, RTIME 
  * @retval 0 on success
  * @retval EINVAL if @a handler is an invalid handler address
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 int rt_insert_timer(struct rt_tasklet_struct *timer, int priority, RTIME firing_time, RTIME period, void (*handler)(unsigned long), unsigned long data, int pid)
 {
 	unsigned long flags;
-	struct rt_tasklet_struct *tmr;
 
 // timer initialization
 	if (!handler) {
@@ -432,16 +485,11 @@ int rt_insert_timer(struct rt_tasklet_struct *timer, int priority, RTIME firing_
 		timer->task = 0;
 	} else {
 		(timer->task)->priority = priority;
-		copy_to_user(timer->usptasklet, timer, sizeof(struct rt_tasklet_struct));
+		rt_copy_to_user(timer->usptasklet, timer, sizeof(struct rt_tasklet_struct));
 	}
 // timer insertion in timers_list
-	tmr = &timers_list;
 	flags = rt_spin_lock_irqsave(&timers_lock);
-	while (firing_time >= (tmr = tmr->next)->firing_time);
-	timer->next     = tmr;
-	timer->prev     = tmr->prev;
-	(tmr->prev)->next = timer;
-	tmr->prev         = timer;
+	enq_timer(timer);
 	rt_spin_unlock_irqrestore(flags, &timers_lock);
 // timers_manager priority inheritance
 	if (timer->priority < timers_manager.priority) {
@@ -467,16 +515,14 @@ int rt_insert_timer(struct rt_tasklet_struct *timer, int priority, RTIME firing_
  * @param timer is the pointer to the timer structure to be used to manage the
  * timer at hand.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 void rt_remove_timer(struct rt_tasklet_struct *timer)
 {
 	if (timer->next != timer && timer->prev != timer) {
 		unsigned long flags;
 		flags = rt_spin_lock_irqsave(&timers_lock);
-		(timer->next)->prev = timer->prev;
-		(timer->prev)->next = timer->next;
-		timer->next = timer->prev = timer;
+		rem_timer(timer);
 		rt_spin_unlock_irqrestore(flags, &timers_lock);
 		asgn_min_prio();
 	}
@@ -496,8 +542,8 @@ void rt_remove_timer(struct rt_tasklet_struct *timer)
  *
  * This function can be used within the timer handler.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 void rt_set_timer_priority(struct rt_tasklet_struct *timer, int priority)
 {
 	timer->priority = priority;
@@ -525,8 +571,8 @@ void rt_set_timer_priority(struct rt_tasklet_struct *timer, int priority)
  *
  * @retval 0 on success.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 void rt_set_timer_firing_time(struct rt_tasklet_struct *timer, RTIME firing_time)
 {
 	unsigned long flags;
@@ -564,8 +610,8 @@ void rt_set_timer_firing_time(struct rt_tasklet_struct *timer, RTIME firing_time
  *
  * @retval 0 on success.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 void rt_set_timer_period(struct rt_tasklet_struct *timer, RTIME period)
 {
 	unsigned long flags;
@@ -576,7 +622,7 @@ void rt_set_timer_period(struct rt_tasklet_struct *timer, RTIME period)
 
 // the timers_manager task function
 
-static void rt_timers_manager(int dummy)
+static void rt_timers_manager(long dummy)
 {
 	RTIME now;
 	struct rt_tasklet_struct *tmr, *timer;
@@ -604,9 +650,7 @@ static void rt_timers_manager(int dummy)
 			}
 			if (!timer->period) {
 				flags = rt_spin_lock_irqsave(&timers_lock);
-				(timer->next)->prev = timer->prev;
-				(timer->prev)->next = timer->next;
-				timer->next = timer->prev = timer;
+				rem_timer(timer);
 				rt_spin_unlock_irqrestore(flags, &timers_lock);
 			} else {
 				set_timer_firing_time(timer, timer->firing_time + timer->period);
@@ -614,7 +658,7 @@ static void rt_timers_manager(int dummy)
 			if (!timer->task) {
 				if (!used_fpu && timer->uses_fpu) {
 					used_fpu = 1;
-					save_cr0_and_clts(linux_cr0);
+					save_fpcr_and_enable_fpu(linux_cr0);
 					save_fpenv(timers_manager.fpu_reg);
 				}
 				timer->handler(timer->data);
@@ -624,7 +668,7 @@ static void rt_timers_manager(int dummy)
 		}
 		if (used_fpu) {
 			restore_fpenv(timers_manager.fpu_reg);
-			restore_cr0(linux_cr0);
+			restore_fpcr(linux_cr0);
 		}
 // set next timers_manager priority according to the highest priority timer
 		asgn_min_prio();
@@ -657,7 +701,7 @@ void rt_register_task(struct rt_tasklet_struct *tasklet, struct rt_tasklet_struc
 {
 	tasklet->task = task;
 	tasklet->usptasklet = usptasklet;
-	copy_to_user(usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
+	rt_copy_to_user(usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
 }
 
 void rt_wait_tasklet_is_hard(struct rt_tasklet_struct *tasklet, int thread)
@@ -682,15 +726,15 @@ void rt_wait_tasklet_is_hard(struct rt_tasklet_struct *tasklet, int thread)
  * it is just an empty macro, as the user can, and must  allocate the related
  * structure directly, either statically or dynamically.
  *
- * @note To be used only with RTAI24.x.xx.
  */
+
 int rt_delete_tasklet(struct rt_tasklet_struct *tasklet)
 {
 	int thread;
 
 	rt_remove_tasklet(tasklet);
 	tasklet->handler = 0;
-	copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
+	rt_copy_to_user(tasklet->usptasklet, tasklet, sizeof(struct rt_tasklet_struct));
 	rt_task_resume(tasklet->task);
 	thread = tasklet->thread;	
 	sched_free(tasklet);

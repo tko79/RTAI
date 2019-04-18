@@ -63,6 +63,8 @@ static int spbufull;	// threshold for receive buffer to have the
 
 #define CHECK_SPINDX(indx)  do { if (indx >= spcnt) return -ENODEV; } while (0)
 
+static void mbx_init(struct rt_spmbx *mbx);
+
 /*
  * rt_spclear_rx
  *
@@ -79,7 +81,7 @@ static int spbufull;	// threshold for receive buffer to have the
  */ 
 int rt_spclear_rx(unsigned int tty)
 {
-	static void mbx_init(struct rt_spmbx *mbx);
+//	static void mbx_init(struct rt_spmbx *mbx);
 	unsigned long flags;
  	struct rt_spct_t *p;
 
@@ -117,7 +119,7 @@ int rt_spclear_rx(unsigned int tty)
  */ 
 int rt_spclear_tx(unsigned int tty)
 {
-	static void mbx_init(struct rt_spmbx *mbx);
+//	static void mbx_init(struct rt_spmbx *mbx);
 	unsigned long flags;
 	struct rt_spct_t *p;
 
@@ -1013,16 +1015,16 @@ int rt_spset_thrs(unsigned int tty, int rxthrs, int txthrs)
  * 		-EINVAL		if wrong parameter value
  *
  */ 
-int rt_spset_callback_fun(unsigned int tty, void (*callback_fun)(int, int), 
+long rt_spset_callback_fun(unsigned int tty, void (*callback_fun)(int, int), 
                           int rxthrs, int txthrs)
 {
-	int prev_callback_fun;
+	long prev_callback_fun;
 
 	CHECK_SPINDX(tty);
 	if (rt_spset_thrs(tty, rxthrs, txthrs)) {
 		return -EINVAL;
 	}
-	prev_callback_fun = (int)spct[tty].callback_fun;
+	prev_callback_fun = (long)spct[tty].callback_fun;
 	spct[tty].callback_fun = callback_fun;
 	return prev_callback_fun;
 }
@@ -1047,12 +1049,12 @@ int rt_spset_callback_fun(unsigned int tty, void (*callback_fun)(int, int),
  * 		-EINVAL		if wrong parameter value
  *
  */ 
-int rt_spset_err_callback_fun(unsigned int tty, void (*err_callback_fun)(int))
+long rt_spset_err_callback_fun(unsigned int tty, void (*err_callback_fun)(int))
 {
-	int prev_err_callback_fun;
+	long prev_err_callback_fun;
 
 	CHECK_SPINDX(tty);
-	prev_err_callback_fun = (int)spct[tty].err_callback_fun;
+	prev_err_callback_fun = (long)spct[tty].err_callback_fun;
 	spct[tty].err_callback_fun = err_callback_fun;
 	return prev_err_callback_fun;
 }

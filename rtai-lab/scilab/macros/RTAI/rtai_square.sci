@@ -42,7 +42,7 @@ case 'set' then
 
     funam='i_square_' + string(%kk);
 
-    [ok,tt]=getCode(funam)
+    [ok,tt]=getCode_square(funam)
     if ~ok then break,end
     [model,graphics,ok]=check_io(model,graphics,i,o,ci,co)
     if ok then
@@ -92,7 +92,7 @@ case 'define' then
 end
 endfunction
 
-function [ok,tt]=getCode(funam)
+function [ok,tt]=getCode_square(funam)
   textmp=[
 	  '#ifndef MODEL'
 	  '#include <math.h>';
@@ -114,8 +114,8 @@ function [ok,tt]=getCode(funam)
   textmp($+1)='   else {'
   textmp($+1)='     v=(t-block->rpar[4])/block->rpar[1];'
   textmp($+1)='     v=(v - (int) v) * block->rpar[1];'
-  textmp($+1)='     if(v < block->rpar[2]) block->outptr[0][0]=block->rpar[0];'
-  textmp($+1)='     else                   block->outptr[0][0]=0.0;'
+  textmp($+1)='     if(v < block->rpar[2]) block->outptr[0][0]=block->rpar[3]+block->rpar[0];'
+  textmp($+1)='     else                   block->outptr[0][0]=block->rpar[3];'
   textmp($+1)='   }'
   textmp($+1)='   break;';
   textmp($+1)='  case 5: '

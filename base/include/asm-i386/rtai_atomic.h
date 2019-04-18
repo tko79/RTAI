@@ -20,16 +20,36 @@
 #define _RTAI_ASM_I386_ATOMIC_H
 
 #include <linux/bitops.h>
-#include <asm/atomic.h>
 
 #ifdef __KERNEL__
 
+#include <asm/atomic.h>
+#undef atomic_cmpxchg /* they might have decided to use one of our names */
+
 #include <asm/system.h>
 
-#define atomic_xchg(ptr,v)      xchg(ptr,v)
-#define atomic_cmpxchg(ptr,o,n) cmpxchg(ptr,o,n)
+typedef struct { volatile unsigned long val; } rtai_atomic_t;
+
+/* #define atomic_xchg(ptr, v)  xchg(ptr, v) */ /*previous define */
+#define atomic_xchg(ptr, v) \
+	((__typeof__(*(ptr)))xchg(&(((rtai_atomic_t *)ptr)->val),v))
+
+/* #define atomic_cmpxchg(ptr, o, n)  cmpxchg(ptr, o, n) */ /*previous define */
+#define atomic_cmpxchg(ptr, o, n) \
+	((__typeof__(*(ptr)))cmpxchg(&(((rtai_atomic_t *)ptr)->val), o, n))
 
 #else /* !__KERNEL__ */
+
+#ifndef likely
+#if __GNUC__ == 2 && __GNUC_MINOR__ < 96
+#define __builtin_expect(x, expected_value) (x)
+#endif
+#define likely(x)	__builtin_expect(!!(x), 1)
+#define unlikely(x)	__builtin_expect(!!(x), 0)
+#endif /* !likely */
+
+#include <asm/atomic.h>
+#undef atomic_cmpxchg /* they might have decided to use one of our names */
 
 struct __rtai_xchg_dummy { unsigned long a[100]; };
 #define __rtai_xg(x) ((struct __rtai_xchg_dummy *)(x))

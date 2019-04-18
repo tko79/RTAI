@@ -19,22 +19,34 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <sys/poll.h>
+
 #include <rtai_mbx.h>
 #include <rtai_msg.h>
 
 static RT_TASK *task;
 
+static volatile int end;
+void endme(int sig) { end = 1; }
+
 int main(void)
 {
 	unsigned int msg;
 	MBX *mbx;
-	struct sample { long long min; long long max; int index, ovrn, cnt; } samp;
- 	long long max = 0;
+	struct sample { long long min; long long max; int index, ovrn; } samp;
+	time_t timestamp;
+	struct tm *tm_timestamp;
+	long long max = -1000000000, min = 1000000000;
  	int n = 0;
 	struct pollfd pfd = { fd: 0, events: POLLIN|POLLERR|POLLHUP, revents: 0 };
 
- 	setlinebuf(stdout);
+	signal(SIGHUP,  endme);
+	signal(SIGINT,  endme);
+	signal(SIGKILL, endme);
+	signal(SIGTERM, endme);
+	signal(SIGALRM, endme);
+	setlinebuf(stdout);
 
  	if (!(task = rt_task_init(nam2num("LATCHK"), 20, 0, 0))) {
 		printf("CANNOT INIT MASTER TASK\n");
@@ -46,18 +58,28 @@ int main(void)
 		exit(1);
 	}
 
-  	printf("RTAI Testsuite - LXRT latency (all data in nanoseconds)\n");
-	while (1) {
-  		if ((n++ % 21)==0)
-  			printf("RTH|%11s|%11s|%11s|%11s|%11s|%11s\n", "lat min","lat avg","lat max","ovl max", "overruns", "freq.cntr");
+  	printf("RTAI Testsuite - USER latency (all data in nanoseconds)\n");
+	while (!end) {
+  		if ((n++ % 21) == 0) {
+#if 1
+			time(&timestamp); 
+			tm_timestamp=localtime(&timestamp);
+			printf("%04d/%02d/%0d %02d:%02d:%02d\n", tm_timestamp->tm_year+1900, tm_timestamp->tm_mon+1, tm_timestamp->tm_mday, tm_timestamp->tm_hour, tm_timestamp->tm_min, tm_timestamp->tm_sec);
+#endif
+  			printf("RTH|%11s|%11s|%11s|%11s|%11s|%11s\n", "lat min", "ovl min", "lat avg","lat max","ovl max", "overruns");
+		}
 		rt_mbx_receive(mbx, &samp, sizeof(samp));
+		if (min > samp.min) min = samp.min;
  		if (max < samp.max) max = samp.max;
-  		printf("RTD|%11lld|%11d|%11lld|%11lld|%11d|%11d\n", samp.min, samp.index, samp.max, max, samp.ovrn, samp.cnt);
-		if (poll(&pfd, 1, 20) > 0 && (pfd.revents & (POLLIN|POLLERR|POLLHUP)) != 0)
+  		printf("RTD|%11lld|%11lld|%11d|%11lld|%11lld|%11d\n", samp.min, min, samp.index, samp.max, max, samp.ovrn);
+		if ((poll(&pfd, 1, 20) > 0 && (pfd.revents & (POLLIN | POLLERR | POLLHUP))) || end) {
 		    break;
+		}
 	}
 
-	rt_rpc(rt_get_adr(nam2num("LATCAL")), msg, &msg);
+	if (rt_get_adr(nam2num("LATCAL"))) {
+		rt_rpc(rt_get_adr(nam2num("LATCAL")), msg, &msg);
+	}
 	rt_task_delete(task);
 	exit(0);
 }

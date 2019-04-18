@@ -22,11 +22,12 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 #include <unistd.h>
 #include <fcntl.h>
 #include <sched.h>
+#include <signal.h>
 #include <sys/mman.h>
+#include <asm/io.h>
+
 #include <rtai_mbx.h>
 #include <rtai_msg.h>
-
-#define OVERALL
 
 #define AVRGTIME    1
 #if defined(CONFIG_UCLINUX) || defined(CONFIG_ARM)
@@ -36,7 +37,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 #endif
 #define TIMER_MODE  0
 
-#define SKIP ((1000000000*AVRGTIME)/PERIOD)
+#define SKIP ((1000000000*AVRGTIME)/PERIOD)/1
 
 #define MAXDIM 10
 
@@ -52,6 +53,9 @@ static double dot(double *a, double *b, int n)
 	return s;
 }
 
+static volatile int end;
+void endme(int sig) { end = 1; }
+
 int main(int argc, char *argv[])
 {
 	int diff;
@@ -65,8 +69,13 @@ int main(int argc, char *argv[])
 	RTIME expected, exectime[3];
 	MBX *mbx;
 	RT_TASK *task;
-	struct sample { long long min; long long max; int index, ovrn, cnt; } samp;
+	struct sample { long long min; long long max; int index, ovrn; } samp;
 	double s;
+
+	signal(SIGHUP,  endme);
+	signal(SIGKILL, endme);
+	signal(SIGTERM, endme);
+	signal(SIGALRM, endme);
 
  	if (!(mbx = rt_mbx_init(nam2num("LATMBX"), 20*sizeof(samp)))) {
 		printf("CANNOT CREATE MAILBOX\n");
@@ -80,12 +89,7 @@ int main(int argc, char *argv[])
 
 	printf("\n## RTAI latency calibration tool ##\n");
 	printf("# period = %i (ns) \n", PERIOD);
-	printf("# average time = %i (s)\n", AVRGTIME);
-#ifdef OVERALL
-	printf("# check overall worst case\n");
-#else
-	printf("# check each average worst case\n");
-#endif
+	printf("# average time = %i (s)\n", (int)AVRGTIME);
 	printf("# use the FPU\n");
 	printf("#%sstart the timer\n", argc == 1 ? " " : " do not ");
 	printf("# timer_mode is %s\n", TIMER_MODE ? "periodic" : "oneshot");
@@ -97,45 +101,46 @@ int main(int argc, char *argv[])
 		} else {
 			rt_set_oneshot_mode();
 		}
-		start_rt_timer(nano2count(PERIOD));
+		period = start_rt_timer(nano2count(PERIOD));
+	} else {
+		period = nano2count(PERIOD);
 	}
 
         for(i = 0; i < MAXDIM; i++) {
                 a[i] = b[i] = 3.141592;
         }
-	dot(a, b, MAXDIM);
+	s = dot(a, b, MAXDIM);
 
 	mlockall(MCL_CURRENT | MCL_FUTURE);
 
 	rt_make_hard_real_time();
-	period = nano2count(PERIOD);
-	rt_task_make_periodic(task, expected = rt_get_time() + 5*period, period);
+	rt_task_make_periodic(task, expected = rt_get_time() + 10*period, period);
 
-#ifdef OVERALL
-	min_diff = 1000000000;
-	max_diff = -1000000000;
-#endif
 	svt = rt_get_cpu_time_ns();
-	samp.ovrn = 0;
-	while (1) {
-#ifndef OVERALL
+	samp.ovrn = i = 0;
+	while (!end) {
 		min_diff = 1000000000;
 		max_diff = -1000000000;
-#endif
 		average = 0;
 
-		samp.cnt = 0;
-		for (skip = 0; skip < SKIP; skip++) {
+		for (skip = 0; skip < SKIP && !end; skip++) {
 			expected += period;
-			samp.ovrn += rt_task_wait_period();
-			samp.cnt++;
 
-			if (TIMER_MODE) {
-				diff = (int) ((t = rt_get_cpu_time_ns()) - svt - PERIOD);
-				svt = t;
+			if (!rt_task_wait_period()) {
+				if (TIMER_MODE) {
+					diff = (int) ((t = rt_get_cpu_time_ns()) - svt - PERIOD);
+					svt = t;
+				} else {
+					diff = (int) count2nano(rt_get_time() - expected);
+				}
 			} else {
-				diff = (int) count2nano(rt_get_time() - expected);
+				samp.ovrn++;
+				diff = 0;
+				if (TIMER_MODE) {
+					svt = rt_get_cpu_time_ns();
+				}
 			}
+			outb(i = 1 - i, 0x378);
 
 			if (diff < min_diff) {
 				min_diff = diff;
@@ -150,7 +155,7 @@ int main(int argc, char *argv[])
 		samp.max = max_diff;
 		samp.index = average/SKIP;
 		rt_mbx_send_if(mbx, &samp, sizeof(samp));
-		if (rt_receive_if(rt_get_adr(nam2num("LATCHK")), (unsigned int *)&average)) {
+		if (rt_receive_if(rt_get_adr(nam2num("LATCHK")), (unsigned int *)&average) || end) {
 			rt_return(rt_get_adr(nam2num("LATCHK")), (unsigned int)average);
 			break;
 		}

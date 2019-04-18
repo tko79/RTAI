@@ -20,7 +20,7 @@ case 'set' then
         getvalue('Set RTAI STEP block parameters',..
         ['Amplitude';
 	'Delay'],..
-         list('vec',1,'vec',1,'vec',1),label(1))
+         list('vec',1,'vec',1),label(1))
 
     if ~ok then break,end
     label(1)=lab
@@ -39,7 +39,7 @@ case 'set' then
 
     funam='i_step_' + string(%kk);
 
-    [ok,tt]=getCode(funam)
+    [ok,tt]=getCode_step(funam)
     if ~ok then break,end
     [model,graphics,ok]=check_io(model,graphics,i,o,ci,co)
     if ok then
@@ -89,7 +89,7 @@ case 'define' then
 end
 endfunction
 
-function [ok,tt]=getCode(funam)
+function [ok,tt]=getCode_step(funam)
   textmp=[
 	  '#ifndef MODEL'
 	  '#include <math.h>';
@@ -100,7 +100,6 @@ function [ok,tt]=getCode(funam)
 	  'void '+funam+'(scicos_block *block,int flag)';
 	 ];
   textmp($+1)='{'
-  textmp($+1)='  double v;'
   textmp($+1)='  double t = get_scicos_time();'
   textmp($+1)='  switch(flag) {'
   textmp($+1)='  case 4:'

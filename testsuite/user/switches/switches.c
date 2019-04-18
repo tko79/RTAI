@@ -33,7 +33,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 #include <rtai_sem.h>
 
 #define LOOPS  1000
-#define NR_RT_TASKS 30
+#define NR_RT_TASKS 10
 #define taskname(x) (1000 + (x))
 
 static pthread_t thread[NR_RT_TASKS];
@@ -109,6 +109,9 @@ int main(void)
 		exit(1);
 	}
 
+	sem = rt_sem_init(nam2num("SEMAPH"), 1); 
+	change =  0;
+	
 	for (i = 0; i < NR_RT_TASKS; i++) {
 		indx[i] = i;
 		if (pthread_create(thread + i, &attr, thread_fun, indx + i)) {
@@ -118,9 +121,6 @@ int main(void)
  	} 
 	pthread_attr_destroy(&attr);
 
-	sem = rt_sem_init(nam2num("SEMAPH"), 1); 
-	change =  0;
-	
 	do {
 		msleep(50);
 		s = 0;	

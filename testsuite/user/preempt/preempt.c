@@ -19,6 +19,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 #include <sys/mman.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <signal.h>
+
 #include <rtai_fifos.h>
 #include <rtai_sem.h>
 
@@ -42,10 +44,13 @@ static RT_TASK *Latency_Task;
 static RT_TASK *Slow_Task;
 static RT_TASK *Fast_Task;
 
-static int period, end, slowjit, fastjit;
+static int period, slowjit, fastjit;
 static RTIME expected;
 
 static SEM *barrier;
+
+static volatile int end;
+static void endme (int dummy) { end = 1; }
 
 static void *slow_fun(void *arg)
 {
@@ -124,7 +129,7 @@ static void *latency_fun(void *arg)
 	rt_sem_wait_barrier(barrier);
         while (!end) {  
 		average = 0;
-		for (skip = 0; skip < NAVRG; skip++) {
+		for (skip = 0; skip < NAVRG && !end; skip++) {
 			expected += period;
 			rt_task_wait_period();
 			diff = (int)count2nano(rt_get_time() - expected);
@@ -157,6 +162,12 @@ int main(void)
 	RT_TASK *Main_Task;
 	int fifo;
 
+	signal(SIGHUP,  endme);
+	signal(SIGINT,  endme);
+	signal(SIGKILL, endme);
+	signal(SIGTERM, endme);
+	signal(SIGALRM, endme);
+
         if (!(Main_Task = rt_task_init_schmod(nam2num("MNTSK"), 0, 0, 0, SCHED_FIFO, 1))) {
                 printf("CANNOT INIT MAIN TASK\n");
                 exit(1);
@@ -167,7 +178,6 @@ int main(void)
                 printf("ERROR OPENING FIFO %s\n",nm);
                 exit(1);
         }
-	rtf_sem_init(fifo, 0);
 	barrier = rt_sem_init(nam2num("PREMSM"), 4);
 	pthread_create(&latency_thread, NULL, latency_fun, NULL);
 	pthread_create(&fast_thread, NULL, fast_fun, NULL);
@@ -179,14 +189,13 @@ int main(void)
 	rt_task_make_periodic(Latency_Task, expected, period);
 	rt_task_make_periodic(Fast_Task, expected, FASTMUL*period);
 	rt_task_make_periodic(Slow_Task, expected, SLOWMUL*period);
-	rtf_sem_wait(fifo);
+	pause();
 	end = 1;
 	rt_sem_wait_barrier(barrier);
-	pthread_join(latency_thread, NULL);
-	pthread_join(fast_thread, NULL);
-	pthread_join(slow_thread, NULL);
+	rt_thread_join(latency_thread);
+	rt_thread_join(fast_thread);
+	rt_thread_join(slow_thread);
 	stop_rt_timer();	
-	rtf_sem_destroy(fifo);
 	rtf_destroy(FIFO);
 	rt_sem_delete(barrier);
 	rt_task_delete(Main_Task);
