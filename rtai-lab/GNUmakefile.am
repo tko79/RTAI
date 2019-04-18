@@ -37,8 +37,8 @@ efltk_ldflags = $(shell @EFLTK_DIR@/bin/efltk-config --ldflags --use-gl --multit
 
 xrtailab_CPPFLAGS = \
 	@RTAI_USER_CFLAGS@ \
-	-I$(top_srcdir)/rtai-core/include \
-	-I../rtai-core/include \
+	-I$(top_srcdir)/base/include \
+	-I../base/include \
 	$(efltk_cflags) \
 	@GL_CFLAGS@
 

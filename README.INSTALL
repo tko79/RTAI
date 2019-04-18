@@ -1,6 +1,35 @@
 Installing RTAI-3.x
 ===================
 
+0. Interrupt dispatching mode
+=============================
+
+It is important to note that RTAI comes with ADEOS, or "piped",
+dispatching by default and that the "immediate" variant builds
+upon a given version of an official ADEOS patch but departs from
+there by adding 3.x-specific support.
+
+In "piped" mode, interrupts are dispatched by ADEOS while in
+"immediate" mode RTAI dispatches real time interrupts by itself
+and defers other interrupts to ADEOS. The "immediate" mode will
+likely be worth having only on low end CPUs, e.g.: 486, small ARM;
+on which it has proven useful already.
+
+Once such a choice has been made go to the base/scripts directory
+and type:
+- "./mode-control immed" for immediate dispatching;
+- "./mode-control piped" for piped dispatching;
+- "./mode-control check" to check the current mode;
+then go on with the configuration/installation.
+
+This procedure must be done in full conscience, so it is likely it
+will never become part of the configuration process described below.
+It is important to note that RTAI comes with "piped" dispatching by
+default and that the "immediate" mode requires the mentioned minimal
+change to ADEOS which, nonetheless, imposes using only ADEOS
+patches accompanying RTAI (and not from the ADEOS CVS or any other
+source).
+
 1. How to build
 ===============
 
@@ -72,14 +101,6 @@ RTAI-specific switches are:
  --enable-comedi-lxrt	Enable comedi/LXRT support
  --enable-serial	Build real-time serial driver
  --enable-testsuite	Build RTAI testsuite
- --enable-xenomai	Build Xenomai sub-system
- --enable-xenomai-debug	Enable Xenomai debug
- --enable-psos-skin	Build Xenomai-based pSOS+ emulator
- --enable-vxworks-skin	Build Xenomai-based VxWorks emulator
- --enable-vrtx-skin	Build Xenomai-based VRTX emulator
- --enable-uitron-skin	Build Xenomai-based uITRON API skin
- --enable-pse51-skin	Build Xenomai-based PSE51 API skin
- --enable-xenomai-vm	Build Xenomai user-space VMs
  --enable-rtailab	Build RTAI-Lab
  --enable-fpu		Enable FPU support
  --enable-math-c99	Enable math C99 support
@@ -97,7 +118,7 @@ RTAI-specific switches are:
  --enable-user-debug	Enable debug information in user-space programs
  --enable-sim		Build RTAI simulator (MVM)
 
-Some configuration targets in rtai-core/ can either produce a module,
+Some configuration targets in base/ can either produce a module,
 or be statically linked to the RTAI schedulers. Either pass "m" for
 the modular build to their respective --enable-xxx switch, or "y" for
 selecting the built-in mode.
@@ -151,7 +172,7 @@ command lines, e.g.
 
 $ make -f $source_tree/makefile ARCH=arm CROSS_COMPILE=arm-linux-
 
-Names of available architectures can be found under rtai-core/arch/*.
+Names of available architectures can be found under base/arch/*.
 
 1.3 Installing the software
 ---------------------------
@@ -223,10 +244,10 @@ If you have to change some template files used by any of the autotools
 (i.e. Makefile.am, configure.in, acinclude.m4), then you will need the
 following pack to rebuild the derived files:
 
-o autoconf 2.57
-o automake 1.7.8
-o aclocal 1.7.8
-o libtool 1.4.3
+o autoconf 2.59
+o automake 1.9.2
+o aclocal 1.9.2
+o libtool 1.5.8
 
 1.7 Using the integrated calibration tool
 -----------------------------------------
@@ -262,20 +283,20 @@ OPTIONS:
   -s<y/n>, --scope<y/n>
       toggle parport bit to monitor scheduling on a scope, default y(es)
 
-2. Bootstrapping with vesuvio in 7 steps
+2. Bootstrapping with magma in 7 steps
 ========================================
 
 >1. patch and build a vanilla Linux kernel tree with the RTAI support as
     usual. Patches for x86 are available from
-    vesuvio/rtai-core/arch/i386/patches/. Apply only one of them
+    magma/base/arch/i386/patches/. Apply only one of them
     that matches the Linux kernel version ("hal" selects Adeos,
     "legacy" selects the old RTHAL), like this:
     $ cd $linux-src-dir
-    $ patch -p1 < rtai-core/arch/$arch/patches/patchfile
+    $ patch -p1 < base/arch/$arch/patches/patchfile
 
 >2. $ mkdir $builddir && cd $builddir
 
->3. $ make -f ../vesuvio/makefile srctree=../vesuvio
+>3. $ make -f ../magma/makefile srctree=../magma
 
 >4. a GUI should pop up, allowing you to configure RTAI:
     o default settings should be ok for most platforms
@@ -316,4 +337,4 @@ space.  Hit ^C to stop it.
 
 --
 <rpm@xenomai.org>
-02/15/2004
+12/5/2004

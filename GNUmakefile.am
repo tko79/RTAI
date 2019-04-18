@@ -1,41 +1,35 @@
-ACLOCAL_AMFLAGS=-I rtai-core/config/autoconf
+ACLOCAL_AMFLAGS=-I base/config/autoconf
 
 OPTDIRS =
 
 if CONFIG_RTAI_TESTSUITE
-OPTDIRS += rtai-testsuite
-endif
-
-if CONFIG_RTAI_COMPAT
-OPTDIRS += rtai-compat
+OPTDIRS += testsuite
 endif
 
 if CONFIG_RTAI_ADDONS
-OPTDIRS += rtai-addons
+OPTDIRS += addons
 endif
 
 if CONFIG_RTAI_LAB
 OPTDIRS += rtai-lab
 endif
 
-SUBDIRS = rtai-core @RTAI_MAYBE_DOCDIR@ $(OPTDIRS) $(subdirs)
+SUBDIRS = base @RTAI_MAYBE_DOCDIR@ $(OPTDIRS)
 
 DIST_SUBDIRS = \
 	@RTAI_MAYBE_DOCDIR@ \
-	$(subdirs) \
-	rtai-core \
-	rtai-testsuite \
-	rtai-compat \
-	rtai-addons \
+	base \
+	testsuite \
+	addons \
 	rtai-lab
 
 EXTRA_DIST = makefile README.INSTALL @RTAI_MAYBE_SIMDIR@
 
 DISTCLEANFILES = .rtai_config .rtai_config.old .cfok .cfchanged
 
-all-recursive install-recursive: rtai-core/GNUmakefile clean-if-reconfigured
+all-recursive install-recursive: base/GNUmakefile clean-if-reconfigured
 
-rtai-core/GNUmakefile: @RTAI_LINUX_DIR@/.config
+base/GNUmakefile: @RTAI_LINUX_DIR@/.config
 	@echo "*****************************************" ; \
 	 echo "*  The Linux configuration has changed  *" ; \
 	 echo "*  forcing 'make reconfig' ...          *" ; \
@@ -61,7 +55,7 @@ clean-local:
 	rm -fr modules .cfchanged
 
 distclean-local:
-	$(MAKE) -C $(srcdir)/rtai-core/config/kconfig \
+	$(MAKE) -C $(srcdir)/base/config/kconfig \
 	-f Makefile.kconfig distclean srctree=$(srcdir)
 	find . -name autom4te.cache | xargs rm -fr
 else
@@ -69,9 +63,9 @@ clean-local:
 	rm -f .cfchanged
 
 distclean-local:
-	test -d $(top_builddir)/rtai-core/config && \
-	$(MAKE) -C $(top_builddir)/rtai-core/config/kconfig \
-	-f @abs_srcdir@/rtai-core/config/kconfig/Makefile.kconfig distclean srctree=@abs_srcdir@
+	test -d $(top_builddir)/base/config && \
+	$(MAKE) -C $(top_builddir)/base/config/kconfig \
+	-f @abs_srcdir@/base/config/kconfig/Makefile.kconfig distclean srctree=@abs_srcdir@
 endif
 
 install-data-local: .rtai_config
@@ -81,10 +75,10 @@ install-data-local: .rtai_config
 install-exec-local: devices
 
 dist-hook:
-	$(MAKE) -C $(distdir)/rtai-core/config/kconfig \
+	$(MAKE) -C $(distdir)/base/config/kconfig \
 	-f Makefile.kconfig distclean srctree=$(distdir)
 	rm -fr `find $(distdir) -name CVS`
-	test -e $(srcdir)/rtai-doc || rm -fr $(distdir)/rtai-doc
+	test -e $(srcdir)/doc || rm -fr $(distdir)/doc
 
 dev devices:
 	@if test x$(DESTDIR) = x; then \

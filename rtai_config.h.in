@@ -18,9 +18,6 @@
 /* Build system alias */
 #undef CONFIG_RTAI_BUILD_STRING
 
-/* Kconfig */
-#undef CONFIG_RTAI_COMPAT
-
 /* Compiler */
 #undef CONFIG_RTAI_COMPILER
 
@@ -198,9 +195,6 @@
 /* Kconfig */
 #undef CONFIG_RTAI_WD
 
-/* Kconfig */
-#undef CONFIG_RTAI_XENOMAI_DEBUG
-
 #ifdef __IN_RTAI__
 
 /* Define to 1 if you have the <dlfcn.h> header file. */
@@ -259,10 +253,6 @@
 
 /* Define to 1 if the X Window System is missing or not being used. */
 #undef X_DISPLAY_MISSING
-
-/* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
-   `char[]'. */
-#undef YYTEXT_POINTER
 
 #endif /* __IN_RTAI__ */
 

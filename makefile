@@ -1,4 +1,4 @@
-KCONFIG_DIR=./rtai-core/config/kconfig
+KCONFIG_DIR=./base/config/kconfig
 CC := gcc
 
 ifneq ($(MAKECMDGOALS),help)
@@ -9,15 +9,15 @@ ifneq ($(MAKEFILE_LIST),)
 srctree := $(dir $(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST)))
 else
 ifeq ($(srctree),)
-srctree := $(shell test -d rtai-core/config && pwd)
+srctree := $(shell test -d base/config && pwd)
 ifeq ($(srctree),)
 $(error Please specify the location of your source tree: make srctree=...)
 endif
 endif
 endif
 endif
-build_alias := $(shell $(srctree)/rtai-core/config/autoconf/config.guess)
-host_alias := $(shell  $(srctree)/rtai-core/config/autoconf/arch2host.sh $(ARCH) $(build_alias))
+build_alias := $(shell $(srctree)/base/config/autoconf/config.guess)
+host_alias := $(shell  $(srctree)/base/config/autoconf/arch2host.sh $(ARCH) $(build_alias))
 override ARCH := $(shell echo $(host_alias)|cut -f1 -d-|sed -e s/^i.86/i386/ -e s/^arm.*/arm/ -e s/^sa110/arm/ -e s/^powerpc/ppc/)
 endif
 
