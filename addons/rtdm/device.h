@@ -20,9 +20,8 @@
 #ifndef _RTDM_DEVICE_H
 #define _RTDM_DEVICE_H
 
-#include <linux/sem.h>
-
 #include <rtdm/rtdm_driver.h>
+#include <linux/sem.h>
 
 
 #define DEF_DEVNAME_HASHTAB_SIZE    256 /* entries in name hash table */
@@ -37,6 +36,12 @@ extern unsigned int     protocol_hashtab_size;
 
 extern struct list_head *rtdm_named_devices;
 extern struct list_head *rtdm_protocol_devices;
+
+#ifdef MODULE
+#define rtdm_initialised 1
+#else /* !MODULE */
+extern int              rtdm_initialised;
+#endif /* MODULE */
 
 
 int rtdm_no_support(void);

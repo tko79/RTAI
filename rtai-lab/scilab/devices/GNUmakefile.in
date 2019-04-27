@@ -38,8 +38,10 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 @CONFIG_RTAI_COMEDI_LXRT_TRUE@am__append_1 = \
-@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_data.c \
-@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dio.c
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_datain.c \
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dataout.c \
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dioin.c \
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dioout.c
 
 subdir = rtai-lab/scilab/devices
 DIST_COMMON = $(include_HEADERS) $(srcdir)/GNUmakefile.am \
@@ -66,17 +68,25 @@ LIBRARIES = $(lib_LIBRARIES)
 ARFLAGS = cru
 libsciblk_a_LIBADD =
 am__libsciblk_a_SOURCES_DIST = rtai_scope.c rtai_led.c rtai_meter.c \
-	rtai_fifo.c extdata.c mbx_receive_if.c mbx_receive.c \
-	mbx_ovrwr_send.c mbx_send_if.c rtmain.h rtai_sem.c \
-	rtai_comedi_data.c rtai_comedi_dio.c
+	rtai_fifo.c rtai_sinus.c rtai_square.c rtai_step.c \
+	rtai_extdata.c mbx_receive_if.c mbx_receive.c mbx_ovrwr_send.c \
+	mbx_send_if.c getstr.c rtmain.h devices.h machine.h \
+	scicos_block.h rtai_sem_signal.c rtai_sem_wait.c olddevices.c \
+	rtai_comedi_datain.c rtai_comedi_dataout.c rtai_comedi_dioin.c \
+	rtai_comedi_dioout.c
 @CONFIG_RTAI_COMEDI_LXRT_TRUE@am__objects_1 =  \
-@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_data.$(OBJEXT) \
-@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dio.$(OBJEXT)
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_datain.$(OBJEXT) \
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dataout.$(OBJEXT) \
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dioin.$(OBJEXT) \
+@CONFIG_RTAI_COMEDI_LXRT_TRUE@	rtai_comedi_dioout.$(OBJEXT)
 am_libsciblk_a_OBJECTS = rtai_scope.$(OBJEXT) rtai_led.$(OBJEXT) \
-	rtai_meter.$(OBJEXT) rtai_fifo.$(OBJEXT) extdata.$(OBJEXT) \
-	mbx_receive_if.$(OBJEXT) mbx_receive.$(OBJEXT) \
-	mbx_ovrwr_send.$(OBJEXT) mbx_send_if.$(OBJEXT) \
-	rtai_sem.$(OBJEXT) $(am__objects_1)
+	rtai_meter.$(OBJEXT) rtai_fifo.$(OBJEXT) rtai_sinus.$(OBJEXT) \
+	rtai_square.$(OBJEXT) rtai_step.$(OBJEXT) \
+	rtai_extdata.$(OBJEXT) mbx_receive_if.$(OBJEXT) \
+	mbx_receive.$(OBJEXT) mbx_ovrwr_send.$(OBJEXT) \
+	mbx_send_if.$(OBJEXT) getstr.$(OBJEXT) \
+	rtai_sem_signal.$(OBJEXT) rtai_sem_wait.$(OBJEXT) \
+	olddevices.$(OBJEXT) $(am__objects_1)
 libsciblk_a_OBJECTS = $(am_libsciblk_a_OBJECTS)
 DEFAULT_INCLUDES = -I. -I$(srcdir) -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/base/config/autoconf/depcomp
@@ -316,6 +326,7 @@ RTAI_MAYBE_DOCDIR = @RTAI_MAYBE_DOCDIR@
 RTAI_MAYBE_SIMDIR = @RTAI_MAYBE_SIMDIR@
 RTAI_MODULE_DIR = @RTAI_MODULE_DIR@
 RTAI_MODULE_EXT = @RTAI_MODULE_EXT@
+RTAI_POSIX_WRAP = @RTAI_POSIX_WRAP@
 RTAI_TARGET_ARCH = @RTAI_TARGET_ARCH@
 RTAI_TARGET_SUBARCH = @RTAI_TARGET_SUBARCH@
 RTAI_USER_APP_CFLAGS = @RTAI_USER_APP_CFLAGS@
@@ -372,15 +383,16 @@ sharedstatedir = @sharedstatedir@
 subdirs = @subdirs@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
-moduledir = $(DESTDIR)@RTAI_MODULE_DIR@
+moduledir = @RTAI_MODULE_DIR@
 lib_LIBRARIES = libsciblk.a
 libsciblk_a_SOURCES = rtai_scope.c rtai_led.c rtai_meter.c rtai_fifo.c \
-	extdata.c mbx_receive_if.c mbx_receive.c mbx_ovrwr_send.c \
-	mbx_send_if.c rtmain.h rtai_sem.c $(am__append_1)
+	rtai_sinus.c rtai_square.c rtai_step.c rtai_extdata.c \
+	mbx_receive_if.c mbx_receive.c mbx_ovrwr_send.c mbx_send_if.c \
+	getstr.c rtmain.h devices.h machine.h scicos_block.h \
+	rtai_sem_signal.c rtai_sem_wait.c olddevices.c $(am__append_1)
 libsciblk_a_AR = $(CROSS_COMPILE)ar cru
 include_HEADERS = \
-	devices.h \
-	devstruct.h
+	devices.h 
 
 INCLUDES = \
 	@RTAI_USER_CFLAGS@ \
@@ -389,7 +401,7 @@ INCLUDES = \
 	-I$(top_srcdir)/addons/comedi \
 	-I@COMEDI_DIR@/include
 
-EXTRA_DIST = template.c README.devices devtmpl.h
+EXTRA_DIST = template.c.tmp README.devices devtmpl.h
 all: all-am
 
 .SUFFIXES:
@@ -463,18 +475,26 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/extdata.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/getstr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mbx_ovrwr_send.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mbx_receive.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mbx_receive_if.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mbx_send_if.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_comedi_data.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_comedi_dio.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/olddevices.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_comedi_datain.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_comedi_dataout.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_comedi_dioin.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_comedi_dioout.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_extdata.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_fifo.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_led.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_meter.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_scope.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_sem.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_sem_signal.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_sem_wait.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_sinus.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_square.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtai_step.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	if $(COMPILE) -MT $@ -MD -MP -MF "$(DEPDIR)/$*.Tpo" -c -o $@ $<; \

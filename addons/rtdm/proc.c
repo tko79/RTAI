@@ -22,6 +22,7 @@
 #ifdef CONFIG_PROC_FS
 
 #include <linux/proc_fs.h>
+
 #include <rtdm/core.h>
 #include <rtdm/device.h>
 
@@ -126,13 +127,13 @@ static int proc_read_open_fildes(char* buf, char** start, off_t offset,
     RTDM_PROC_PRINT_VARS(80);
 
 
-    if (down_interruptible(&nrt_dev_lock))
-        return -ERESTARTSYS;
-
     if (!RTDM_PROC_PRINT("Index\tLocked\tDevice\n"))
         goto done;
 
-    for (i = 0; i < fd_count; i++) {
+    if (down_interruptible(&nrt_dev_lock))
+        return -ERESTARTSYS;
+
+    for (i = 0; i < RTDM_FD_MAX; i++) {
         xnlock_get_irqsave(&rt_fildes_lock, s);
 
         if (!fildes_table[i].context) {
@@ -142,7 +143,7 @@ static int proc_read_open_fildes(char* buf, char** start, off_t offset,
 
         close_lock_count =
             atomic_read(&fildes_table[i].context->close_lock_count);
-        device = (struct rtdm_device *)fildes_table[i].context->device;
+        device = fildes_table[i].context->device;
 
         xnlock_put_irqrestore(&rt_fildes_lock, s);
 
@@ -152,9 +153,9 @@ static int proc_read_open_fildes(char* buf, char** start, off_t offset,
             break;
     }
 
-  done:
     up(&nrt_dev_lock);
 
+  done:
     RTDM_PROC_PRINT_DONE;
 }
 
@@ -194,13 +195,8 @@ static int proc_read_fildes(char* buf, char** start, off_t offset,
     RTDM_PROC_PRINT_VARS(80);
 
 
-    if (down_interruptible(&nrt_dev_lock))
-        return -ERESTARTSYS;
-
-    RTDM_PROC_PRINT("total:\t%d\nopen:\t%d\nfree:\t%d\n", fd_count,
-                    open_fildes, fd_count - open_fildes);
-
-    up(&nrt_dev_lock);
+    RTDM_PROC_PRINT("total:\t%d\nopen:\t%d\nfree:\t%d\n", RTDM_FD_MAX,
+                    open_fildes, RTDM_FD_MAX - open_fildes);
 
     RTDM_PROC_PRINT_DONE;
 }
@@ -209,12 +205,11 @@ static int proc_read_fildes(char* buf, char** start, off_t offset,
 static int proc_read_dev_info(char* buf, char** start, off_t offset,
                               int count, int* eof, void* data)
 {
+    /* accessing the device during unregister (remove_proc_entry) might be
+       racy, but no official workaround is known yet */
     struct rtdm_device  *device = data;
     RTDM_PROC_PRINT_VARS(256);
 
-
-    if (down_interruptible(&nrt_dev_lock))
-        return -ERESTARTSYS;
 
     if (!RTDM_PROC_PRINT("driver:\t\t%s\nversion:\t%d.%d.%d\n",
                          device->driver_name,
@@ -240,8 +235,6 @@ static int proc_read_dev_info(char* buf, char** start, off_t offset,
                     atomic_read(&device->reserved.refcount));
 
   done:
-    up(&nrt_dev_lock);
-
     RTDM_PROC_PRINT_DONE;
 }
 

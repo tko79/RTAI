@@ -308,6 +308,7 @@ RTAI_MAYBE_DOCDIR = @RTAI_MAYBE_DOCDIR@
 RTAI_MAYBE_SIMDIR = @RTAI_MAYBE_SIMDIR@
 RTAI_MODULE_DIR = @RTAI_MODULE_DIR@
 RTAI_MODULE_EXT = @RTAI_MODULE_EXT@
+RTAI_POSIX_WRAP = @RTAI_POSIX_WRAP@
 RTAI_TARGET_ARCH = @RTAI_TARGET_ARCH@
 RTAI_TARGET_SUBARCH = @RTAI_TARGET_SUBARCH@
 RTAI_USER_APP_CFLAGS = @RTAI_USER_APP_CFLAGS@
@@ -365,7 +366,7 @@ subdirs = @subdirs@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
 calibrationdir = $(prefix)/calibration
-moduledir = $(DESTDIR)@RTAI_MODULE_DIR@
+moduledir = @RTAI_MODULE_DIR@
 modext = @RTAI_MODULE_EXT@
 libcalibrate_rt_a_SOURCES = calibrate-module.c calibrate.h
 libsmi_rt_a_SOURCES = smi-module.c
@@ -400,7 +401,8 @@ calibration_helper_LDADD = \
 	../../../sched/liblxrt/liblxrt.la \
 	-lpthread
 
-RT_MODULES = calibrate_rt$(modext) smi_rt$(modext)
+RT_MODULES = calibrate_rt$(modext)
+RTAI_MODULES = rtai_smi$(modext)
 EXTRA_DIST = runinfo README.SMI Makefile.kbuild
 all: all-am
 
@@ -761,8 +763,8 @@ uninstall-am: uninstall-calibrationPROGRAMS uninstall-info-am
 @CONFIG_KBUILD_TRUE@	@RTAI_KBUILD_CMD@ \
 @CONFIG_KBUILD_TRUE@	@RTAI_KBUILD_BOTTOM@
 
-@CONFIG_KBUILD_TRUE@smi_rt.ko: @RTAI_KBUILD_ENV@
-@CONFIG_KBUILD_TRUE@smi_rt.ko: $(libsmi_rt_a_SOURCES)
+@CONFIG_KBUILD_TRUE@rtai_smi.ko: @RTAI_KBUILD_ENV@
+@CONFIG_KBUILD_TRUE@rtai_smi.ko: $(libsmi_rt_a_SOURCES)
 @CONFIG_KBUILD_TRUE@	@RTAI_KBUILD_TOP@ \
 @CONFIG_KBUILD_TRUE@	@RTAI_KBUILD_CMD@ \
 @CONFIG_KBUILD_TRUE@	@RTAI_KBUILD_BOTTOM@
@@ -773,10 +775,10 @@ uninstall-am: uninstall-calibrationPROGRAMS uninstall-info-am
 @CONFIG_KBUILD_FALSE@calibrate_rt.o: libcalibrate_rt.a
 @CONFIG_KBUILD_FALSE@	$(CROSS_COMPILE)$(LD) --whole-archive $< -r -o $@
 
-@CONFIG_KBUILD_FALSE@smi_rt.o: libsmi_rt.a
+@CONFIG_KBUILD_FALSE@rtai_smi.o: libsmi_rt.a
 @CONFIG_KBUILD_FALSE@	$(CROSS_COMPILE)$(LD) --whole-archive $< -r -o $@
 
-all-local: calibrate_rt$(modext) smi_rt$(modext)
+all-local: calibrate_rt$(modext) rtai_smi$(modext)
 
 install-exec-local: $(RT_MODULES)
 	$(mkinstalldirs) $(DESTDIR)$(moduledir)
@@ -785,14 +787,19 @@ install-exec-local: $(RT_MODULES)
 		echo "installing module $$m as $$k in $(DESTDIR)$(moduledir)" ; \
 		$(INSTALL_DATA) $$m $(DESTDIR)$(moduledir)/$$k ; \
 	done
+	@for m in $(RTAI_MODULES) ; do \
+		echo "installing module $$m in $(DESTDIR)$(moduledir)" ; \
+		$(INSTALL_DATA) $$m $(DESTDIR)$(moduledir)/ ; \
+	done
 
 install-data-local:
 	$(mkinstalldirs) $(DESTDIR)$(calibrationdir) $(DESTDIR)$(bindir)
 	$(INSTALL_DATA) $(srcdir)/runinfo $(DESTDIR)$(calibrationdir)/.runinfo
-	@echo "\$${DESTDIR}$(prefix)/bin/rtai-load \$$*" > $(DESTDIR)$(calibrationdir)/run
+	@echo '#!/bin/sh' > $(DESTDIR)$(calibrationdir)/run
+	@echo "\$${DESTDIR}$(prefix)/bin/rtai-load \$$*" >> $(DESTDIR)$(calibrationdir)/run
 	@chmod +x $(DESTDIR)$(calibrationdir)/run
 	$(INSTALL_SCRIPT) -m 755 setsmi $(DESTDIR)$(bindir)
-	@$(LN_S) -f $(DESTDIR)$(bindir)/setsmi $(DESTDIR)$(bindir)/rstsmi
+	@$(LN_S) -f $(bindir)/setsmi $(DESTDIR)$(bindir)/rstsmi
 
 run: all
 	@$(top_srcdir)/rtai-scripts/rtai-load --verbose

@@ -60,7 +60,7 @@ struct rt_task_struct;
 
 struct rt_tasklet_struct {
 	struct rt_tasklet_struct *next, *prev;
-	int priority, uses_fpu;
+	int priority, uses_fpu, cpuid;
 	RTIME firing_time, period;
 	void (*handler)(unsigned long);
 	unsigned long data, id;
@@ -133,8 +133,6 @@ do { \
  *
  * This function and macro can be used within the timer handler.
  *
- *
- * @note To be used only with RTAI24.x.xx.
  */
 struct rt_task_struct *rt_tasklet_use_fpu(struct rt_tasklet_struct *tasklet,
 					  int use_fpu);
@@ -153,7 +151,6 @@ struct rt_task_struct *rt_tasklet_use_fpu(struct rt_tasklet_struct *tasklet,
  * @return the pointer to the timer structure the user space application must
  * use to access all its related services.
  *
- * @note To be used only with RTAI24.x.xx.
  */
 #define rt_init_timer rt_init_tasklet 
 
@@ -171,7 +168,6 @@ struct rt_task_struct *rt_tasklet_use_fpu(struct rt_tasklet_struct *tasklet,
  * it is just an empty macro, as the user can, and must allocate the related
  * structure directly, either statically or dynamically.
  *
- * @note To be used only with RTAI24.x.xx.
  */
 #define rt_delete_timer rt_delete_tasklet
 
@@ -220,7 +216,6 @@ do { \
  *
  * @retval 0 on success.
  *
- * @note To be used only with RTAI24.x.xx.
  */
 #define rt_set_timer_handler rt_set_tasklet_handler
 
@@ -246,7 +241,6 @@ do { \
  *
  * @retval 0 on success.
  *
- * @note To be used only with RTAI24.x.xx.
  */
 #define rt_set_timer_data rt_set_tasklet_data
 
@@ -277,7 +271,7 @@ void rt_register_task(struct rt_tasklet_struct *tasklet,
 
 struct rt_tasklet_struct {
 	struct rt_tasklet_struct *next, *prev;
-	int priority, uses_fpu;
+	int priority, uses_fpu, cpuid;
 	RTIME firing_time, period;
 	void (*handler)(unsigned long);
 	unsigned long data, id;
@@ -332,12 +326,19 @@ extern "C" {
 
 RTAI_PROTO(struct rt_tasklet_struct *, rt_init_tasklet,(void))
 {
+	int is_hard;
 	struct { struct rt_tasklet_struct *tasklet; long thread; } arg;
 
 	arg.tasklet = (struct rt_tasklet_struct*)rtai_lxrt(TSKIDX, SIZARG, INIT, &arg).v[LOW];
+	if ((is_hard = rt_is_hard_real_time(NULL))) {
+		rt_make_soft_real_time();
+	}
 	arg.thread = rt_thread_create((void *)support_tasklet, arg.tasklet, TASKLET_STACK_SIZE);
 //	arg.thread = clone(support_tasklet, sp + TASKLET_STACK_SIZE - 1, CLONE_VM | CLONE_FS | CLONE_FILES, arg.tasklet);
 	rtai_lxrt(TSKIDX, SIZARG, WAIT_IS_HARD, &arg);
+	if (is_hard) {
+		rt_make_hard_real_time();
+	}
 
 	return arg.tasklet;
 }

@@ -31,7 +31,11 @@
  */
 
 
+#include <asm/io.h>
+#include <asm/page.h>
+#include <asm/pgtable.h>
 #include <linux/delay.h>
+#include <linux/highmem.h>
 
 #include <rtai_sched.h>
 #include <rtdm/rtdm_driver.h>
@@ -48,6 +52,14 @@
  *
  * @return The system time in nanoseconds is returned
  *
+ * @note The resolution of this service depends on the system timer. In
+ * particular, if the system timer is running in periodic mode, the return
+ * value will be limited to multiples of the timer tick period.
+ *
+ * @note The system timer may have to be started to obtain valid results.
+ * Whether this happens automatically or is controlled by the
+ * application depends on the RTDM host environment.
+ *
  * Environments:
  *
  * This service can be called from:
@@ -59,7 +71,7 @@
  *
  * Rescheduling: never.
  */
-uint64_t rtdm_clock_read(void);
+nanosecs_abs_t rtdm_clock_read(void);
 #endif /* DOXYGEN_CPP */
 /** @} */
 
@@ -96,7 +108,7 @@ uint64_t rtdm_clock_read(void);
  */
 int rtdm_task_init(rtdm_task_t *task, const char *name,
                    rtdm_task_proc_t task_proc, void *arg,
-                   int priority, uint64_t period)
+                   int priority, nanosecs_rel_t period)
 {
 	if (rt_task_init(task, (void *)task_proc, (long)arg, PAGE_SIZE, priority, 0, 0)) {
         	return -ENOMEM;
@@ -168,7 +180,7 @@ void rtdm_task_set_priority(rtdm_task_t *task, int priority);
  *
  * Rescheduling: possible.
  */
-int rtdm_task_set_period(rtdm_task_t *task, uint64_t period);
+int rtdm_task_set_period(rtdm_task_t *task, nanosecs_rel_t period);
 
 /**
  * @brief Wait on next real-time task period
@@ -266,7 +278,8 @@ EXPORT_SYMBOL(rtdm_task_join_nrt);
 /**
  * @brief Sleep a specified amount of time
  *
- * @param[in] delay Delay in nanoseconds
+ * @param[in] delay Delay in nanoseconds, see @ref RTDM_TIMEOUT_xxx for
+ * special values.
  *
  * @return 0 on success, otherwise:
  *
@@ -282,16 +295,15 @@ EXPORT_SYMBOL(rtdm_task_join_nrt);
  *
  * Rescheduling: always.
  */
-int rtdm_task_sleep(uint64_t delay)
+int rtdm_task_sleep(nanosecs_rel_t delay)
 {
-	if (!rt_sleep(nano2count(delay))) {
-		return 0;
+	if (delay < 0) {
+	        return 0;
 	}
-	if (_rt_whoami()->unblocked) {
+	if (rt_sleep(nano2count(delay)) && _rt_whoami()->unblocked) {
 		return -EINTR;
 	}
-	return rt_sched_timed ? -ETIMEDOUT : -EIDRM;
-
+	return 0;
 }
 
 EXPORT_SYMBOL(rtdm_task_sleep);
@@ -316,15 +328,12 @@ EXPORT_SYMBOL(rtdm_task_sleep);
  *
  * Rescheduling: always, unless the specified time already passed.
  */
-int rtdm_task_sleep_until(uint64_t wakeup_time)
+int rtdm_task_sleep_until(nanosecs_abs_t wakeup_time)
 {
-	if (!rt_sleep_until(nano2count(wakeup_time))) {
-		return 0;
-	}
-	if (_rt_whoami()->unblocked) {
+	if (rt_sleep_until(nano2count(wakeup_time)) && _rt_whoami()->unblocked) {
 		return -EINTR;
 	}
-	return rt_sched_timed ? -ETIMEDOUT : -EIDRM;
+	return 0;
 }
 
 EXPORT_SYMBOL(rtdm_task_sleep_until);
@@ -333,20 +342,24 @@ EXPORT_SYMBOL(rtdm_task_sleep_until);
 /**
  * @brief Busy-wait a specified amount of time
  *
- * @param[in] delay Delay in nanoseconds
+ * @param[in] delay Delay in nanoseconds. Note that a zero delay does @b not
+ * have the meaning of RTDM_TIMEOUT_INFINITE here.
+ *
+ * @note The caller must not be migratable to different CPUs while executing
+ * this service. Otherwise, the actual delay will be undefined.
  *
  * Environments:
  *
  * This service can be called from:
  *
  * - Kernel module initialization/cleanup code
- * - Interrupt service routine (but you should rather avoid this...)
+ * - Interrupt service routine (should be avoided or kept short)
  * - Kernel-based task
  * - User-space task (RT, non-RT)
  *
- * Rescheduling: never.
+ * Rescheduling: never (except due to external interruptions).
  */
-void rtdm_task_busy_sleep(uint64_t delay)
+void rtdm_task_busy_sleep(nanosecs_rel_t delay)
 {
 	rt_busy_sleep(delay);
 }
@@ -376,8 +389,8 @@ EXPORT_SYMBOL(rtdm_task_busy_sleep);
  * application scenario is given below.
  *
  * @param[in,out] timeout_seq Timeout sequence handle
- * @param[in] timeout Relative timeout in nanoseconds, 0 for infinite, or any
- * negative value for non-blocking
+ * @param[in] timeout Relative timeout in nanoseconds, see
+ * @ref RTDM_TIMEOUT_xxx for special values
  *
  * Application Scenario:
  * @code
@@ -440,7 +453,7 @@ int device_service_routine(...)
  *
  * Rescheduling: never.
  */
-void rtdm_toseq_init(rtdm_toseq_t *timeout_seq, int64_t timeout);
+void rtdm_toseq_init(rtdm_toseq_t *timeout_seq, nanosecs_rel_t timeout);
 #endif /* DOXYGEN_CPP */
 /** @} */
 
@@ -506,24 +519,6 @@ void rtdm_event_destroy(rtdm_event_t *event);
  * Rescheduling: possible.
  */
 void rtdm_event_pulse(rtdm_event_t *event);
-
-/**
- * @brief Clear event state
- *
- * @param[in,out] event Event handle as returned by rtdm_event_init()
- *
- * Environments:
- *
- * This service can be called from:
- *
- * - Kernel module initialization/cleanup code
- * - Interrupt service routine
- * - Kernel-based task
- * - User-space task (RT, non-RT)
- *
- * Rescheduling: never.
- */
-void rtdm_event_clear(rtdm_event_t *event);
 #endif /* DOXYGEN_CPP */
 
 
@@ -613,8 +608,8 @@ EXPORT_SYMBOL(rtdm_event_wait);
  * reset.
  *
  * @param[in,out] event Event handle as returned by rtdm_event_init()
- * @param[in] timeout Relative timeout in nanoseconds, 0 for infinite, or any
- * negative value for non-blocking (test for event occurrence)
+ * @param[in] timeout Relative timeout in nanoseconds, see
+ * @ref RTDM_TIMEOUT_xxx for special values
  * @param[in,out] timeout_seq Handle of a timeout sequence as returned by
  * rtdm_toseq_init() or rtdm_toseq_absinit(), or NULL
  *
@@ -637,7 +632,7 @@ EXPORT_SYMBOL(rtdm_event_wait);
  *
  * Rescheduling: possible.
  */
-int rtdm_event_timedwait(rtdm_event_t *event, int64_t timeout,
+int rtdm_event_timedwait(rtdm_event_t *event, nanosecs_rel_t timeout,
                          rtdm_toseq_t *timeout_seq)
 {
 	unsigned long flags;
@@ -657,6 +652,27 @@ int rtdm_event_timedwait(rtdm_event_t *event, int64_t timeout,
 }
 
 EXPORT_SYMBOL(rtdm_event_timedwait);
+
+
+/**
+ * @brief Clear event state
+ *
+ * @param[in,out] event Event handle as returned by rtdm_event_init()
+ *
+ * Environments:
+ *
+ * This service can be called from:
+ *
+ * - Kernel module initialization/cleanup code
+ * - Interrupt service routine
+ * - Kernel-based task
+ * - User-space task (RT, non-RT)
+ *
+ * Rescheduling: never.
+ */
+void rtdm_event_clear(rtdm_event_t *event);
+
+EXPORT_SYMBOL(rtdm_event_clear);
 /** @} */
 
 
@@ -743,8 +759,8 @@ EXPORT_SYMBOL(rtdm_sem_down);
  * operation was selected.
  *
  * @param[in,out] sem Semaphore handle as returned by rtdm_sem_init()
- * @param[in] timeout Relative timeout in nanoseconds, 0 for infinite, or any
- * negative value for non-blocking operation
+ * @param[in] timeout Relative timeout in nanoseconds, see
+ * @ref RTDM_TIMEOUT_xxx for special values
  * @param[in,out] timeout_seq Handle of a timeout sequence as returned by
  * rtdm_toseq_init() or rtdm_toseq_absinit(), or NULL
  *
@@ -770,7 +786,7 @@ EXPORT_SYMBOL(rtdm_sem_down);
  *
  * Rescheduling: possible.
  */
-int rtdm_sem_timeddown(rtdm_sem_t *sem, int64_t timeout,
+int rtdm_sem_timeddown(rtdm_sem_t *sem, nanosecs_rel_t timeout,
                        rtdm_toseq_t *timeout_seq)
 {
 	return _sem_wait_timed(sem, timeout, timeout_seq);
@@ -853,6 +869,30 @@ void rtdm_mutex_init(rtdm_mutex_t *mutex);
 void rtdm_mutex_destroy(rtdm_mutex_t *mutex);
 #endif /* DOXYGEN_CPP */
 
+/**
+ * @brief Release a mutex
+ *
+ * This function releases the given mutex, waking up a potential waiter which
+ * was blocked upon rtdm_mutex_lock() or rtdm_mutex_timedlock().
+ *
+ * @param[in,out] mutex Mutex handle as returned by rtdm_mutex_init()
+ *
+ * Environments:
+ *
+ * This service can be called from:
+ *
+ * - Kernel-based task
+ * - User-space task (RT, non-RT)
+ *
+ * Rescheduling: possible.
+ */
+void rtdm_mutex_unlock(rtdm_mutex_t *mutex)
+{
+	_sem_signal(mutex);
+}
+
+EXPORT_SYMBOL(rtdm_mutex_unlock);
+
 
 /**
  * @brief Request a mutex
@@ -890,8 +930,8 @@ EXPORT_SYMBOL(rtdm_mutex_lock);
  * caller is blocked unless non-blocking operation was selected.
  *
  * @param[in,out] mutex Mutex handle as returned by rtdm_mutex_init()
- * @param[in] timeout Relative timeout in nanoseconds, 0 for infinite, or any
- * negative value for non-blocking operation
+ * @param[in] timeout Relative timeout in nanoseconds, see
+ * @ref RTDM_TIMEOUT_xxx for special values
  * @param[in,out] timeout_seq Handle of a timeout sequence as returned by
  * rtdm_toseq_init() or rtdm_toseq_absinit(), or NULL
  *
@@ -917,38 +957,13 @@ EXPORT_SYMBOL(rtdm_mutex_lock);
  *
  * Rescheduling: possible.
  */
-int rtdm_mutex_timedlock(rtdm_mutex_t *mutex, int64_t timeout,
+int rtdm_mutex_timedlock(rtdm_mutex_t *mutex, nanosecs_rel_t timeout,
                          rtdm_toseq_t *timeout_seq)
 {
 	return _sem_wait_timed(mutex, timeout, timeout_seq);
 }
 
 EXPORT_SYMBOL(rtdm_mutex_timedlock);
-
-
-/**
- * @brief Release a mutex
- *
- * This function releases the given mutex, waking up a potential waiter which
- * was blocked upon rtdm_mutex_lock() or rtdm_mutex_timedlock().
- *
- * @param[in,out] mutex Mutex handle as returned by rtdm_mutex_init()
- *
- * Environments:
- *
- * This service can be called from:
- *
- * - Kernel-based task
- * - User-space task (RT, non-RT)
- *
- * Rescheduling: possible.
- */
-void rtdm_mutex_unlock(rtdm_mutex_t *mutex)
-{
-	_sem_signal(mutex);
-}
-
-EXPORT_SYMBOL(rtdm_mutex_unlock);
 /** @} */
 
 /** @} Synchronisation services */
@@ -968,7 +983,7 @@ EXPORT_SYMBOL(rtdm_mutex_unlock);
  * @param[in,out] irq_handle IRQ handle
  * @param[in] irq_no Line number of the addressed IRQ
  * @param[in] handler Interrupt handler
- * @param[in] flags Currently unused, pass 0
+ * @param[in] flags Registration flags, see @ref RTDM_IRQTYPE_xxx for details
  * @param[in] device_name Optional device name to show up in real-time IRQ
  * lists (not yet implemented)
  * @param[in] arg Pointer to be passed to the interrupt handler on invocation
@@ -1054,7 +1069,7 @@ int rtdm_irq_enable(rtdm_irq_t *irq_handle);
  * Rescheduling: never.
  */
 int rtdm_irq_disable(rtdm_irq_t *irq_handle);
-/** @} */
+/** @} Interrupt Management Services */
 
 
 /*!
@@ -1126,7 +1141,9 @@ void rtdm_nrtsig_destroy(rtdm_nrtsig_t *nrt_sig);
  * environments.
  */
 void rtdm_nrtsig_pend(rtdm_nrtsig_t *nrt_sig);
-/** @} */
+/** @} Non-Real-Time Signalling Services */
+
+#endif /* DOXYGEN_CPP */
 
 
 /*!
@@ -1134,6 +1151,173 @@ void rtdm_nrtsig_pend(rtdm_nrtsig_t *nrt_sig);
  * @defgroup util Utility Services
  * @{
  */
+
+struct rtdm_mmap_data {
+    void *src_addr;
+    struct vm_operations_struct *vm_ops;
+    void *vm_private_data;
+};
+
+static int rtdm_mmap_buffer(struct file *filp, struct vm_area_struct *vma)
+{
+    struct rtdm_mmap_data *mmap_data = filp->private_data;
+    unsigned long vaddr, maddr, size;
+
+    vma->vm_ops = mmap_data->vm_ops;
+    vma->vm_private_data = mmap_data->vm_private_data;
+
+    vaddr = (unsigned long)mmap_data->src_addr;
+    maddr = vma->vm_start;
+    size  = vma->vm_end - vma->vm_start;
+
+#ifdef CONFIG_MMU
+    if ((vaddr >= VMALLOC_START) && (vaddr < VMALLOC_END)) {
+        unsigned long mapped_size = 0;
+
+        while (mapped_size < size) {
+            if (xnarch_remap_vm_page(vma, maddr,vaddr))
+                return -EAGAIN;
+
+            maddr += PAGE_SIZE;
+            vaddr += PAGE_SIZE;
+            mapped_size += PAGE_SIZE;
+        }
+        return 0;
+    } else
+#endif /* CONFIG_MMU */
+        return xnarch_remap_io_page_range(vma, maddr,
+                                          virt_to_phys((void *)vaddr),
+                                          size, PAGE_SHARED);
+}
+
+static struct file_operations rtdm_mmap_fops = {
+    .mmap = rtdm_mmap_buffer,
+};
+
+/**
+ * Map a kernel memory range into the address space of the user.
+ *
+ * @param[in] user_info User information pointer as passed to the invoked
+ * device operation handler
+ * @param[in] src_addr Kernel address to be mapped
+ * @param[in] len Length of the memory range
+ * @param[in] prot Protection flags for the user's memory range, typically
+ * either PROT_READ or PROT_READ|PROT_WRITE
+ * @param[in,out] pptr Address of a pointer containing the desired user
+ * address or NULL on entry and the finally assigned address on return
+ * @param[in] vm_ops vm_operations to be executed on the vma_area of the
+ * user memory range or NULL
+ * @param[in] vm_private_data Private data to be stored in the vma_area,
+ * primarily useful for vm_operation handlers
+ *
+ * @return 0 on success, otherwise (most common values):
+ *
+ * - -EINVAL is returned if an invalid start address, size, or destination
+ * address was passed.
+ *
+ * - -ENOMEM is returned if there is insufficient free memory or the limit of
+ * memory mapping for the user process was reached.
+ *
+ * - -EAGAIN is returned if too much memory has been already locked by the
+ * user process.
+ *
+ * @note RTDM supports two models for unmapping the user memory range again.
+ * One is explicite unmapping via rtdm_munmap(), either performed when the
+ * user requests it via an IOCTL etc. or when the related device is closed.
+ * The other is automatic unmapping, triggered by the user invoking standard
+ * munmap() or by the termination of the related process. To track release of
+ * the mapping and therefore relinquishment of the referenced physical memory,
+ * the caller of rtdm_mmap_to_user() can pass a vm_operations_struct on
+ * invocation, defining a close handler for the vm_area. See Linux
+ * documentaion (e.g. Linux Device Drivers book) on virtual memory management
+ * for details.
+ *
+ * Environments:
+ *
+ * This service can be called from:
+ *
+ * - Kernel module initialization/cleanup code
+ * - User-space task (non-RT)
+ *
+ * Rescheduling: possible.
+ */
+int rtdm_mmap_to_user(rtdm_user_info_t *user_info, void *src_addr, size_t len,
+                      int prot, void **pptr,
+                      struct vm_operations_struct *vm_ops,
+                      void *vm_private_data)
+{
+    struct rtdm_mmap_data   mmap_data = {src_addr, vm_ops, vm_private_data};
+    struct file             *filp;
+    const struct file_operations    *old_fops;
+    void                    *old_priv_data;
+    void                    *user_ptr;
+
+    filp = filp_open("/dev/zero", O_RDWR, 0);
+    if (IS_ERR(filp))
+        return PTR_ERR(filp);
+
+    old_fops = filp->f_op;
+    filp->f_op = &rtdm_mmap_fops;
+
+    old_priv_data = filp->private_data;
+    filp->private_data = &mmap_data;
+
+    down_write(&user_info->mm->mmap_sem);
+    user_ptr = (void *)do_mmap(filp, (unsigned long)*pptr, len, prot,
+                               MAP_SHARED, 0);
+    up_write(&user_info->mm->mmap_sem);
+
+    filp->f_op = (typeof(filp->f_op))old_fops;
+    filp->private_data = old_priv_data;
+
+    filp_close(filp, user_info->files);
+
+    if (IS_ERR(user_ptr))
+        return PTR_ERR(user_ptr);
+
+    *pptr = user_ptr;
+    return 0;
+}
+
+EXPORT_SYMBOL(rtdm_mmap_to_user);
+
+
+/**
+ * Unmap a user memory range.
+ *
+ * @param[in] user_info User information pointer as passed to
+ * rtdm_mmap_to_user() when requesting to map the memory range
+ * @param[in] ptr User address or the memory range
+ * @param[in] len Length of the memory range
+ *
+ * @return 0 on success, otherwise:
+ *
+ * - -EINVAL is returned if an invalid address or size was passed.
+ *
+ * Environments:
+ *
+ * This service can be called from:
+ *
+ * - Kernel module initialization/cleanup code
+ * - User-space task (non-RT)
+ *
+ * Rescheduling: possible.
+ */
+int rtdm_munmap(rtdm_user_info_t *user_info, void *ptr, size_t len)
+{
+    int err;
+
+    down_write(&user_info->mm->mmap_sem);
+    err = do_munmap(user_info->mm, (unsigned long)ptr, len);
+    up_write(&user_info->mm->mmap_sem);
+
+    return err;
+}
+
+EXPORT_SYMBOL(rtdm_munmap);
+
+
+#ifdef DOXYGEN_CPP /* Only used for doxygen doc generation */
 
 /**
  * Real-time safe message printing on kernel console
@@ -1275,6 +1459,36 @@ int rtdm_copy_from_user(rtdm_user_info_t *user_info, void *dst,
                         const void __user *src, size_t size);
 
 /**
+ * Check if read access to user-space memory block and copy it to specified
+ * buffer
+ *
+ * @param[in] user_info User information pointer as passed to the invoked
+ * device operation handler
+ * @param[in] dst Destination buffer address
+ * @param[in] src Address of the user-space memory block
+ * @param[in] size Size of the memory block
+ *
+ * @return 0 on success, otherwise:
+ *
+ * - -EFAULT is returned if an invalid memory area was accessed.
+ *
+ * @note This service is a combination of rtdm_read_user_ok and
+ * rtdm_copy_from_user.
+ *
+ * Environments:
+ *
+ * This service can be called from:
+ *
+ * - Kernel module initialization/cleanup code
+ * - Kernel-based task
+ * - User-space task (RT, non-RT)
+ *
+ * Rescheduling: never.
+ */
+int rtdm_safe_copy_from_user(rtdm_user_info_t *user_info, void *dst,
+                             const void __user *src, size_t size);
+
+/**
  * Copy specified buffer to user-space memory block
  *
  * @param[in] user_info User information pointer as passed to the invoked
@@ -1302,6 +1516,36 @@ int rtdm_copy_from_user(rtdm_user_info_t *user_info, void *dst,
  */
 int rtdm_copy_to_user(rtdm_user_info_t *user_info, void __user *dst,
                       const void *src, size_t size);
+
+/**
+ * Check if read/write access to user-space memory block is safe and copy
+ * specified buffer to it
+ *
+ * @param[in] user_info User information pointer as passed to the invoked
+ * device operation handler
+ * @param[in] dst Address of the user-space memory block
+ * @param[in] src Source buffer address
+ * @param[in] size Size of the memory block
+ *
+ * @return 0 on success, otherwise:
+ *
+ * - -EFAULT is returned if an invalid memory area was accessed.
+ *
+ * @note This service is a combination of rtdm_rw_user_ok and
+ * rtdm_copy_to_user.
+ *
+ * Environments:
+ *
+ * This service can be called from:
+ *
+ * - Kernel module initialization/cleanup code
+ * - Kernel-based task
+ * - User-space task (RT, non-RT)
+ *
+ * Rescheduling: never.
+ */
+int rtdm_safe_copy_to_user(rtdm_user_info_t *user_info, void __user *dst,
+                           const void *src, size_t size);
 
 /**
  * Copy user-space string to specified buffer
@@ -1351,6 +1595,6 @@ int rtdm_strncpy_from_user(rtdm_user_info_t *user_info, char *dst,
  */
 int rtdm_in_rt_context(void);
 
-/** @} */
-
 #endif /* DOXYGEN_CPP */
+
+/** @} Utility Services */

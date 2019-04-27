@@ -63,7 +63,7 @@ typedef struct task_struct          rtdm_user_info_t;
 #else  /* !__KERNEL__ */
 
 #include <fcntl.h>
-#include <inttypes.h>
+#include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
@@ -72,6 +72,29 @@ typedef struct task_struct          rtdm_user_info_t;
 
 /** Maximum length of device names */
 #define RTDM_MAX_DEVNAME_LEN        31
+
+
+/** RTDM type for representing absolute dates. Its base type is a 64 bit
+ *  unsigned integer. The unit is 1 nanosecond. */
+typedef int64_t                     nanosecs_abs_t;
+
+/** RTDM type for representing relative intervals. Its base type is a 64 bit
+ *  signed integer. The unit is 1 nanosecond. Relative intervals can also
+ *  encode the special timeouts "infinite" and "non-blocking", see
+ *  @ref RTDM_TIMEOUT_xxx. */
+typedef int64_t                     nanosecs_rel_t;
+
+
+/*!
+ * @anchor RTDM_TIMEOUT_xxx @name RTDM_TIMEOUT_xxx
+ * Special timeout values
+ * @{ */
+/** Block forever. */
+#define RTDM_TIMEOUT_INFINITE       0
+
+/** Any negative timeout means non-blocking. */
+#define RTDM_TIMEOUT_NONE           (-1)
+/** @} */
 
 
 /*!
@@ -83,6 +106,7 @@ typedef struct task_struct          rtdm_user_info_t;
 #define RTDM_CLASS_CAN              3
 #define RTDM_CLASS_NETWORK          4
 #define RTDM_CLASS_RTMAC            5
+#define RTDM_CLASS_TESTING          6
 /*
 #define RTDM_CLASS_USB              ?
 #define RTDM_CLASS_FIREWIRE         ?
@@ -332,7 +356,7 @@ static inline int rt_dev_close_forced(int fd)
 
 static inline int rt_dev_ioctl(int fd, int request, ...)
 {
-        struct { long fd; long request; void *arg; } arg = { fd, request };
+        struct { long fd; long request; void *arg; } arg = { fd, request, NULL };
 	va_list ap;
 	va_start(ap, request);
 	arg.arg = va_arg(ap, void *);
@@ -369,7 +393,7 @@ static inline ssize_t rt_dev_sendmsg(int fd, const struct msghdr *msg, int flags
 static inline ssize_t rt_dev_recvfrom(int fd, void *buf, size_t len, int flags, struct sockaddr *from, socklen_t *fromlen)
 {
 	struct iovec iov = { buf, len };
-	struct msghdr msg = { from, from && fromlen ? *fromlen : 0, &iov, 1, NULL, 0 };
+	struct msghdr msg = { from, from && fromlen ? *fromlen : 0, &iov, 1, NULL, 0, 0 };
 	int ret;
 
 	if ((ret = rt_dev_recvmsg(fd, &msg, flags)) >= 0 && from && fromlen) {
@@ -400,7 +424,7 @@ static inline ssize_t rt_dev_sendto(int fd, const void *buf, size_t len,
 {
     struct iovec    iov = {(void *)buf, len};
     struct msghdr   msg =
-        {(struct sockaddr *)to, tolen, &iov, 1, NULL, 0};
+        {(struct sockaddr *)to, tolen, &iov, 1, NULL, 0, 0};
 
     return rt_dev_sendmsg(fd, &msg, flags);
 }
