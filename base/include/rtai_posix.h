@@ -185,7 +185,12 @@
 #include <rtai_spl.h>
 #include <rtai_sem.h>
 
-#define MIN_PRIO       1
+#ifndef MAX_PRIO
+#define MAX_PRIO  99
+#endif
+#ifndef MIN_PRIO
+#define MIN_PRIO  1
+#endif
 #define STACK_SIZE     8192
 #define RR_QUANTUM_NS  1000000
 
@@ -232,7 +237,7 @@ extern "C" {
 static inline int sem_init(sem_t *sem, int pshared, unsigned int value)
 {
 	if (value < SEM_TIMOUT) {
-		rt_typed_sem_init(sem, value, pshared | PRIO_Q);
+		rt_typed_sem_init(sem, value, CNT_SEM | PRIO_Q);
 		return 0;
 	}
 	return -EINVAL;
@@ -1157,6 +1162,8 @@ RTAI_PROTO(int, __wrap_pthread_cond_broadcast, (pthread_cond_t *cond))
 	return EINVAL;
 }
 
+static void internal_cond_cleanup(void *mutex) { DEC_VAL(mutex); }
+
 RTAI_PROTO(int, __wrap_pthread_cond_wait, (pthread_cond_t *cond, pthread_mutex_t *mutex))
 {
 	int oldtype, retval;
@@ -1164,9 +1171,11 @@ RTAI_PROTO(int, __wrap_pthread_cond_wait, (pthread_cond_t *cond, pthread_mutex_t
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldtype);
 	pthread_testcancel();
 	if (arg.cond && arg.mutex) {
+		pthread_cleanup_push(internal_cond_cleanup, mutex);
 		INC_VAL(mutex);
 		retval = !rtai_lxrt(BIDX, SIZARG, COND_WAIT, &arg).i[LOW] ? 0 : EPERM;
 		DEC_VAL(mutex);
+		pthread_cleanup_pop(0);
 	} else {
 		retval = EINVAL;
 	}
@@ -1182,6 +1191,7 @@ RTAI_PROTO(int, __wrap_pthread_cond_timedwait, (pthread_cond_t *cond, pthread_mu
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldtype);
 	pthread_testcancel();
 	if (arg.cond && arg.mutex && abstime->tv_nsec >= 0 && abstime->tv_nsec < 1000000000) {
+		pthread_cleanup_push(internal_cond_cleanup, mutex);
 		INC_VAL(mutex);
 		if (abs(retval = rtai_lxrt(BIDX, SIZARG, COND_WAIT_UNTIL, &arg).i[LOW]) == RTE_TIMOUT) {
 			retval = ETIMEDOUT;
@@ -1189,6 +1199,7 @@ RTAI_PROTO(int, __wrap_pthread_cond_timedwait, (pthread_cond_t *cond, pthread_mu
 			retval = !retval ? 0 : EPERM;
 		}
 		DEC_VAL(mutex);
+		pthread_cleanup_pop(0);
 	} else {
 		retval = EINVAL;
 	}
@@ -1227,13 +1238,11 @@ RTAI_PROTO(int, __wrap_pthread_condattr_setpshared, (pthread_condattr_t *attr, i
 	return EINVAL;
 }
 
-int pthread_condattr_setclock(pthread_condattr_t *condattr, clockid_t clockid);
 RTAI_PROTO(int, __wrap_pthread_condattr_setclock, (pthread_condattr_t *condattr, clockid_t clockid))
 {
         return clockid == CLOCK_MONOTONIC ? 0 : EINVAL;
 }
 
-int pthread_condattr_getclock(pthread_condattr_t *condattr, clockid_t *clockid);
 RTAI_PROTO(int, __wrap_pthread_condattr_getclock, (pthread_condattr_t *condattr, clockid_t *clockid))
 {
         if (clockid) {
@@ -1485,6 +1494,12 @@ RTAI_PROTO(void, pthread_soft_real_time_np, (void))
 	rt_make_soft_real_time();
 }
 
+RTAI_PROTO(int, pthread_gettid_np, (void))
+{
+        struct { unsigned long dummy; } arg;
+        return rtai_lxrt(BIDX, SIZARG, RT_GETTID, &arg).i[LOW];
+}
+
 #define PTHREAD_SOFT_REAL_TIME  PTHREAD_SOFT_REAL_TIME_NP
 #define PTHREAD_HARD_REAL_TIME  PTHREAD_HARD_REAL_TIME_NP
 #define pthread_init_real_time_np(a, b, c, d, e) \
@@ -1690,6 +1705,12 @@ RTAI_PROTO(int, __wrap_pthread_spin_unlock,(pthread_spinlock_t *lock))
 	return EINVAL;
 }
 #else
+static inline int _pthread_gettid_np(void)
+{
+        struct { unsigned long dummy; } arg;
+        return rtai_lxrt(BIDX, SIZARG, RT_GETTID, &arg).i[LOW];
+}
+
 RTAI_PROTO(int, __wrap_pthread_spin_init, (pthread_spinlock_t *lock, int pshared))
 {
 	return lock ? (((pid_t *)lock)[0] = 0) : EINVAL;
@@ -1707,8 +1728,7 @@ RTAI_PROTO(int, __wrap_pthread_spin_lock,(pthread_spinlock_t *lock))
 {
 	if (lock) {
 		pid_t tid;
-		_syscall0(pid_t, gettid)
-		if (((pid_t *)lock)[0] == (tid = gettid())) {
+		if (((pid_t *)lock)[0] == (tid = _pthread_gettid_np())) {
 			return EDEADLOCK;
 		}
 		while (atomic_cmpxchg(lock, 0, tid));
@@ -1720,8 +1740,7 @@ RTAI_PROTO(int, __wrap_pthread_spin_lock,(pthread_spinlock_t *lock))
 RTAI_PROTO(int, __wrap_pthread_spin_trylock,(pthread_spinlock_t *lock))
 {
 	if (lock) {
-		_syscall0(pid_t, gettid)
-		return atomic_cmpxchg(lock, 0, gettid()) ? EBUSY : 0;
+		return atomic_cmpxchg(lock, 0, _pthread_gettid_np()) ? EBUSY : 0;
 	}
 	return EINVAL;
 }
@@ -1732,8 +1751,7 @@ RTAI_PROTO(int, __wrap_pthread_spin_unlock,(pthread_spinlock_t *lock))
 #if 0
 		return ((pid_t *)lock)[0] = 0;
 #else
-		_syscall0(pid_t, gettid)
-		return ((pid_t *)lock)[0] != gettid() ? EPERM : (((pid_t *)lock)[0] = 0);
+		return ((pid_t *)lock)[0] != _pthread_gettid_np() ? EPERM : (((pid_t *)lock)[0] = 0);
 #endif
 	}
 	return EINVAL;

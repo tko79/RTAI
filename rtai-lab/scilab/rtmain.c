@@ -38,8 +38,9 @@
 #include <rtai_netrpc.h>
 #include <rtai_msg.h>
 #include <rtai_mbx.h>
+#include <rtai_fifos.h>
 
-#define RTAILAB_VERSION         "3.4.4"
+#define RTAILAB_VERSION         "3.4.6"
 #define MAX_ADR_SRCH      500
 #define MAX_NAME_SIZE     256
 #define MAX_SCOPES        100
@@ -86,7 +87,7 @@ static volatile int verbose      = 0;
 static volatile int endBaseRate   = 0;
 static volatile int endInterface  = 0;
 static volatile int stackinc     = 100000;
-static volatile int ClockTick    = 0;
+static volatile int ClockTick    = 1;
 static volatile int InternTimer  = 1;
 static RTIME rt_BaseRateTick;
 static float FinalTime           = 0.0;
@@ -99,6 +100,10 @@ static struct { char name[MAX_NAME_SIZE]; int nrow, ncol; } rtaiLogData[MAX_LOGS
 static struct { char name[MAX_NAME_SIZE]; int nrow, ncol; } rtaiALogData[MAX_LOGS];
 static struct { char name[MAX_NAME_SIZE]; int nleds; } rtaiLed[MAX_LEDS];
 static struct { char name[MAX_NAME_SIZE]; int nmeters; } rtaiMeter[MAX_METERS];
+
+#ifdef TASKDURATION
+RTIME RTTSKinit=0, RTTSKper;
+#endif
 
 #define SS_DOUBLE  0
 #define rt_SCALAR  0 
@@ -268,21 +273,28 @@ static void *rt_BaseRate(void *args)
 
   iopl(3);
   rt_task_use_fpu(rt_BaseRateTask, 1);
+
   NAME(MODEL,_init_blk)();
   grow_and_lock_stack(stackinc);
   if (UseHRT) {
     rt_make_hard_real_time();
   }
 
-  rt_send(rt_MainTask, 0);
-  rt_task_suspend(rt_BaseRateTask);
+  rt_rpc(rt_MainTask,0,(void *) name); 
   t0 = rt_get_cpu_time_ns();
   rt_task_make_periodic(rt_BaseRateTask, rt_get_time() + rt_BaseRateTick, rt_BaseRateTick);
   while (!endBaseRate) {
+#ifdef TASKDURATION
+    RTTSKper=rt_get_cpu_time_ns()-RTTSKinit;
+#endif
     WaitTimingEvent(TimingEventArg);
+
     if (endBaseRate) break;
 
     TIME = (rt_get_cpu_time_ns() - t0)*1.0E-9;
+#ifdef TASKDURATION
+    RTTSKinit=rt_get_cpu_time_ns();
+#endif
 
     NAME(MODEL,_rt_exec)(NAME(block_,MODEL),z, &TIME);
 
@@ -292,6 +304,7 @@ static void *rt_BaseRate(void *args)
   }
   NAME(MODEL,_end)(NAME(block_,MODEL),z, &TIME);
   rt_task_delete(rt_BaseRateTask);
+
   return 0;
 }
 
@@ -431,6 +444,18 @@ static void *rt_HostInterface(void *args)
 	    rt_returnx(task, &samplingTime, sizeof(float));
 	  }
 	}
+	while (1) {
+	  rt_receivex(task, &Idx, sizeof(int), &len);
+	  if (Idx < 0) {
+	    rt_returnx(task, &Idx, sizeof(int));
+	    break;
+	  } else {
+	    rt_returnx(task, "", MAX_NAME_SIZE);
+	    rt_receivex(task, &Idx, sizeof(int), &len);
+	    samplingTime = get_tsamp();
+	    rt_returnx(task, &samplingTime, sizeof(float));
+	  }
+	}
 	break;
       }
       case 's': {
@@ -531,7 +556,6 @@ static void *rt_HostInterface(void *args)
 	break;
       }
       default : {
-	rt_return(task, 0xFFFFFFFF);
 	break;
       }
       }
@@ -626,7 +650,7 @@ static int rt_Main(int priority)
   if (verbose) {
     printf("Target is running.\n");
   }
-  rt_task_resume(rt_BaseRateTask);
+  rt_return(rt_BaseRateTask,0);
   isRunning = 1;
   while (!endex && (!FinalTime || TIME < FinalTime)) {
     msleep(POLL_PERIOD);
@@ -822,24 +846,20 @@ int main(int argc, char *argv[])
       break;
     }
   } while (c >= 0);
+
   if (verbose) {
-    printf("\nTarget settings:\n");
-    if (InternTimer) {
-      printf("  Real-time : %s;\n", UseHRT ? "HARD" : "SOFT");
-      if (ClockTick) {
-	printf("  Internal Clock Tick : %e (s);\n", ClockTick*1.0E-9);
-      } else {
-	printf("  Internal Clock is OneShot;\n");
-      }
-    } else {
-      printf("  External timing\n");
-    }
-    printf("  Priority : %d;\n", priority);
+    printf("\nTarget settings\n");
+    printf("===============\n");
+    printf("  Real-time : %s\n", UseHRT ? "HARD" : "SOFT");	
+    printf("  Timing    : %s / ", InternTimer ? "internal" : "external");
+    printf("%s\n", ClockTick ? "periodic" : "oneshot");
+    printf("  Priority  : %d\n", priority);
     if (FinalTime > 0) {
-      printf("  Finaltime : %f (s).\n\n", FinalTime);
+      printf("  Finaltime : %f [s]\n", FinalTime);
     } else {
-      printf("  RUN FOR EVER.\n\n");
+      printf("  Finaltime : RUN FOREVER\n");
     }
+    printf("  CPU map   : %x\n\n", CpuMap);
   }
   if (donotrun) {
     printf("ABORTED BECAUSE OF EXECUTION OPTIONS ERRORS.\n");

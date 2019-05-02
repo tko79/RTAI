@@ -32,7 +32,9 @@
 #include <rtai_sem.h>
 
 #define	MQ_OPEN_MAX	8	/* Maximum number of message queues per process */
+#ifndef	MQ_PRIO_MAX
 #define	MQ_PRIO_MAX	32	/* Maximum number of message priorities */
+#endif
 #define	MQ_BLOCK	0	/* Flag to set queue into blocking mode */
 #define	MQ_NONBLOCK	1	/* Flag to set queue into non-blocking mode */
 #define MQ_NAME_MAX	80	/* Maximum length of a queue name string */
@@ -79,7 +81,6 @@ typedef struct msg_hdr {
 #define MSG_HDR_SIZE	(sizeof(MSG_HDR))
 
 typedef struct queue_control {
-    int nodind;
     void **nodes;
     void *base;		/* Pointer to the base of the queue in memory */
     void *head;		/* Pointer to the element at the front of the queue */
@@ -137,37 +138,37 @@ int __rtai_mq_init(void);
 
 void __rtai_mq_exit(void);
 
-mqd_t mq_open(char *mq_name, int oflags, mode_t permissions, struct mq_attr *mq_attr);
+RTAI_SYSCALL_MODE mqd_t mq_open(char *mq_name, int oflags, mode_t permissions, struct mq_attr *mq_attr);
 
-size_t _mq_receive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, int space);
+RTAI_SYSCALL_MODE size_t _mq_receive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, int space);
 static inline size_t mq_receive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio)
 {
 	return _mq_receive(mq, msg_buffer, buflen, msgprio, 1);
 }
 
-int _mq_send(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, int space);
+RTAI_SYSCALL_MODE int _mq_send(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, int space);
 static inline int mq_send(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio)
 {
 	return _mq_send(mq, msg, msglen, msgprio, 1);
 }
 
-int mq_close(mqd_t mq);
+RTAI_SYSCALL_MODE int mq_close(mqd_t mq);
 
-int mq_getattr(mqd_t mq, struct mq_attr *attrbuf);
+RTAI_SYSCALL_MODE int mq_getattr(mqd_t mq, struct mq_attr *attrbuf);
 
-int mq_setattr(mqd_t mq, const struct mq_attr *new_attrs, struct mq_attr *old_attrs);
+RTAI_SYSCALL_MODE int mq_setattr(mqd_t mq, const struct mq_attr *new_attrs, struct mq_attr *old_attrs);
 
-int mq_notify(mqd_t mq, const struct sigevent *notification);
+RTAI_SYSCALL_MODE int mq_notify(mqd_t mq, const struct sigevent *notification);
 
-int mq_unlink(char *mq_name);
+RTAI_SYSCALL_MODE int mq_unlink(char *mq_name);
 
-size_t _mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime, int space);
+RTAI_SYSCALL_MODE size_t _mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime, int space);
 static inline size_t mq_timedreceive(mqd_t mq, char *msg_buffer, size_t buflen, unsigned int *msgprio, const struct timespec *abstime)
 {
 	return _mq_timedreceive(mq, msg_buffer, buflen, msgprio, abstime, 1);
 }
 
-int _mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime, int space);
+RTAI_SYSCALL_MODE int _mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime, int space);
 static inline int mq_timedsend(mqd_t mq, const char *msg, size_t msglen, unsigned int msgprio, const struct timespec *abstime)
 {
 	return _mq_timedsend(mq, msg, msglen, msgprio, abstime, 1);

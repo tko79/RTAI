@@ -8,7 +8,7 @@
 #include <arpa/inet.h>
 
 #include <rtai_netrpc.h>
-#include <rtai_sem.h>
+#include <rtai_mbx.h>
 
 struct MbxSif{
   char mbxName[10];
@@ -22,9 +22,9 @@ static void init(scicos_block *block)
   char str[20];
   struct MbxSif * mbx = (struct MbxSif *) malloc(sizeof(struct MbxSif));
   int nch=block->nin;
-  getstr(str,block->ipar,2,block->ipar[0]);
+  par_getstr(str,block->ipar,2,block->ipar[0]);
   strcpy(mbx->mbxName,str);
-  getstr(str,block->ipar,2+block->ipar[0],block->ipar[1]);
+  par_getstr(str,block->ipar,2+block->ipar[0],block->ipar[1]);
 
   struct sockaddr_in addr;
 

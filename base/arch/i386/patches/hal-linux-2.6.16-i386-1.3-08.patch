@@ -2593,7 +2593,13 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  static volatile unsigned int printk_cpu = UINT_MAX;
 --- 2.6.16/kernel/sched.c	2006-03-20 06:53:29.000000000 +0100
 +++ 2.6.16-ipipe/kernel/sched.c	2006-05-04 10:44:10.000000000 +0200
-@@ -1582,6 +1582,10 @@ task_t * context_switch(runqueue_t *rq, 
+@@ -1576,12 +1576,15 @@ asmlinkage void schedule_tail(task_t *pr
+  * context_switch - switch to the new MM and the new
+  * thread's register state.
+  */
+-static inline
+ task_t * context_switch(runqueue_t *rq, task_t *prev, task_t *next)
+ {
  	struct mm_struct *mm = next->mm;
  	struct mm_struct *oldmm = prev->active_mm;
  
@@ -2604,7 +2610,7 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  	if (unlikely(!mm)) {
  		next->active_mm = oldmm;
  		atomic_inc(&oldmm->mm_count);
-@@ -1594,13 +1598,15 @@ task_t * context_switch(runqueue_t *rq, 
+@@ -1594,13 +1597,18 @@ task_t * context_switch(runqueue_t *rq, 
  		WARN_ON(rq->prev_mm);
  		rq->prev_mm = oldmm;
  	}
@@ -2612,6 +2618,9 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
 +}
  	/* Here we just switch the register state and the stack. */
  	switch_to(prev, next, prev);
++#ifdef CONFIG_IPIPE
++	current->ptd[IPIPE_ROOT_NPTDKEYS - 1] = prev;
++#endif /* CONFIG_IPIPE */
  
  	return prev;
  }
@@ -2621,7 +2630,7 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  /*
   * nr_running, nr_uninterruptible and nr_context_switches:
   *
-@@ -2868,13 +2874,18 @@ asmlinkage void __sched schedule(void)
+@@ -2868,13 +2876,18 @@ asmlinkage void __sched schedule(void)
  	unsigned long run_time;
  	int cpu, idx, new_prio;
  
@@ -2641,7 +2650,7 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  			printk(KERN_ERR "scheduling while atomic: "
  				"%s/0x%08x/%d\n",
  				current->comm, preempt_count(), current->pid);
-@@ -2883,8 +2894,19 @@ asmlinkage void __sched schedule(void)
+@@ -2883,8 +2896,19 @@ asmlinkage void __sched schedule(void)
  	}
  	profile_hit(SCHED_PROFILING, __builtin_return_address(0));
  
@@ -2661,7 +2670,7 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  	prev = current;
  	release_kernel_lock(prev);
  need_resched_nonpreemptible:
-@@ -3023,6 +3045,8 @@ switch_tasks:
+@@ -3023,6 +3047,8 @@ switch_tasks:
  		prepare_task_switch(rq, next);
  		prev = context_switch(rq, prev, next);
  		barrier();
@@ -2670,7 +2679,7 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  		/*
  		 * this_rq must be evaluated again because prev may have moved
  		 * CPUs since it called schedule(), thus the 'rq' on its stack
-@@ -3055,6 +3079,11 @@ asmlinkage void __sched preempt_schedule
+@@ -3055,6 +3081,11 @@ asmlinkage void __sched preempt_schedule
  	struct task_struct *task = current;
  	int saved_lock_depth;
  #endif
@@ -2682,7 +2691,7 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  	/*
  	 * If there is a non-zero preempt_count or interrupts are disabled,
  	 * we do not want to preempt the current task.  Just return..
-@@ -3693,6 +3722,7 @@ recheck:
+@@ -3693,6 +3724,7 @@ recheck:
  		deactivate_task(p, rq);
  	oldprio = p->prio;
  	__setscheduler(p, policy, param->sched_priority);
@@ -2690,7 +2699,7 @@ Binary files 2.6.16/arch/ia64/hp/sim/boot/bootloader and 2.6.16-ipipe/arch/ia64/
  	if (array) {
  		__activate_task(p, rq);
  		/*
-@@ -6160,3 +6190,50 @@ void set_curr_task(int cpu, task_t *p)
+@@ -6160,3 +6192,50 @@ void set_curr_task(int cpu, task_t *p)
  }
  
  #endif

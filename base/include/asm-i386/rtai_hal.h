@@ -38,12 +38,17 @@
 #ifndef _RTAI_ASM_I386_HAL_H
 #define _RTAI_ASM_I386_HAL_H
 
+#ifdef CONFIG_REGPARM
+#define RTAI_SYSCALL_MODE __attribute__((regparm(0)))
+#else
+#define RTAI_SYSCALL_MODE
+#endif
+
 #define RTAI_DUOSS
 #ifndef RTAI_DUOSS
 #define RTAI_TRIOSS
 #endif
 #define LOCKED_LINUX_IN_IRQ_HANDLER
-#define UNWRAPPED_CATCH_EVENT
 #define DOMAIN_TO_STALL  (fusion_domain)
 
 #include <asm/rtai_vectors.h>
@@ -329,14 +334,24 @@ typedef int (*rt_irq_handler_t)(unsigned irq, void *cookie);
 #define RTAI_CPU_FREQ              (rtai_tunables.cpu_freq)
 
 #if 0
+
 static inline unsigned long long _rtai_hidden_rdtsc (void) {
     unsigned long long t;
     __asm__ __volatile__( "rdtsc" : "=A" (t));
     return t;
 }
 #define rtai_rdtsc() _rtai_hidden_rdtsc()
+
+#else
+
+//#define CONFIG_RTAI_DIAG_TSC_SYNC
+#if defined(CONFIG_SMP) && defined(CONFIG_RTAI_DIAG_TSC_SYNC) && defined(CONFIG_RTAI_TUNE_TSC_SYNC)
+extern volatile long rtai_tsc_ofst[];
+#define rtai_rdtsc() ({ unsigned long long t; __asm__ __volatile__( "rdtsc" : "=A" (t)); t - rtai_tsc_ofst[rtai_cpuid()]; })
 #else
 #define rtai_rdtsc() ({ unsigned long long t; __asm__ __volatile__( "rdtsc" : "=A" (t)); t; })
+#endif
+
 #endif
 
 #else  /* !CONFIG_X86_TSC */
@@ -403,6 +418,20 @@ extern struct rtai_switch_data {
 irqreturn_t rtai_broadcast_to_local_timers(int irq,
 					   void *dev_id,
 					   struct pt_regs *regs);
+
+static inline unsigned long rtai_save_flags_irqbit(void)
+{
+	unsigned long flags;
+	rtai_save_flags(flags);
+	return flags & (1 << RTAI_IFLAG);
+}
+
+static inline unsigned long rtai_save_flags_irqbit_and_cli(void)
+{
+	unsigned long flags;
+	rtai_save_flags_and_cli(flags);
+	return flags & (1 << RTAI_IFLAG);
+}
 
 #ifdef CONFIG_SMP
 
@@ -536,19 +565,6 @@ static inline void rt_global_sti(void)
     rtai_sti();
 }
 
-static inline unsigned long rtai_save_flags_irqbit(void)
-{
-	unsigned long flags;
-	rtai_save_flags(flags);
-	return flags & (1 << RTAI_IFLAG);
-}
-static inline unsigned long rtai_save_flags_irqbit_and_cli(void)
-{
-	unsigned long flags;
-	rtai_save_flags_and_cli(flags);
-	return flags & (1 << RTAI_IFLAG);
-}
-
 /**
  * Save CPU flags
  *
@@ -646,8 +662,8 @@ static inline unsigned long rt_global_save_flags_and_cli(void)
 
 #endif
 
-int rt_printk(const char *format, ...);
-int rt_printk_sync(const char *format, ...);
+asmlinkage int rt_printk(const char *format, ...);
+asmlinkage int rt_printk_sync(const char *format, ...);
 
 extern struct hal_domain_struct rtai_domain;
 extern struct hal_domain_struct *fusion_domain;
@@ -657,15 +673,15 @@ extern struct hal_domain_struct *fusion_domain;
 #define _rt_switch_to_real_time(cpuid) \
 do { \
 	rtai_linux_context[cpuid].lflags = xchg(&DOMAIN_TO_STALL->cpudata[cpuid].status, (1 << IPIPE_STALL_FLAG)); \
-	rtai_linux_context[cpuid].oldomain = hal_current_domain[cpuid]; \
+	rtai_linux_context[cpuid].oldomain = hal_current_domain(cpuid); \
 	rtai_linux_context[cpuid].sflags = 1; \
-	hal_current_domain[cpuid] = &rtai_domain; \
+	hal_current_domain(cpuid) = &rtai_domain; \
 } while (0)
 
 #define rt_switch_to_linux(cpuid) \
 do { \
 	if (rtai_linux_context[cpuid].sflags) { \
-		hal_current_domain[cpuid] = (void *)rtai_linux_context[cpuid].oldomain; \
+		hal_current_domain(cpuid) = (void *)rtai_linux_context[cpuid].oldomain; \
 		DOMAIN_TO_STALL->cpudata[cpuid].status = rtai_linux_context[cpuid].lflags; \
 		rtai_linux_context[cpuid].sflags = 0; \
 		CLR_TASKPRI(cpuid); \
@@ -678,13 +694,13 @@ do { \
 do { \
 	rtai_linux_context[cpuid].lflags = xchg(ipipe_root_status[cpuid], (1 << IPIPE_STALL_FLAG)); \
 	rtai_linux_context[cpuid].sflags = 1; \
-	hal_current_domain[cpuid] = &rtai_domain; \
+	hal_current_domain(cpuid) = &rtai_domain; \
 } while (0)
 
 #define rt_switch_to_linux(cpuid) \
 do { \
 	if (rtai_linux_context[cpuid].sflags) { \
-		hal_current_domain[cpuid] = hal_root_domain; \
+		hal_current_domain(cpuid) = hal_root_domain; \
 		*ipipe_root_status[cpuid] = rtai_linux_context[cpuid].lflags; \
 		rtai_linux_context[cpuid].sflags = 0; \
 		CLR_TASKPRI(cpuid); \
@@ -708,7 +724,7 @@ do { \
 do { \
 	int v; \
 	for (v = SPURIOUS_APIC_VECTOR + 1; v < 256; v++) { \
-		hal_virtualize_irq(hal_root_domain, v - FIRST_EXTERNAL_VECTOR, (void (*)(unsigned))rtai_get_intr_handler(v), ack_bad_irq, IPIPE_HANDLE_MASK); \
+		hal_virtualize_irq(hal_root_domain, v - FIRST_EXTERNAL_VECTOR, (void (*)(unsigned))rtai_get_intr_handler(v), (void *)ack_bad_irq, IPIPE_HANDLE_MASK); \
 	} \
 } while (0)
 
@@ -849,9 +865,7 @@ void rtai_reset_gate_vector(unsigned vector, struct desc_struct e);
 void rt_do_irq(unsigned irq);
 
 int rt_request_linux_irq(unsigned irq,
-			 irqreturn_t (*handler)(int irq,
-			 void *dev_id,
-			 struct pt_regs *regs), 
+			 void *handler,
 			 char *name,
 			 void *dev_id);
 
@@ -859,6 +873,8 @@ int rt_free_linux_irq(unsigned irq,
 		      void *dev_id);
 
 void rt_pend_linux_irq(unsigned irq);
+
+RTAI_SYSCALL_MODE void usr_rt_pend_linux_irq(unsigned irq);
 
 void rt_pend_linux_srq(unsigned srq);
 
@@ -968,7 +984,7 @@ extern int fusion_timer_running;
 
 #define NON_RTAI_SCHEDULE(cpuid) \
 do { \
-	if (hal_current_domain[cpuid] == hal_root_domain) { \
+	if (hal_current_domain(cpuid) == hal_root_domain) { \
 		schedule(); \
 	} else { \
 		xnpod_schedule(); \
