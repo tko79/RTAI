@@ -30,8 +30,27 @@
 #define RTAI_MODULE_PARM(name, type) \
 	module_param(name, type, 0444)
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+#define IRQF_SHARED  SA_SHIRQ
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+
+#ifndef TIMER_ABSTIME
+#define TIMER_ABSTIME  0x01
+#endif
+
+typedef int timer_t;
+
+#ifndef __deprecated
+#define container_of(ptr, type, member) \
+	({ const typeof( ((type *)0)->member ) *__mptr = (ptr); \
+        (type *)( (char *)__mptr - offsetof(type,member) );})
+#endif
+
+#ifndef __deprecated
+#define __deprecated  __attribute__((deprecated))
+#endif
 
 #define RTAI_MODULE_PARM_ARRAY(name, type, addr, size) \
         static inline void *__check_existence_##name(void) { return &name; } \
@@ -80,6 +99,7 @@ typedef void irqreturn_t;
 
 /* Basic class macros */
 #ifdef CONFIG_SYSFS
+#include <linux/device.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
 typedef struct class class_t;
 #define CLASS_DEVICE_CREATE(cls, devt, device, fmt, arg...) class_device_create(cls, NULL, devt, device, fmt, ## arg)
@@ -120,6 +140,14 @@ typedef struct class_simple class_t;
 #define CPUMASK_T(name)  ((cpumask_t){ { name } })
 #define CPUMASK(name)    (name.bits[0])
 #endif /* LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,7) */
+
+#ifndef CONFIG_SYSFS
+typedef void * class_t;
+#define class_create(a,b)  ((void *)1)
+#define CLASS_DEVICE_CREATE(a, b, c, d, ...)  ((void *)1) 
+#define class_device_destroy(a, b)
+#define class_destroy(a)
+#endif
 
 #endif /* __KERNEL__ */
 

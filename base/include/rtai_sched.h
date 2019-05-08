@@ -47,8 +47,11 @@
 #define RT_SCHED_RETURN     128
 #define RT_SCHED_MBXSUSP    256
 #define RT_SCHED_SFTRDY     512
+#define RT_SCHED_SIGSUSP    (1 << 15)
 
-#define RT_RWLINV     (9)  // keep this the highest
+#define RT_RWLINV     (11)  // keep this the highest
+#define RT_CHGPORTERR (10)
+#define RT_CHGPORTOK  (9)
 #define RT_NETIMOUT   (8)
 #define RT_DEADLOK    (7)
 #define RT_PERM       (6)
@@ -57,43 +60,49 @@
 #define RT_TIMOUT     (3)
 #define RT_UNBLKD     (2)
 #define RT_TMROVRN    (1)  // keep this the lowest, must be 1
-#define RTP_RWLINV    ((void *)RT_RWLINV)
-#define RTP_NETIMOUT  ((void *)RT_NETIMOUT)
-#define RTP_DEADLOK   ((void *)RT_DEADLOK)
-#define RTP_PERM      ((void *)RT_PERM)
-#define RTP_OBJINV    ((void *)RT_OBJINV)
-#define RTP_OBJREM    ((void *)RT_OBJREM)
-#define RTP_TIMOUT    ((void *)RT_TIMOUT)
-#define RTP_UNBLKD    ((void *)RT_UNBLKD)
-#define RTP_TMROVRN   ((void *)RT_TMROVRN)
-#define RTP_HIGERR    (RTP_RWLINV)
-#define RTP_LOWERR    (RTP_TMROVRN)
+#define RTP_RWLINV     ((void *)RT_RWLINV)
+#define RTP_CHGPORTERR ((void *)RT_CHGPORTERR)
+#define RTP_CHGPORTOK  ((void *)RT_CHGPORTOK)
+#define RTP_NETIMOUT   ((void *)RT_NETIMOUT)
+#define RTP_DEADLOK    ((void *)RT_DEADLOK)
+#define RTP_PERM       ((void *)RT_PERM)
+#define RTP_OBJINV     ((void *)RT_OBJINV)
+#define RTP_OBJREM     ((void *)RT_OBJREM)
+#define RTP_TIMOUT     ((void *)RT_TIMOUT)
+#define RTP_UNBLKD     ((void *)RT_UNBLKD)
+#define RTP_TMROVRN    ((void *)RT_TMROVRN)
+#define RTP_HIGERR     (RTP_RWLINV)
+#define RTP_LOWERR     (RTP_TMROVRN)
 #if CONFIG_RTAI_USE_NEWERR
-#define RTE_BASE      (0x3FFFFF00)
-#define RTE_RWLINV    (RTE_BASE + RT_RWLINV)
-#define RTE_NETIMOUT  (RTE_BASE + RT_NETIMOUT)
-#define RTE_DEADLOK   (RTE_BASE + RT_DEADLOK)
-#define RTE_PERM      (RTE_BASE + RT_PERM)
-#define RTE_OBJINV    (RTE_BASE + RT_OBJINV)
-#define RTE_OBJREM    (RTE_BASE + RT_OBJREM)
-#define RTE_TIMOUT    (RTE_BASE + RT_TIMOUT)
-#define RTE_UNBLKD    (RTE_BASE + RT_UNBLKD)
-#define RTE_TMROVRN   (RTE_BASE + RT_TMROVRN)
-#define RTE_HIGERR    (RTE_RWLINV)
-#define RTE_LOWERR    (RTE_TMROVRN)
+#define RTE_BASE       (0x3FFFFF00)
+#define RTE_RWLINV     (RTE_BASE + RT_RWLINV)
+#define RTE_CHGPORTERR (RTE_BASE + RT_CHGPORTERR)
+#define RTE_CHGPORTOK  (RTE_BASE + RT_CHGPORTOK)
+#define RTE_NETIMOUT   (RTE_BASE + RT_NETIMOUT)
+#define RTE_DEADLOK    (RTE_BASE + RT_DEADLOK)
+#define RTE_PERM       (RTE_BASE + RT_PERM)
+#define RTE_OBJINV     (RTE_BASE + RT_OBJINV)
+#define RTE_OBJREM     (RTE_BASE + RT_OBJREM)
+#define RTE_TIMOUT     (RTE_BASE + RT_TIMOUT)
+#define RTE_UNBLKD     (RTE_BASE + RT_UNBLKD)
+#define RTE_TMROVRN    (RTE_BASE + RT_TMROVRN)
+#define RTE_HIGERR     (RTE_RWLINV)
+#define RTE_LOWERR     (RTE_TMROVRN)
 #else
-#define RTE_BASE      (0xFFFB)
-#define RTE_RWLINV    (RTE_BASE + RT_RWLINV)
-#define RTE_NETIMOUT  (RTE_BASE + RT_NETIMOUT)
-#define RTE_DEADLOK   (RTE_BASE + RT_DEADLOK)
-#define RTE_PERM      (RTE_BASE + RT_PERM)
-#define RTE_OBJINV    (RTE_BASE + RT_OBJREM)
-#define RTE_OBJREM    (RTE_BASE + RT_OBJREM)
-#define RTE_TIMOUT    (RTE_BASE + RT_TIMOUT)
-#define RTE_UNBLKD    (RTE_BASE + RT_UNBLKD)
-#define RTE_TMROVRN   (RTE_BASE + RT_TMROVRN)
-#define RTE_HIGERR    (RTE_RWLINV)
-#define RTE_LOWERR    (RTE_TMROVRN)
+#define RTE_BASE       (0xFFFB)
+#define RTE_RWLINV     (RTE_BASE + RT_RWLINV)
+#define RTE_CHGPORTERR (RTE_BASE + RT_CHGPORTERR)
+#define RTE_CHGPORTOK  (RTE_BASE + RT_CHGPORTOK)
+#define RTE_NETIMOUT   (RTE_BASE + RT_NETIMOUT)
+#define RTE_DEADLOK    (RTE_BASE + RT_DEADLOK)
+#define RTE_PERM       (RTE_BASE + RT_PERM)
+#define RTE_OBJINV     (RTE_BASE + RT_OBJREM)
+#define RTE_OBJREM     (RTE_BASE + RT_OBJREM)
+#define RTE_TIMOUT     (RTE_BASE + RT_TIMOUT)
+#define RTE_UNBLKD     (RTE_BASE + RT_UNBLKD)
+#define RTE_TMROVRN    (RTE_BASE + RT_TMROVRN)
+#define RTE_HIGERR     (RTE_RWLINV)
+#define RTE_LOWERR     (RTE_TMROVRN)
 #endif
 
 #define RT_EINTR      (RTE_UNBLKD)
@@ -130,105 +139,96 @@ typedef struct rt_queue {
 } QUEUE;
 
 struct mcb_t {
-    void *sbuf;
-    int sbytes;
-    void *rbuf;
-    int rbytes;
+	void *sbuf;
+	int sbytes;
+	void *rbuf;
+	int rbytes;
 };
 
+/*Exit handler functions are called like C++ destructors in rt_task_delete().*/
 typedef struct rt_ExitHandler {
-    /* Exit handler functions are called like C++ destructors in
-       rt_task_delete(). */
-    struct rt_ExitHandler *nxt;
-    void (*fun) (void *arg1, int arg2);
-    void *arg1;
-    int   arg2;
+	struct rt_ExitHandler *nxt;
+	void (*fun) (void *arg1, int arg2);
+	void *arg1;
+	int   arg2;
 } XHDL;
 
 struct rt_heap_t { void *heap, *kadr, *uadr; };
 
 typedef struct rt_task_struct {
+	long *stack __attribute__ ((__aligned__ (L1_CACHE_BYTES)));
+	int uses_fpu;
+	int magic;
+	volatile int state, running;
+	unsigned long runnable_on_cpus;
+	long *stack_bottom;
+	volatile int priority;
+	int base_priority;
+	int policy;
+	int sched_lock_priority;
+	struct rt_task_struct *prio_passed_to;
+	RTIME period;
+	RTIME resume_time;
+	RTIME periodic_resume_time;
+	RTIME yield_time;
+	int rr_quantum, rr_remaining;
+	int suspdepth;
+	struct rt_queue queue;
+	int owndres;
+	struct rt_queue *blocked_on;
+	struct rt_queue msg_queue;
+	int tid;  /* trace ID */
+	unsigned long msg;
+	struct rt_queue ret_queue;
+	void (*signal)(void);
+	FPU_ENV fpu_reg __attribute__ ((__aligned__ (L1_CACHE_BYTES)));
+	struct rt_task_struct *prev, *next;
+	struct rt_task_struct *tprev, *tnext;
+	struct rt_task_struct *rprev, *rnext;
 
-    long *stack __attribute__ ((__aligned__ (L1_CACHE_BYTES)));
-    int uses_fpu;
-    int magic;
-    volatile int state, running;
-    unsigned long runnable_on_cpus;
-    long *stack_bottom;
-    volatile int priority;
-    int base_priority;
-    int policy;
-    int sched_lock_priority;
-    struct rt_task_struct *prio_passed_to;
-    RTIME period;
-    RTIME resume_time;
-    RTIME periodic_resume_time;
-    RTIME yield_time;
-    int rr_quantum;
-    int rr_remaining;
-    int suspdepth;
-    struct rt_queue queue;
-    int owndres;
-    struct rt_queue *blocked_on;
-    struct rt_queue msg_queue;
-    int tid;	/* trace ID */
-    unsigned long msg;
-    struct rt_queue ret_queue;
-    void (*signal)(void);
-    FPU_ENV fpu_reg __attribute__ ((__aligned__ (L1_CACHE_BYTES)));
-    struct rt_task_struct *prev;
-    struct rt_task_struct *next;
-    struct rt_task_struct *tprev;
-    struct rt_task_struct *tnext;
-    struct rt_task_struct *rprev;
-    struct rt_task_struct *rnext;
+	/* For calls from LINUX. */
+	long *fun_args;
+	long *bstack;
+	struct task_struct *lnxtsk;
+	long long retval;
+	char *msg_buf[2];
+	long max_msg_size[2];
+	char task_name[16];
+	void *system_data_ptr;
+	struct rt_task_struct *nextp, *prevp;
 
-    /* Appended for calls from LINUX. */
-    long *fun_args;
-    long *bstack;
-    struct task_struct *lnxtsk;
-    long long retval;
-    char *msg_buf[2];
-    long max_msg_size[2];
-    char task_name[16];
-    void *system_data_ptr;
-    struct rt_task_struct *nextp;
-    struct rt_task_struct *prevp;
+	RT_TRAP_HANDLER task_trap_handler[HAL_NR_FAULTS];
 
-    /* Added to support user specific trap handlers. */
-    RT_TRAP_HANDLER task_trap_handler[HAL_NR_FAULTS];
+	long unblocked;
+	void *rt_signals;
+	volatile unsigned long pstate;
+	unsigned long usp_flags;
+	unsigned long usp_flags_mask;
+	unsigned long force_soft;
+	volatile int is_hard;
 
-    /* Added from rtai-22. */
-    long unblocked;
-    void *rt_signals;
-    volatile unsigned long pstate;
-    unsigned long usp_flags;
-    unsigned long usp_flags_mask;
-    unsigned long force_soft;
-    volatile int is_hard;
+	void *trap_handler_data;
+	struct linux_syscalls_list *linux_syscall_server; 
 
-    void *trap_handler_data;
-    struct rt_task_struct *linux_syscall_server; 
+	/* For use by watchdog. */
+	int resync_frame;
 
-    /* For use by watchdog. */
-    int resync_frame;
+	/* For use by exit handler functions. */
+	XHDL *ExitHook;
 
-    /* For use by exit handler functions. */
-    XHDL *ExitHook;
+	RTIME exectime[2];
+	struct mcb_t mcb;
 
-    RTIME exectime[2];
-    struct mcb_t mcb;
+	/* Real time heaps. */
+	struct rt_heap_t heap[2];
 
-    /* Real time heaps. */
-    struct rt_heap_t heap[2];
-
-    volatile int scheduler;
+	volatile int scheduler;
 
 #ifdef CONFIG_RTAI_LONG_TIMED_LIST
-    rb_root_t rbr;
-    rb_node_t rbn;
+	rb_root_t rbr;
+	rb_node_t rbn;
 #endif
-    struct rt_queue resq;
+	struct rt_queue resq;
 } RT_TASK __attribute__ ((__aligned__ (L1_CACHE_BYTES)));
 
 #else /* __cplusplus */
@@ -336,6 +336,10 @@ RTAI_SYSCALL_MODE RTIME rt_get_time_ns_cpuid(unsigned cpuid);
 
 RTIME rt_get_cpu_time_ns(void);
 
+RTIME rt_get_real_time(void);
+
+RTIME rt_get_real_time_ns(void);
+
 int rt_get_prio(struct rt_task_struct *task);
 
 int rt_get_inher_prio(struct rt_task_struct *task);
@@ -363,9 +367,9 @@ RTAI_SYSCALL_MODE int rt_task_suspend_timed(struct rt_task_struct *task, RTIME d
 
 RTAI_SYSCALL_MODE int rt_task_resume(struct rt_task_struct *task);
 
-RT_TASK *rt_exec_linux_syscall(RT_TASK *rt_current, RT_TASK *task, struct pt_regs *regs);
+RTAI_SYSCALL_MODE void rt_set_linux_syscall_mode(long sync_async, void (*callback_fun)(long, long));
 
-RTAI_SYSCALL_MODE RT_TASK *rt_receive_linux_syscall(RT_TASK *task, struct pt_regs *regs);
+void rt_exec_linux_syscall(RT_TASK *rt_current, struct linux_syscalls_list *syscalls, struct pt_regs *regs);
 
 RTAI_SYSCALL_MODE void rt_return_linux_syscall(RT_TASK *task, unsigned long retval);
 
