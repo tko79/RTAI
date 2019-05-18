@@ -16,6 +16,9 @@ calibrate_rt.ko: $(libcalibrate_rt_a_SOURCES)
 
 clean-local:
 	@RTAI_KBUILD_CLEAN@
+
+distclean-local:
+	@RTAI_KBUILD_DISTCLEAN@
 else
 noinst_LIBRARIES = libcalibrate_rt.a
 
@@ -54,6 +57,13 @@ calibration_helper_LDADD = \
 	../../../sched/liblxrt/liblxrt.la \
 	-lpthread
 
+calibrate_DEPENDENCIES = liblxrt.la
+liblxrt.la:
+	@(cd ../../../sched/liblxrt && make liblxrt.la)
+
+.PHONY: liblxrt.la
+
+
 all-local: calibrate_rt$(modext)
 
 install-exec-local: calibrate_rt$(modext)
@@ -71,3 +81,5 @@ run: all
 	@$(top_srcdir)/rtai-scripts/rtai-load --verbose
 
 EXTRA_DIST = runinfo README.SMI Makefile.kbuild
+
+DISTCLEANFILES = Makefile

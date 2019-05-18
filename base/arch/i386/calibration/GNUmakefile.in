@@ -307,6 +307,7 @@ RTAI_TARGET_ARCH_OPTS = @RTAI_TARGET_ARCH_OPTS@
 RTAI_TARGET_SUBARCH = @RTAI_TARGET_SUBARCH@
 RTAI_USER_APP_CFLAGS = @RTAI_USER_APP_CFLAGS@
 RTAI_USER_CFLAGS = @RTAI_USER_CFLAGS@
+SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
@@ -396,7 +397,9 @@ calibration_helper_LDADD = \
 	-lpthread
 
 RT_MODULES = rtai_calibrate$(modext) rtai_smi$(modext)
+calibrate_DEPENDENCIES = liblxrt.la
 EXTRA_DIST = runinfo README.SMI Makefile.kbuild
+DISTCLEANFILES = Makefile
 all: all-am
 
 .SUFFIXES:
@@ -678,10 +681,12 @@ clean-generic:
 
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
+	-test -z "$(DISTCLEANFILES)" || rm -f $(DISTCLEANFILES)
 
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
+@CONFIG_KBUILD_FALSE@distclean-local:
 @CONFIG_KBUILD_FALSE@clean-local:
 clean: clean-am
 
@@ -692,7 +697,7 @@ distclean: distclean-am
 	-rm -rf ./$(DEPDIR)
 	-rm -f GNUmakefile
 distclean-am: clean-am distclean-compile distclean-generic \
-	distclean-libtool distclean-tags
+	distclean-libtool distclean-local distclean-tags
 
 dvi: dvi-am
 
@@ -738,9 +743,9 @@ uninstall-am: uninstall-calibrationPROGRAMS uninstall-info-am
 	clean-calibrationPROGRAMS clean-generic clean-libtool \
 	clean-local clean-noinstLIBRARIES ctags distclean \
 	distclean-compile distclean-generic distclean-libtool \
-	distclean-tags distdir dvi dvi-am html html-am info info-am \
-	install install-am install-calibrationPROGRAMS install-data \
-	install-data-am install-data-local install-exec \
+	distclean-local distclean-tags distdir dvi dvi-am html html-am \
+	info info-am install install-am install-calibrationPROGRAMS \
+	install-data install-data-am install-data-local install-exec \
 	install-exec-am install-exec-local install-info \
 	install-info-am install-man install-strip installcheck \
 	installcheck-am installdirs maintainer-clean \
@@ -765,6 +770,9 @@ uninstall-am: uninstall-calibrationPROGRAMS uninstall-info-am
 @CONFIG_KBUILD_TRUE@clean-local:
 @CONFIG_KBUILD_TRUE@	@RTAI_KBUILD_CLEAN@
 
+@CONFIG_KBUILD_TRUE@distclean-local:
+@CONFIG_KBUILD_TRUE@	@RTAI_KBUILD_DISTCLEAN@
+
 @CONFIG_KBUILD_FALSE@rtai_calibrate.o: libcalibrate_rt.a
 @CONFIG_KBUILD_FALSE@	$(CROSS_COMPILE)$(LD) --whole-archive $< -r -o $@
 
@@ -772,6 +780,10 @@ uninstall-am: uninstall-calibrationPROGRAMS uninstall-info-am
 @CONFIG_KBUILD_FALSE@	$(CROSS_COMPILE)$(LD) --whole-archive $< -r -o $@
 
 all-local: rtai_calibrate$(modext) rtai_smi$(modext)
+liblxrt.la:
+	@(cd ../../../sched/liblxrt && make liblxrt.la)
+
+.PHONY: liblxrt.la
 
 install-exec-local: $(RT_MODULES)
 	$(mkinstalldirs) $(DESTDIR)$(moduledir)

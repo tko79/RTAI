@@ -23,6 +23,9 @@ rtai_smi.ko: $(libsmi_rt_a_SOURCES)
 
 clean-local:
 	@RTAI_KBUILD_CLEAN@
+
+distclean-local:
+	@RTAI_KBUILD_DISTCLEAN@
 else
 noinst_LIBRARIES = libcalibrate_rt.a libsmi_rt.a
 
@@ -75,6 +78,12 @@ all-local: rtai_calibrate$(modext) rtai_smi$(modext)
 
 RT_MODULES = rtai_calibrate$(modext) rtai_smi$(modext)
 
+calibrate_DEPENDENCIES = liblxrt.la
+liblxrt.la:
+	@(cd ../../../sched/liblxrt && make liblxrt.la)
+
+.PHONY: liblxrt.la
+
 install-exec-local: $(RT_MODULES)
 	$(mkinstalldirs) $(DESTDIR)$(moduledir)
 	@for m in $(RT_MODULES) ; do \
@@ -95,3 +104,5 @@ run: all
 	@$(top_srcdir)/rtai-scripts/rtai-load --verbose
 
 EXTRA_DIST = runinfo README.SMI Makefile.kbuild
+
+DISTCLEANFILES = Makefile

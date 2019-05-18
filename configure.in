@@ -1,11 +1,11 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.59)
 
-AC_INIT(rtai,3.6,rtai@rtai.org)
+AC_INIT(rtai,3.6.1,rtai@rtai.org)
 
 CONFIG_RTAI_VERSION_MAJOR=3
 CONFIG_RTAI_VERSION_MINOR=6
-CONFIG_RTAI_REVISION_LEVEL=0
+CONFIG_RTAI_REVISION_LEVEL=1
 
 AC_CONFIG_HEADERS(rtai_config.h)
 AC_CONFIG_AUX_DIR(base/config/autoconf)
@@ -159,7 +159,12 @@ dnl file, therefore we must unset it before later checking if the kernel
 dnl actually defined it as required too.
 unset CONFIG_MODULES
 
-RTAI_LINUX_DIR=$CONFIG_RTAI_LINUXDIR
+dnl safe default
+if test x$CONFIG_RTAI_LINUXDIR != x ; then
+	RTAI_LINUX_DIR=$CONFIG_RTAI_LINUXDIR
+else
+	RTAI_LINUX_DIR="/usr/src/linux"
+fi
 
 AC_ARG_WITH(linux-dir,
     [  --with-linux-dir=<linux-dir>      RTAI-enabled Linux kernel tree],
@@ -282,7 +287,7 @@ dnl fi
 if test x${CONFIG_MODVERSIONS} = xy ; then
 	case "${RTAI_LINUX_VERSION}" in
 	2.4.*)
-		AC_MSG_ERROR([Please unset CONFIG_MODVERSIONS for $RTAI_LINUX_DIR and rebuild your kernel])
+  AC_MSG_ERROR([Please unset CONFIG_MODVERSIONS for $RTAI_LINUX_DIR and rebuild your kernel])
 		;;
 	*)
 		dnl reported to be harmless in 2.6
@@ -1491,15 +1496,15 @@ if test x$CONFIG_KBUILD = x; then
 else
    RTAI_MODULE_EXT=.ko
    RTAI_KBUILD_ENV='src2obj = $(patsubst %.$(1),%.o,$(filter %.$(1),$(call notdir,$(2))))'
-   RTAI_KBUILD_TOP="@if test -e $RTAI_LINUX_DIR/Module.symvers; then mv -f $RTAI_LINUX_DIR/Module.symvers $RTAI_LINUX_DIR/__Module.symvers; fi; if test -e $RTAI_LINUX_DIR/vmlinux; then mv -f $RTAI_LINUX_DIR/vmlinux $RTAI_LINUX_DIR/__vmlinux; fi; "
-   RTAI_KBUILD_BOTTOM="&& if test -e $RTAI_LINUX_DIR/__Module.symvers; then mv -f $RTAI_LINUX_DIR/__Module.symvers $RTAI_LINUX_DIR/Module.symvers; fi && if test -e $RTAI_LINUX_DIR/__vmlinux; then mv -f $RTAI_LINUX_DIR/__vmlinux $RTAI_LINUX_DIR/vmlinux; fi"
+   RTAI_KBUILD_TOP="@if test \\! -r Module.symvers ; then \$(LN_S) -f \"\`cd \$(top_builddir) && pwd\`/Module.symvers\" . ; fi;"
+   RTAI_KBUILD_BOTTOM=
    RTAI_KBUILD_CMD="for src in \$^; do if test \\! -r \`basename \$\$src\`; then \$(LN_S) \$\$src; fi; done; \
 		    rm -f $RTAI_LINUX_DIR/.tmp_versions/rtai_*.mod $RTAI_LINUX_DIR/.tmp_versions/*_rt.mod; \
                     \$(MAKE) -C $RTAI_LINUX_DIR CROSS_COMPILE=\$(CROSS_COMPILE) CC=$CC ARCH=$RTAI_TARGET_ARCH \
 		    SUBDIRS=\$\$PWD M=\$\$PWD rtai_srctree=\`cd \$(top_srcdir) && pwd\` rtai_srcdir=\`cd \$(srcdir) && pwd\` V=\$(V) modules \
 		    rtai_objs='\$(call src2obj,c,\$^) \$(call src2obj,S,\$^) \$(call src2obj,cc,\$^) \$(call src2obj,cpp,\$^)' rtai_target=\$(basename \$@)"
-   RTAI_KBUILD_CLEAN='rm -f *.ko *.mod.c .*.cmd *.o'
-   RTAI_KBUILD_DISTCLEAN='rm -Rf .tmp_versions'
+   RTAI_KBUILD_CLEAN='rm -f *.ko *.mod.c .*.cmd *.o Module.symvers && rm -Rf .tmp_versions'
+   RTAI_KBUILD_DISTCLEAN=""
 fi
 
 AC_MSG_CHECKING([for kernel module extension])
@@ -1798,7 +1803,6 @@ if test -d $srcdir/rtai-lab; then
         rtai-lab/matrixx/GNUmakefile \
         rtai-lab/scilab/GNUmakefile \
         rtai-lab/scilab/utility/GNUmakefile \
-        rtai-lab/scilab/devices/GNUmakefile \
    ])
 elif test \! x$CONFIG_RTAI_LAB = x; then
      AC_MSG_ERROR([rtai-lab package is missing])

@@ -278,6 +278,7 @@ RTAI_TARGET_ARCH_OPTS = @RTAI_TARGET_ARCH_OPTS@
 RTAI_TARGET_SUBARCH = @RTAI_TARGET_SUBARCH@
 RTAI_USER_APP_CFLAGS = @RTAI_USER_APP_CFLAGS@
 RTAI_USER_CFLAGS = @RTAI_USER_CFLAGS@
+SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
@@ -330,8 +331,8 @@ sharedstatedir = @sharedstatedir@
 subdirs = @subdirs@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
-SUBDIRS = devices utility
-EXTRA_DIST = rtmain.c README examples macros
+SUBDIRS = utility
+EXTRA_DIST = rtmain.c README examples macros devices
 all: all-recursive
 
 .SUFFIXES:

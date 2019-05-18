@@ -1,6 +1,104 @@
+2008-05-23 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.6.1
+
+2008-05-08 Roland Stigge <stigge@antcom.de>
+
+	* base/sched/liblxrt/touchall.c: avoid using Linux "asm/page.h" in
+	  user space by calling glibc "getpagesize" to get arch page size.
+
+2008-05-06 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/arch/x86_64/hal/hal.immed: grab exceptions as in i386, process
+	  floating point enabling immediately.
+
+2008-04-03 Bill Barton <peabody@rahul.net>
+
+	* base/include/rtai_fifos.h and base/ipc/fifos-fisos.c: refurbished
+	  fifo handler stuff.
+
+2008-04-01 Bill Barton <peabody@rahul.net>
+
+	* base/sched/sched.c: ensure traps are catched in kernel space also,
+	  through PF_EVNOTIFY for hardened kernel threads and set/clear
+	  foreign stack for RTAI own kernel tasks. Indeed Bill's fix is not 
+	  a first of April Fool.
+
+2008-03-28 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_mq.h and rtai_pmq.h: added a missing RTAI_PROTO
+	  in the definition of rt_request_signal_mq.
+	  (Pointed at by from Felix Frey" <frey@stettbacher.ch>)
+
+2008-03-14 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_sched.h: redefine the variable in rt_task_struct
+	  used for the busy time alignement of the scheduler with a more
+	  appropriate name.
+	  (Following a warning from Paul Corner <paul_c@tuxcnc.org>)
+	* base/include/rtai_schedcore.h and
+	* base/sched/sched.c: comply to the above change.
+
+2008-03-14  Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/macros/RTAI/RTAI*.sci: Set allways dstate=[]
+	to avoid code generation of unused code.
+
+2008-03-13 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_schedcore.h: in renq_current check if rt_current
+	  is ready before renqueuing, needed for sure in condvars mutex
+	  releases at least.
+
+2008-03-11  Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/macros/RTAI/RTAICodeGen_.sci: Modified for
+	handling some special event blocks.
+
+2008-03-11 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/sched/sched.c and sys.c: got rid of Linux smp_processor_id().
+
+2008-03-08 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* Fix for Module.symvers (thanks to patch from Paul)
+	* Minor build cleanup
+
+2008-03-01 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_netrpc.h: added missing space indicator in a
+	  few user space calls for mail boxes.
+
+2008-02-29 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/ipc/shm/shm.c: fixed wrong arg passing to rt_shm_alloc_usp 
+	  when called from ioct support. 
+	  Bug pointed out by: Calin A. Culianu <calin@ajvar.org>. 
+
+2008-02-12 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/ipc/shm/kvmem.c and base/malloc/malloc.c: fix problem with
+	  RAM > 1 GM (Linux HIGHMEM).
+
+2008-01-28 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_lxrt.h: allow use of SCHED_OTHER, lost since 3.2,
+	  but only by setting it explicitely with rt_task_init_schmod.
+
+2008-01-24  Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* configure.in: Modified for Scilab-4.1.2: rtai-lab/devices is no more in the
+	compilation tree.
+	* configure:  Modified for Scilab-4.1.2: rtai-lab/devices is no more in the
+	compilation tree.
+
+2008-01-23  Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/*: All the files modified for Scilab-4.1.2.
+
 2008-01-17 Pierangelo Masarati <masarati@aero.polimi.it>
 
-	* RTAI 3.6-cv (closure version)
+	* RTAI 3.6
 
 2008-01-11 Paolo Mantegazza <mantegazza@aero.polimi.it>
 
