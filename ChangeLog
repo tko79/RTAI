@@ -1,3 +1,108 @@
+2008-10-08 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.6.2
+
+2008-09-25 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_scb.h: provide a dummy rt_scb_ovrwr for user 
+	  space.
+	* base/include/rtai_sem.h: provide a dummy rt_poll for user space.
+        * base/include/rtai_shm.h, rtai_nam2num.h, and rtai_wd.h: use 
+	  RTAI_PROTO macro in place of forcing "static inline" always.
+
+2008-09-16 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/include/rtai_nam2num.h: use RTAI_PROTO macro in place of
+          forcing "static inline" always.
+
+
+2008-09-24 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/ipc/msg.c: fix missing blocked enqueuing in rt_rpc_until.
+
+2008-09-22 Bernhard Pfund <bernhard@chapter7.ch>
+
+	* base/README.ISOLCPUS: some editing of the existing isolcpus scheme
+	  plus a new explanation, with support scripts, to help in using the
+	  newer Linux Cpusets & CPU hotplug to isolate CPUs for hard real time
+	  only.
+
+2008-09-21 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/rtmain.c: Modified for adding COMEDI encoders
+	* rtai-lab/scilab/devices/rtai_comedi_encoders.c:
+	* rtai-lab/scilab/macros/RTAI/rtai4_comedi_encoders.sci: Tanks to
+	 Guillaume Millet.
+
+2008-08-28 Pierangelo Masarati <masarati@aero.polimi.it>
+	* addons/drivers/serial/rtai_serial.h: typo in rt_spset_mcr
+	  function declaration; thanks to D Wysong
+
+2008-08-28 Pierangelo Masarati <masarati@aero.polimi.it>
+	* configure.in: fix drivers build when no other addon is configured
+	  thanks to D Wysong
+
+2008-07-15 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/Fl_*_Manager.cpp: Modified for compatibility 32/64 bit
+	systems. Thanks to Joe Brandt.
+
+2008-07-10 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/arch/i386/hal/hal.c: if configured do not enable TSCs sync 
+	  checking for a single running CPU.
+
+2008-07-08 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/wd/wd.c: use NR_RT_CPUS in declarations only, num_online_cpus()
+	  otherwise, get rid of the switch related to scheduler type.
+	* base/sched/sched.c: use num_online_cpus(), in place of NR_RT_CPUS,
+	  in get_min_tasks_cpuid, Reservoir related stuff and for proc file 
+	  reporting.
+	* base/arch/i386/hal/hal.immed and base/arch/x86_64/hal/hal.immed:
+	  use use num_online_cpus(), in place of RTAI_NR_CPUS, in timer
+	  requests and module initialisation.
+	* base/tasklets/tasklets.c and addon/rtdm/module.c:
+	  use num_online_cpus() in timers servers creation/delation.
+
+2008-07-07 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/arch/i386/hal/hal.immed and base/arch/x86_64/hal/hal.immed:
+	  do not insmod RTAI HAL if "num_online_cpus() > RTAI_NR_CPUS".
+
+2008-06-19 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/sched/api.c: force -EINPROGRESS return for async Linux syscalls
+	  processed by a Linux server, leaving the related register unchanged
+	  can cause troubles.
+
+2008-06-16 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* base/scripts/rtai-load.in: /bin/sh compatibility
+
+2008-06-11 Calin A. Culianu <calin@ajvar.org>.
+
+	* base/include/rtai_posix.h: fixed a couple of bugs related to
+	  cookie creation and initialisiation in kernel space pthread_create.
+
+2008-06-10 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_posix.h: fixed duplicated macro and add
+	  CLOCKREALTIME/MONOTONIC for posix in kernel space; declare
+	  handler_wrpr as static to avoid warning of multiple definitions;
+	  fixes pointed by: Paul Stein <stein@cepel.br>.
+	* base/include/rtai_wrappers.h; define clockid_t and msleep for
+	  posix in kernel space.
+
+2008-06-09 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/*: Some changes to avoid #include <MODEL>.c
+
+2008-05-29 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_lxrt.h: ensure rt_get_priorities has values to be
+	  returned pointers on the stack.
+
 2008-05-23 Pierangelo Masarati <masarati@aero.polimi.it>
 
 	* RTAI 3.6.1

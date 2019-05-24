@@ -390,7 +390,7 @@ RTAI_SYSCALL_MODE RT_TASK *rt_rpc(RT_TASK *task, unsigned long to_do, void *resu
 	flags = rt_global_save_flags_and_cli();
 	ASSIGN_RT_CURRENT;
 	if ((task->state & RT_SCHED_RECEIVE) &&
-		(!task->msg_queue.task || task->msg_queue.task == rt_current)) {
+	    (!task->msg_queue.task || task->msg_queue.task == rt_current)) {
 		rt_current->msg = task->msg = to_do;
 		task->msg_queue.task = rt_current;
 		task->ret_queue.task = NULL;
@@ -470,7 +470,7 @@ RTAI_SYSCALL_MODE RT_TASK *rt_rpc_if(RT_TASK *task, unsigned long to_do, void *r
 	flags = rt_global_save_flags_and_cli();
 	ASSIGN_RT_CURRENT;
 	if ((task->state & RT_SCHED_RECEIVE) &&
-	      (!task->msg_queue.task || task->msg_queue.task == rt_current)) {
+	    (!task->msg_queue.task || task->msg_queue.task == rt_current)) {
 		rt_current->msg = task->msg = to_do;
 		task->msg_queue.task = rt_current;
 		task->ret_queue.task = NULL;
@@ -560,12 +560,13 @@ RTAI_SYSCALL_MODE RT_TASK *rt_rpc_until(RT_TASK *task, unsigned long to_do, void
 		if (task->state != RT_SCHED_READY && (task->state &= ~(RT_SCHED_RECEIVE | RT_SCHED_DELAYED)) == RT_SCHED_READY) {
 			enq_ready_task(task);
 		}
+		enqueue_blocked(rt_current, &task->ret_queue, 0);
 		rt_current->state |= (RT_SCHED_RETURN | RT_SCHED_DELAYED);
 	} else {
 		rt_current->msg = to_do;
+		enqueue_blocked(rt_current, &task->msg_queue, 0);
 		rt_current->state |= (RT_SCHED_RPC | RT_SCHED_DELAYED);
 	}
-	enqueue_blocked(rt_current, &task->ret_queue, 0);
 	enqueue_resqtsk(task);
 	pass_prio(task, rt_current);
 	rem_ready_current(rt_current);
