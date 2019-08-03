@@ -98,6 +98,7 @@ COMEDI_DIR = @COMEDI_DIR@
 CONFIG_RTAI_LINUXDIR = @CONFIG_RTAI_LINUXDIR@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
+CROSSCOMPILE_TEST = @CROSSCOMPILE_TEST@
 CROSS_COMPILE = @CROSS_COMPILE@
 CXX = @CXX@
 CXXCPP = @CXXCPP@
@@ -645,7 +646,7 @@ install-data-local:
 	$(mkinstalldirs) $(DESTDIR)$(calibrationdir)
 	$(INSTALL_DATA) $(srcdir)/runinfo $(DESTDIR)$(calibrationdir)/.runinfo
 	@echo '#!/bin/sh' > $(DESTDIR)$(calibrationdir)/run
-	@echo "\$${DESTDIR}$(prefix)/bin/rtai-load \$$*" >> $(DESTDIR)$(calibrationdir)/run
+	@echo "\$${DESTDIR}$(bindir)/rtai-load \$$*" >> $(DESTDIR)$(calibrationdir)/run
 	@chmod +x $(DESTDIR)$(calibrationdir)/run
 
 run: all

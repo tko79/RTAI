@@ -36,6 +36,8 @@
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 
+#define CONFIG_MMU 1
+
 typedef int clockid_t;
 
 #ifndef TIMER_ABSTIME
@@ -84,7 +86,7 @@ typedef void irqreturn_t;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,28)
 #define msleep(delay) \
 do { \
-	set_current_state(TASK_UNINTERRUPTIBLE); \
+	set_current_state(TASK_RTAISRVSLEEP); \
 	schedule_timeout(((delay)*HZ)/1000); \
 } while(0)
 #endif
@@ -102,14 +104,31 @@ do { \
 
 #define RTAI_LINUX_IRQ_HANDLED	/* i.e. "void" return */
 
+static inline unsigned long hweight_long(unsigned long w)
+{
+        return sizeof(w) == 4 ? hweight32(w) : hweight32(w);
+}
+
 #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) */
 
 #define RTAI_MODULE_PARM_ARRAY(name, type, addr, size) \
 	module_param_array(name, type, addr, 0400);
 
 /* Basic class macros */
+
 #ifdef CONFIG_SYSFS
 #include <linux/device.h>
+#if  LINUX_VERSION_CODE > KERNEL_VERSION(2,6,25)
+typedef struct class class_t;
+
+#if  LINUX_VERSION_CODE > KERNEL_VERSION(2,6,26)
+#define CLASS_DEVICE_CREATE(cls, devt, device, fmt, arg...)  device_create(cls, NULL, devt, NULL, fmt, ##arg)
+#else  /* < 2.6.27 */
+#define CLASS_DEVICE_CREATE(cls, devt, device, fmt, arg...)  device_create(cls, NULL, devt, fmt, ##arg)
+#endif  /* > 2.6.26 */
+
+#define class_device_destroy(a, b)  device_destroy(a, b)
+#else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
 typedef struct class class_t;
 #define CLASS_DEVICE_CREATE(cls, devt, device, fmt, arg...) class_device_create(cls, NULL, devt, device, fmt, ## arg)
@@ -125,6 +144,7 @@ typedef struct class_simple class_t;
 #define class_device_destroy(a, b) class_simple_device_remove(b)
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,13) */
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15) */
+#endif
 #endif
 
 #define mm_remap_page_range(vma,from,to,size,prot) remap_page_range(vma,from,to,size,prot)
@@ -150,6 +170,17 @@ typedef struct class_simple class_t;
 #define CPUMASK_T(name)  ((cpumask_t){ { name } })
 #define CPUMASK(name)    (name.bits[0])
 #endif /* LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,7) */
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,26)
+
+#include <linux/pid.h>
+
+#define find_task_by_pid(nr) \
+	find_task_by_pid_type_ns(PIDTYPE_PID, nr, &init_pid_ns)
+#define kill_proc(pid, sig, priv)       \
+  kill_proc_info(sig, (priv) ? SEND_SIG_PRIV : SEND_SIG_NOINFO, pid)
+
+#endif /* LINUX_VERSION_CODE <= 2.6.26 */
 
 #ifndef CONFIG_SYSFS
 typedef void * class_t;

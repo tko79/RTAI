@@ -87,7 +87,7 @@
 #define SET_ONESHOT_MODE		14
 #define SIGNAL_HANDLER	 		15
 #define TASK_USE_FPU			16
-#define GET_PRIORITIES			17  // was LINUX_USE_FPU
+#define GET_TASK_INFO			17  // was LINUX_USE_FPU
 #define HARD_TIMER_COUNT		18
 #define GET_TIME_NS			19
 #define GET_CPU_TIME_NS			20
@@ -331,6 +331,9 @@
 #define RT_SIGNAL_DISABLE	       226
 #define RT_SIGNAL_TRIGGER	       227
 
+#define SEM_RT_POLL 		       228
+#define RT_POLL_NETRPC		       229
+
 #define MAX_LXRT_FUN		       230
 
 // not recovered yet 
@@ -510,11 +513,13 @@ int set_rt_fun_entries(struct rt_native_fun_entry *entry);
 extern "C" {
 #endif /* __cplusplus */
 
-#if CONFIG_RTAI_INTERNAL_LXRT_SUPPORT
+#if 1 // needs CONFIG_RTAI_INTERNAL_LXRT_SUPPORT no more
  
 static inline struct rt_task_struct *pid2rttask(long pid)
 {
-        return ((unsigned long)pid) > PID_MAX_LIMIT ? (struct rt_task_struct *)pid : find_task_by_pid(pid)->rtai_tskext(TSKEXT0);
+	struct task_struct *lnxtsk = find_task_by_pid(pid);
+        return lnxtsk ? lnxtsk->rtai_tskext(TSKEXT0) : NULL;
+	return ((unsigned long)pid) > PID_MAX_LIMIT ? (struct rt_task_struct *)pid : find_task_by_pid(pid)->rtai_tskext(TSKEXT0);
 }
 
 static inline long rttask2pid(struct rt_task_struct * task)
@@ -571,12 +576,20 @@ void reset_rt_fun_ext_index(struct rt_fun_entry *fun,
 
 struct apic_timer_setup_data;
 
+#ifdef CONFIG_MMU
+
 #define rt_grow_and_lock_stack(incr) \
 	do { \
 		char buf[incr]; \
 		memset(buf, 0, incr); \
 		mlockall(MCL_CURRENT | MCL_FUTURE); \
 	} while (0)
+
+#else
+
+#define rt_grow_and_lock_stack(incr) do { } while (0)
+
+#endif
 
 #define BIDX   0 // rt_fun_ext[0]
 #define SIZARG sizeof(arg)
@@ -689,8 +702,9 @@ static void linux_syscall_server_fun(struct linux_syscalls_list *list)
 
 	if ((syscalls.serv = rtai_lxrt(BIDX, sizeof(struct linux_syscalls_list), LINUX_SERVER_INIT, &syscalls).v[LOW])) {
 		struct pt_regs *regs;
-		syscalls.moderegs = (struct mode_regs *)malloc(syscalls.nr*sizeof(struct mode_regs));
-		memset(syscalls.moderegs, syscalls.nr*sizeof(struct mode_regs), 0);
+		struct mode_regs moderegs[syscalls.nr];
+		syscalls.moderegs = moderegs;
+		memset(moderegs, syscalls.nr*sizeof(struct mode_regs), 0);
                 mlockall(MCL_CURRENT | MCL_FUTURE);
 		rtai_lxrt(BIDX, sizeof(RT_TASK *), RESUME, &syscalls.task);
 		for (;;) {
@@ -708,7 +722,6 @@ static void linux_syscall_server_fun(struct linux_syscalls_list *list)
 				syscalls.out = 0;
 			}
 		}
-		free(syscalls.moderegs);
         }
 }
 
@@ -728,7 +741,7 @@ RTAI_PROTO(int, rt_sync_async_linux_syscall_server_create, (RT_TASK *task, int m
 		syscalls.callback_fun = callback_fun;
 		syscalls.mode         = mode;
 		syscalls.nr           = nr_bufd_async_calls;
-		if (rt_thread_create((void *)linux_syscall_server_fun, &syscalls, 0)) {
+		if (rt_thread_create((void *)linux_syscall_server_fun, &syscalls, RT_THREAD_STACK_MIN + syscalls.nr*sizeof(struct mode_regs))) {
 			rtai_lxrt(BIDX, sizeof(RT_TASK *), SUSPEND, &task);
 			return 0;
 		}
@@ -1085,14 +1098,27 @@ RTAI_PROTO(int,rt_linux_use_fpu,(int use_fpu_flag))
 	return rtai_lxrt(BIDX, SIZARG, LINUX_USE_FPU, &arg).i[LOW];
 }
 */
+
+RTAI_PROTO(int, rt_task_get_info, (RT_TASK *task, RT_TASK_INFO *task_info))
+{
+	RT_TASK_INFO ltask_info;
+	struct { RT_TASK *task; RT_TASK_INFO *taskinfo; } arg = { task, &ltask_info };
+	if (task_info && !rtai_lxrt(BIDX, SIZARG, GET_TASK_INFO, &arg).i[LOW]) {
+		*task_info = ltask_info;
+		return 0;
+	}
+	return -EINVAL;
+}
+
 RTAI_PROTO(int, rt_get_priorities, (RT_TASK *task, int *priority, int *base_priority))
 {
-	int lpriority, lbase_priority, retval;
-	struct { RT_TASK *task; int *priority, *base_priority; } arg = { task, &lpriority, &lbase_priority };
-	retval = rtai_lxrt(BIDX, SIZARG, GET_PRIORITIES, &arg).i[LOW];
-	*priority = lpriority;
-	*base_priority = lbase_priority;
-	return retval;
+	RT_TASK_INFO task_info;
+	if (priority && base_priority && !rt_task_get_info(task, &task_info)) {
+		*priority      = task_info.priority;
+		*base_priority = task_info.base_priority;
+		return 0;
+	}
+	return -EINVAL;
 }
 
 RTAI_PROTO(int, rt_hard_timer_tick, (void))
@@ -1366,7 +1392,7 @@ RTAI_PROTO(int, rt_task_masked_unblock,(RT_TASK *task, unsigned long mask))
 	return rtai_lxrt(BIDX, SIZARG, WAKEUP_SLEEPING, &arg).i[LOW];
 }
 
-#define rt_task_wakeup_sleeping(task, mask)  rt_task_masked_unblock(task, RT_SCHED_DELAYED)
+#define rt_task_wakeup_sleeping(task)  rt_task_masked_unblock(task, RT_SCHED_DELAYED)
 
 RTAI_PROTO(void, rt_get_exectime, (RT_TASK *task, RTIME *exectime))
 {
@@ -1378,10 +1404,8 @@ RTAI_PROTO(void, rt_get_exectime, (RT_TASK *task, RTIME *exectime))
 
 RTAI_PROTO(void, rt_gettimeorig, (RTIME time_orig[]))
 {
-	RTIME lorig[2];
-	struct { RTIME *time_orig; } arg = { lorig };
+	struct { RTIME *time_orig; } arg = { time_orig };
 	rtai_lxrt(BIDX, SIZARG, GET_TIMEORIG, &arg);
-	memcpy(time_orig, lorig, sizeof(lorig));
 }
 
 RTAI_PROTO(RT_TASK *,ftask_init,(unsigned long name, int priority))

@@ -100,7 +100,7 @@ int rt_get_inher_prio(RT_TASK *task)
 	if (task->magic != RT_TASK_MAGIC) {
 		return -EINVAL;
 	}
-	return task->base_priority;
+	return task->priority;
 }
 
 
@@ -108,7 +108,7 @@ int rt_get_inher_prio(RT_TASK *task)
  * @anchor rt_get_priorities
  * @brief Check inheredited and base priority.
  * 
- * rt_task_get_priorities returns the base and inherited priorities of a task.
+ * rt_get_priorities returns the base and inherited priorities of a task.
  *
  * Recall that a task has a base native priority, assigned at its
  * birth or by @ref rt_change_prio(), and an actual, inherited,
@@ -120,10 +120,11 @@ int rt_get_inher_prio(RT_TASK *task)
  *
  * @param base_priority the base priority.
  *
- * @return rt_task_get_priority returns 0 if non NULL priority addresses
+ * @return rt_get_priority returns 0 if non NULL priority addresses
  * are given, EINVAL if addresses are NULL or task is not a valid object.
  *
  */
+
 RTAI_SYSCALL_MODE int rt_get_priorities(RT_TASK *task, int *priority, int *base_priority)
 {
 	if (!task) {
@@ -132,13 +133,35 @@ RTAI_SYSCALL_MODE int rt_get_priorities(RT_TASK *task, int *priority, int *base_
 	if (task->magic != RT_TASK_MAGIC || !priority || !base_priority) {
 		return -EINVAL;
 	}
-	if ((unsigned long)priority < PAGE_OFFSET) {
-		rt_put_user(task->priority, priority);
-		rt_put_user(task->base_priority, base_priority);
-	} else {
-		*priority      = task->priority;
-		*base_priority = task->base_priority;
+	*priority      = task->priority;
+	*base_priority = task->base_priority;
+	return 0;
+}
+
+/**
+ * @anchor rt_task_get_info
+ * @brief Get task task data listed in RT_TASK_INFO type.
+ * 
+ * rt_task_get_info returns task data listed in RT_TASK_INFO type.
+ *
+ * @param task is the task of interest, NULL can be used for the current task.
+ * @param task_info a pointer to RT_TASK_INFO.
+ *
+ * @return -EINVAL if task is not valid or task_info is NULL, 0 if OK.
+ *
+ */
+
+RTAI_SYSCALL_MODE int rt_task_get_info(RT_TASK *task, RT_TASK_INFO *task_info)
+{
+	if (!task) {
+		task = RT_CURRENT;
+	} 
+	if (task->magic != RT_TASK_MAGIC || task_info == NULL) {
+		return -EINVAL;
 	}
+	task_info->period        = task->period;
+	task_info->base_priority = task->base_priority;
+	task_info->priority      = task->priority;
 	return 0;
 }
 
@@ -689,7 +712,7 @@ void rt_gettimeorig(RTIME time_orig[])
  */
 RTAI_SYSCALL_MODE int rt_task_make_periodic_relative_ns(RT_TASK *task, RTIME start_delay, RTIME period)
 {
-	long flags;
+	unsigned long flags;
 
 	if (!task) {
 		task = RT_CURRENT;
@@ -748,7 +771,7 @@ RTAI_SYSCALL_MODE int rt_task_make_periodic_relative_ns(RT_TASK *task, RTIME sta
  */
 RTAI_SYSCALL_MODE int rt_task_make_periodic(RT_TASK *task, RTIME start_time, RTIME period)
 {
-	long flags;
+	unsigned long flags;
 
 	if (!task) {
 		task = RT_CURRENT;
@@ -793,7 +816,7 @@ RTAI_SYSCALL_MODE int rt_task_make_periodic(RT_TASK *task, RTIME start_time, RTI
 int rt_task_wait_period(void)
 {
 	DECLARE_RT_CURRENT;
-	long flags;
+	unsigned long flags;
 
 	flags = rt_global_save_flags_and_cli();
 	ASSIGN_RT_CURRENT;
@@ -815,7 +838,15 @@ int rt_task_wait_period(void)
 		rt_schedule();
 		blocked_on = rt_current->blocked_on;
 		rt_global_restore_flags(flags);
+#ifdef CONFIG_M68K
+		//Workaround of a gcc bug
+		if(blocked_on == RTP_OBJREM) {
+			__asm__ __volatile__ ("nop");
+		}
+		return likely(!blocked_on) ? 0L : RTE_UNBLKD;
+#else
 		return likely(!blocked_on) ? 0 : RTE_UNBLKD;
+#endif
 	}
 	rt_global_restore_flags(flags);
 	return RTE_TMROVRN;
@@ -824,7 +855,7 @@ int rt_task_wait_period(void)
 RTAI_SYSCALL_MODE void rt_task_set_resume_end_times(RTIME resume, RTIME end)
 {
 	RT_TASK *rt_current;
-	long flags;
+	unsigned long flags;
 
 	flags = rt_global_save_flags_and_cli();
 	rt_current = RT_CURRENT;
@@ -849,7 +880,7 @@ RTAI_SYSCALL_MODE void rt_task_set_resume_end_times(RTIME resume, RTIME end)
 
 RTAI_SYSCALL_MODE int rt_set_resume_time(RT_TASK *task, RTIME new_resume_time)
 {
-	long flags;
+	unsigned long flags;
 
 	if (task->magic != RT_TASK_MAGIC) {
 		return -EINVAL;
@@ -870,7 +901,7 @@ RTAI_SYSCALL_MODE int rt_set_resume_time(RT_TASK *task, RTIME new_resume_time)
 
 RTAI_SYSCALL_MODE int rt_set_period(RT_TASK *task, RTIME new_period)
 {
-	long flags;
+	unsigned long flags;
 
 	if (task->magic != RT_TASK_MAGIC) {
 		return -EINVAL;
@@ -1030,11 +1061,12 @@ RTAI_SYSCALL_MODE int rt_task_masked_unblock(RT_TASK *task, unsigned long mask)
 			rem_timed_task(task);
 		}
 		if (task->state != RT_SCHED_READY && (task->state &= ~mask) == RT_SCHED_READY) {
+			task->blocked_on = RTP_UNBLKD;
 			enq_ready_task(task);
 			RT_SCHEDULE(task, rtai_cpuid());
 		}
 		rt_global_restore_flags(flags);
-		return (int)((unsigned long)(task->blocked_on = RTP_UNBLKD));
+		return RTE_UNBLKD;
 	}
 	return 0;
 }
@@ -1114,7 +1146,7 @@ void rt_dequeue_blocked(RT_TASK *task)
 
 int rt_renq_current(RT_TASK *rt_current, int priority)
 {
-	return renq_current(rt_current, priority);
+	return renq_ready_task(rt_current, priority);
 }
 
 /* ++++++++++++++++++++++++ NAMED TASK INIT/DELETE ++++++++++++++++++++++++++ */
@@ -1867,6 +1899,8 @@ void krtai_objects_release(void)
 
 /* +++++++++++++++++++++++++ SUPPORT FOR IRQ TASKS ++++++++++++++++++++++++++ */
 
+#ifdef CONFIG_RTAI_USI
+
 #include <rtai_tasklets.h>
 
 extern struct rtai_realtime_irq_s rtai_realtime_irq[];
@@ -1943,6 +1977,8 @@ RTAI_SYSCALL_MODE void usp_request_rtc(int rtc_freq, void *handler)
 		
 }
 
+#endif
+
 /* +++++++++++++++++ SUPPORT FOR THE LINUX SYSCALL SERVER +++++++++++++++++++ */
 
 RTAI_SYSCALL_MODE void rt_set_linux_syscall_mode(long mode, void (*callback_fun)(long, long))
@@ -1953,17 +1989,19 @@ RTAI_SYSCALL_MODE void rt_set_linux_syscall_mode(long mode, void (*callback_fun)
 
 void rt_exec_linux_syscall(RT_TASK *rt_current, struct linux_syscalls_list *syscalls, struct pt_regs *regs)
 {
-	struct { long in, nr, mode; RT_TASK *serv; struct mode_regs *moderegs; } from;
+	struct { long in, nr, mode; RT_TASK *serv; } from;
 
 	rt_copy_from_user(&from, syscalls, sizeof(from));
 	from.serv->priority = rt_current->priority + BASE_SOFT_PRIORITY;
-	rt_put_user(from.mode, &from.moderegs[from.in].mode);
-	rt_copy_to_user(&from.moderegs[from.in].regs, regs, sizeof(struct pt_regs));
+	rt_copy_to_user(&syscalls->moderegs[from.in].regs, regs, sizeof(struct pt_regs));
+	rt_put_user(from.mode, &syscalls->moderegs[from.in].mode);
 	if (++from.in >= from.nr) {
 		from.in = 0;
 	}
 	rt_put_user(from.in, &syscalls->in);
-	rt_task_resume(from.serv);
+	if (from.serv->suspdepth >= -from.nr) {
+		rt_task_resume(from.serv);
+	}
 	if (from.mode == SYNC_LINUX_SYSCALL) {
 		rt_task_suspend(rt_current);
 		rt_get_user(regs->LINUX_SYSCALL_RETREG, &syscalls->retval);
@@ -2130,6 +2168,8 @@ EXPORT_SYMBOL(rt_get_time_cpuid);
 EXPORT_SYMBOL(rt_get_time_ns);
 EXPORT_SYMBOL(rt_get_time_ns_cpuid);
 EXPORT_SYMBOL(rt_get_cpu_time_ns);
+EXPORT_SYMBOL(rt_get_real_time);
+EXPORT_SYMBOL(rt_get_real_time_ns);
 EXPORT_SYMBOL(rt_get_base_linux_task);
 EXPORT_SYMBOL(rt_alloc_dynamic_task);
 EXPORT_SYMBOL(rt_register_watchdog);

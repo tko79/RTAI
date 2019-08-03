@@ -24,7 +24,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 #include <sched.h>
 #include <signal.h>
 #include <sys/mman.h>
-#include <asm/io.h>
 
 #include <rtai_mbx.h>
 #include <rtai_msg.h>
@@ -60,7 +59,7 @@ int main(int argc, char *argv[])
 {
 	int diff;
 	int skip;
-	int average;
+	long average;
 	int min_diff;
 	int max_diff;
 	int period;
@@ -68,7 +67,7 @@ int main(int argc, char *argv[])
 	RTIME t, svt;
 	RTIME expected, exectime[3];
 	MBX *mbx;
-	RT_TASK *task;
+	RT_TASK *task, *latchk;
 	struct sample { long long min; long long max; int index, ovrn; } samp;
 	double s;
 
@@ -153,8 +152,8 @@ int main(int argc, char *argv[])
 		samp.max = max_diff;
 		samp.index = average/SKIP;
 		rt_mbx_send_if(mbx, &samp, sizeof(samp));
-		if (rt_receive_if(rt_get_adr(nam2num("LATCHK")), (unsigned int *)&average) || end) {
-			rt_return(rt_get_adr(nam2num("LATCHK")), (unsigned int)average);
+		if ((latchk = rt_get_adr(nam2num("LATCHK"))) && (rt_receive_if(latchk, (unsigned long *)&average) || end)) {
+			rt_return(latchk, (unsigned long)average);
 			break;
 		}
 	}

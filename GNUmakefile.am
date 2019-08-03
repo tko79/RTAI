@@ -14,6 +14,8 @@ if CONFIG_RTAI_LAB
 OPTDIRS += rtai-lab
 endif
 
+OPTDIRS += rtai-py
+
 SUBDIRS = base @RTAI_MAYBE_DOCDIR@ $(OPTDIRS)
 
 DIST_SUBDIRS = \
@@ -21,12 +23,14 @@ DIST_SUBDIRS = \
 	base \
 	testsuite \
 	addons \
-	rtai-lab
+	rtai-lab \
+	rtai-py
 
 EXTRA_DIST = \
 makefile \
 README.INSTALL \
 README.ISOLCPUS \
+README.LINUX_SERVER \
 README.LXRT_EXTS_IN_USE \
 README.SMI \
 @RTAI_MAYBE_SIMDIR@

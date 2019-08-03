@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999-2003 Paolo Mantegazza <mantegazza@aero.polimi.it>
+ * Copyright (C) 1999-2008 Paolo Mantegazza <mantegazza@aero.polimi.it>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -47,6 +47,7 @@
 #define RT_SCHED_RETURN     128
 #define RT_SCHED_MBXSUSP    256
 #define RT_SCHED_SFTRDY     512
+#define RT_SCHED_POLL      1024
 #define RT_SCHED_SIGSUSP    (1 << 15)
 
 #define RT_RWLINV     (11)  // keep this the highest
@@ -115,6 +116,10 @@
 
 struct rt_task_struct;
 
+typedef struct rt_task_info { 
+	RTIME period; long base_priority, priority; 
+} RT_TASK_INFO;
+
 #ifdef __KERNEL__
 
 #include <linux/time.h>
@@ -155,6 +160,8 @@ typedef struct rt_ExitHandler {
 
 struct rt_heap_t { void *heap, *kadr, *uadr; };
 
+#define RTAI_MAX_NAME_LENGTH  32
+
 typedef struct rt_task_struct {
 	long *stack __attribute__ ((__aligned__ (L1_CACHE_BYTES)));
 	int uses_fpu;
@@ -193,7 +200,7 @@ typedef struct rt_task_struct {
 	long long retval;
 	char *msg_buf[2];
 	long max_msg_size[2];
-	char task_name[16];
+	char task_name[RTAI_MAX_NAME_LENGTH];
 	void *system_data_ptr;
 	struct rt_task_struct *nextp, *prevp;
 
@@ -207,7 +214,7 @@ typedef struct rt_task_struct {
 	unsigned long force_soft;
 	volatile int is_hard;
 
-	long long busy_time_align;
+	long busy_time_align;
 	struct linux_syscalls_list *linux_syscall_server; 
 
 	/* For use by watchdog. */
@@ -229,6 +236,7 @@ typedef struct rt_task_struct {
 	rb_node_t rbn;
 #endif
 	struct rt_queue resq;
+	unsigned long resumsg;
 } RT_TASK __attribute__ ((__aligned__ (L1_CACHE_BYTES)));
 
 #else /* __cplusplus */
@@ -343,6 +351,8 @@ RTIME rt_get_real_time_ns(void);
 int rt_get_prio(struct rt_task_struct *task);
 
 int rt_get_inher_prio(struct rt_task_struct *task);
+
+RTAI_SYSCALL_MODE int rt_task_get_info(RT_TASK *task, RT_TASK_INFO *task_info);
 
 RTAI_SYSCALL_MODE int rt_get_priorities(struct rt_task_struct *task, int *priority, int *base_priority);
 
