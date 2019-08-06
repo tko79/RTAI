@@ -279,11 +279,16 @@ static int __task_delete(RT_TASK *rt_task)
 	if ((process = rt_task->lnxtsk)) {
 		process->rtai_tskext(TSKEXT0) = process->rtai_tskext(TSKEXT1) = 0;
 	}
-	if (rt_task->linux_syscall_server) {
-		rt_task_masked_unblock(rt_task->linux_syscall_server->task, ~RT_SCHED_READY);
-	}
 	if (rt_task->is_hard > 0) {
 		give_back_to_linux(rt_task, 0);
+	}
+	if (rt_task->linux_syscall_server) {
+		RT_TASK *serv = rt_task->linux_syscall_server->serv;
+		serv->suspdepth = -RTE_HIGERR;
+		rt_task_masked_unblock(serv, ~RT_SCHED_READY);
+                process->state = TASK_INTERRUPTIBLE;
+                schedule_timeout(HZ/10);
+
 	}
 	if (clr_rtext(rt_task)) {
 		return -EFAULT;
@@ -300,6 +305,49 @@ static int __task_delete(RT_TASK *rt_task)
 #else
 #define SYSW_DIAG_MSG(x)
 #endif
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,28)
+
+#include <linux/cred.h>
+static inline void set_lxrt_perm(int perm)
+{
+	struct cred *cred;
+	if ((cred = prepare_creds())) {
+		cap_raise(cred->cap_effective, perm);
+		commit_creds(cred);
+	}
+}
+
+#else /* LINUX_VERSION_CODE <= 2.6.28 */
+
+static inline void set_lxrt_perm(int perm)
+{
+#ifdef current_cap
+	cap_raise(current_cap(), perm);
+#else
+	cap_raise(current->cap_effective, perm);
+#endif
+}
+
+#endif /* LINUX_VERSION_CODE > 2.6.28 */
+
+void rt_make_hard_real_time(RT_TASK *task)
+{
+	if (task && task->magic == RT_TASK_MAGIC && !task->is_hard) {
+		steal_from_linux(task);
+	}
+}
+
+void rt_make_soft_real_time(RT_TASK *task)
+{
+	if (task && task->magic == RT_TASK_MAGIC && task->is_hard) {
+		if (task->is_hard > 0) {
+			give_back_to_linux(task, 0);
+		} else {
+			task->is_hard = 0;
+		}
+	}
+}
 
 static inline long long handle_lxrt_request (unsigned int lxsrq, long *arg, RT_TASK *task)
 {
@@ -463,6 +511,8 @@ static inline long long handle_lxrt_request (unsigned int lxsrq, long *arg, RT_T
 		}
 
 		case MAKE_HARD_RT: {
+			rt_make_hard_real_time(task);
+			return 0;
 			if (!task || task->is_hard) {
 				 return 0;
 			}
@@ -471,6 +521,8 @@ static inline long long handle_lxrt_request (unsigned int lxsrq, long *arg, RT_T
 		}
 
 		case MAKE_SOFT_RT: {
+			rt_make_soft_real_time(task);
+			return 0;
 			if (!task || !task->is_hard) {
 				return 0;
 			}
@@ -499,9 +551,9 @@ static inline long long handle_lxrt_request (unsigned int lxsrq, long *arg, RT_T
 						   (1 << CAP_SYS_RAWIO) |
 						   (1 << CAP_SYS_NICE));
 #else
-			cap_raise(current->cap_effective, CAP_IPC_LOCK);
-			cap_raise(current->cap_effective, CAP_SYS_RAWIO);
-			cap_raise(current->cap_effective, CAP_SYS_NICE);
+			set_lxrt_perm(CAP_IPC_LOCK);
+			set_lxrt_perm(CAP_SYS_RAWIO);
+			set_lxrt_perm(CAP_SYS_NICE);
 #endif
 			return 0;
 		}
@@ -721,3 +773,6 @@ void init_fun_ext (void)
 {
 	rt_fun_ext[0] = rt_fun_lxrt;
 }
+
+EXPORT_SYMBOL(rt_make_hard_real_time);
+EXPORT_SYMBOL(rt_make_soft_real_time);

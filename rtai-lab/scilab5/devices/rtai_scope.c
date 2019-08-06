@@ -42,8 +42,6 @@ static void init(scicos_block *block)
   int nt = nch+1;
   MBX *mbx;
 
-  int i;
-
   par_getstr(scopeName,ipar,1,ipar[0]);
   rtRegisterScope(scopeName,nch);
   get_a_name(TargetMbxID,name);

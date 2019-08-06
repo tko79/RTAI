@@ -23,8 +23,10 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+
 #include <linux/module.h>
 #include <asm/uaccess.h>
+#include <asm/unistd.h>
 
 #include <rtai_schedcore.h>
 #include <rtai_prinher.h>
@@ -189,6 +191,7 @@ RTAI_SYSCALL_MODE int rt_change_prio(RT_TASK *task, int priority)
 {
 	unsigned long flags;
 	int prio, base_priority;
+	RT_TASK *rhead;
 
 	if (task->magic != RT_TASK_MAGIC || priority < 0) {
 		return -EINVAL;
@@ -208,10 +211,11 @@ RTAI_SYSCALL_MODE int rt_change_prio(RT_TASK *task, int priority)
 			task->priority = priority;
 			if (task->state == RT_SCHED_READY) {
 				if ((task->rprev)->priority > task->priority || (task->rnext)->priority < task->priority) {
+					rhead = rt_smp_linux_task[task->runnable_on_cpus].rnext;
 					(task->rprev)->rnext = task->rnext;
 					(task->rnext)->rprev = task->rprev;
 					enq_ready_task(task);
-					if (task == rt_smp_linux_task[task->runnable_on_cpus].rnext) {
+					if (rhead != rt_smp_linux_task[task->runnable_on_cpus].rnext) {
 #ifdef CONFIG_SMP
 						__set_bit(task->runnable_on_cpus & 0x1F, &schedmap);
 #else
@@ -270,7 +274,6 @@ RT_TASK *rt_whoami(void)
 }
 
 
-
 /**
  * @anchor rt_task_yield
  * Yield the current task.
@@ -278,6 +281,8 @@ RT_TASK *rt_whoami(void)
  * @ref rt_task_yield() stops the current task and takes it at the end
  * of the list of ready tasks having its same priority. The scheduler
  * makes the next ready task of the same priority active.
+ * If the current task has the highest priority no more then it results
+ * in an immediate rescheduling.
  *
  * Recall that RTAI schedulers allow only higher priority tasks to
  * preempt the execution of lower priority ones. So equal priority
@@ -294,15 +299,20 @@ void rt_task_yield(void)
 	unsigned long flags;
 
 	flags = rt_global_save_flags_and_cli();
-	task = (rt_current = RT_CURRENT)->rnext;
-	while (rt_current->priority == task->priority) {
-		task = task->rnext;
-	}
-	if (task != rt_current->rnext) {
-		(rt_current->rprev)->rnext = rt_current->rnext;
-		(rt_current->rnext)->rprev = rt_current->rprev;
-		task->rprev = (rt_current->rprev = task->rprev)->rnext = rt_current;
-		rt_current->rnext = task;
+	rt_current = RT_CURRENT;
+	if (rt_smp_linux_task[rt_current->runnable_on_cpus].rnext == rt_current) {
+		task = rt_current->rnext;
+		while (rt_current->priority == task->priority) {
+			task = task->rnext;
+		}
+		if (task != rt_current->rnext) {
+			(rt_current->rprev)->rnext = rt_current->rnext;
+			(rt_current->rnext)->rprev = rt_current->rprev;
+			task->rprev = (rt_current->rprev = task->rprev)->rnext = rt_current;
+			rt_current->rnext = task;
+			rt_schedule();
+		}
+	} else {
 		rt_schedule();
 	}
 	rt_global_restore_flags(flags);
@@ -1989,17 +1999,43 @@ RTAI_SYSCALL_MODE void rt_set_linux_syscall_mode(long mode, void (*callback_fun)
 
 void rt_exec_linux_syscall(RT_TASK *rt_current, struct linux_syscalls_list *syscalls, struct pt_regs *regs)
 {
-	struct { long in, nr, mode; RT_TASK *serv; } from;
+	int in, sz;
+	struct mode_regs moderegs;
+	struct { int in, out, nr, mode; RT_TASK *serv; } from;
 
 	rt_copy_from_user(&from, syscalls, sizeof(from));
-	from.serv->priority = rt_current->priority + BASE_SOFT_PRIORITY;
-	rt_copy_to_user(&syscalls->moderegs[from.in].regs, regs, sizeof(struct pt_regs));
-	rt_put_user(from.mode, &syscalls->moderegs[from.in].mode);
+	in = from.in;
 	if (++from.in >= from.nr) {
 		from.in = 0;
 	}
+	if (from.mode == ASYNC_LINUX_SYSCALL && from.in == from.out) {
+		regs->LINUX_SYSCALL_RETREG = -1;
+		return;
+	}
+
+#if defined( __NR_socketcall)
+	if (regs->LINUX_SYSCALL_NR == __NR_socketcall) {
+		memcpy(moderegs.pacargs, (void *)regs->LINUX_SYSCALL_REG2, sizeof(moderegs.pacargs));
+		moderegs.regs[2] = (long)(&syscalls->moderegs[in].pacargs);
+		sz = sizeof(moderegs);
+	} else
+#endif
+	{
+		moderegs.regs[2] = regs->LINUX_SYSCALL_REG2;
+		sz = offsetof(struct mode_regs, pacargs);
+	}
+
+	moderegs.regs[0] = regs->LINUX_SYSCALL_NR;
+	moderegs.regs[1] = regs->LINUX_SYSCALL_REG1;
+	moderegs.regs[3] = regs->LINUX_SYSCALL_REG3;
+	moderegs.regs[4] = regs->LINUX_SYSCALL_REG4;
+	moderegs.regs[5] = regs->LINUX_SYSCALL_REG5;
+	moderegs.regs[6] = regs->LINUX_SYSCALL_REG6;
+	moderegs.mode = from.mode;
+	rt_copy_to_user(&syscalls->moderegs[in].regs, &moderegs, sz);
 	rt_put_user(from.in, &syscalls->in);
 	if (from.serv->suspdepth >= -from.nr) {
+		from.serv->priority = rt_current->priority + BASE_SOFT_PRIORITY;
 		rt_task_resume(from.serv);
 	}
 	if (from.mode == SYNC_LINUX_SYSCALL) {

@@ -1,3 +1,208 @@
+2009-06-15 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.7.1
+
+2009-06-10 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/macros/RTAI/RT_templates/rtai.mak: 
+	* rtai-lab/scicoslab/macros/RTAI/RT_templates/rtai.mak: 
+	* rtai-lab/scilab5/RTAI_RT_templates/rtai.mak: Template makefile
+	  different for systems with and without COMEDI support.
+
+2009-06-06 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/iarch/i386/hal/hal.c: care of Linux version in calling
+	  smp_call_function, pointed at by Rodrigo Amestica
+	  <ramestica@nrao.edu>
+
+2009-06-05 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/matlab/devices/sfun_comedi*: Some modifications from
+	  Guillaume Millet (from scicos equivalent files).
+
+2009-06-05 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/macros/RTAI/*: 
+	* rtai-lab/scilab/devices/*: 
+	* rtai-lab/scilab5/devices/*: 
+	* rtai-lab/scicoslab/devices/*: Little modifications to avoid
+	  compilation warnings.
+
+2009-06-05 Guillaume Millet <millet@isir.fr>
+
+	* rtai-lab/scilab/macros/RTAI/rtai4_comedi*: 
+	* rtai-lab/scilab/devices/rtai_comedi*: 
+	* rtai-lab/scilab5/RTAI/macros/rtai4_comedi*: 
+	* rtai-lab/scilab5/devices/rtai_comedi*: 
+	* rtai-lab/scicoslab/macros/RTAI/rtai4_comedi*: 
+	* rtai-lab/scicoslab/devices/rtai_comedi*: Little bugs correction.
+
+2009-06-02 Guillaume Millet <millet@isir.fr>
+
+	* addons/comedi/rtai_comedi.h: added comedi_get_subdevice_flags.
+
+2009-05-30 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/rtai4_comedi_encoder.sci:
+	* rtai-lab/scilab/macros/rtai4_comedi_encoder.sci:
+	* rtai-lab/scilab5/macros/rtai4_comedi_encoder.sci:
+	* rtai-lab/scicoslab/macros/RTAI-Lib.cosf:
+	* rtai-lab/scilab/macros/RTAI-Lib.cosf:
+	* rtai-lab/scilab5/macrosRTAI-Lib.cosf:
+	* rtai-lab/scicoslab/devices/rtai_comedi_encoder.c:
+	* rtai-lab/scilab/devices/rtai_comedi_encoder.c:
+	* rtai-lab/scilab5/devices/rtai_comedi_encoder.c: Added subdevices
+	  to handle more encoders (many thanks to Guillaume Millet).
+
+2009-05-29 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/Makefile: Addesd *.sce to sources to be 
+	  copied.
+	* rtai-lab/scilab/macros/Makefile: Added *.sce to sources to be copied.
+
+2009-05-20 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_sched.h: declare rt_make_hard/soft_real_time for
+	  use in kernel space also.
+	* base/sched/sys.c: make available rt_make_hard/soft_real_time for
+          use in kernel space also, for use in Linux hardened kernel threads.
+
+2009-05-14 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/gif_icons/*: Icons for pal tree.
+
+2009-05-14 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/loader.sce: 
+	* rtai-lab/scicoslab/macros/RTAI/loadmacros.sce:
+	* rtai-lab/scicoslab/macros/scilab: New approach in including RTAI files
+	  in scicoslab.
+
+2009-05-08 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_schedcore.h: double MAX_WAKEUP_SRQ, we want to be
+	  pretty sure it is not overrun.
+
+2009-05-07 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab/devices/rtai_log.c: New block for RTAI Logs
+	  (thanks to Holger Nahrstaedt).
+	* rtai-lab/scilab/macros/RTAI/rtai_log.c: New block for RTAI Logs
+	  (thanks to Holger Nahrstaedt).
+	* rtai-lab/scilab/macros/RTAI/RTAI-Lib.cosf: New block for RTAI Logs.
+	* rtai-lab/scilab/macros/RTAI/RTAICodeGen_.sci: Some adds from new
+	  Metalau code generator. 
+	* rtai-lab/scicoslab/devices/rtai_log.c: New block for RTAI Logs
+	  (thanks to Holger Nahrstaedt).
+	* rtai-lab/scicoslab/macros/RTAI/rtai_log.c: New block for RTAI Logs
+	  (thanks to Holger Nahrstaedt).
+	* rtai-lab/scicoslab/macros/RTAI/RTAI-Lib.cosf: New block for RTAI Logs.
+	* rtai-lab/scicoslab/macros/RTAI/RTAICodeGen_.sci: Some adds from new
+	  Metalau code generator. 
+	* rtai-lab/scilab5/devices/rtai_log.c: New block for RTAI Logs
+	  (thanks to Holger Nahrstaedt).
+	* rtai-lab/scilab5/RTAI/macros/rtai_log.c: New block for RTAI Logs
+	  (thanks to Holger Nahrstaedt).
+	* rtai-lab/scilab5/RTAI/macros/RTAI-Lib.cosf: New block for RTAI Logs.
+	* rtai-lab/scilab5/RTAI/macros/RTAICodeGen_.sci: Some adds from new
+	  Metalau code generator. 
+
+2009-05-05 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* base/math/Makefile.kbuild: fix compiler header detection
+
+2009-05-03 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_lxrt.h: syscalls list reordered to allow 
+	  overruns checks server call function, renamed server create, 
+	  legacy maintained, delete RTAI task extension when exiting the 
+	  Linux syscall server.
+	* base/schede/sys.c: ensure the linux syscall server is forced to 
+	  exit when deleting its parent RTAI extension.
+	* base/schede/api.c: checks Linux async syscalls overruns.
+
+2009-04-30 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_lxrt.h: linux server reworked to need no info 
+	  about registers structure.
+	* base/schede/api.c: linux server reworked to allow server task 
+	  working with no info about registers structure.
+
+2009-04-28 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/GNUmakefile.am: Added some files in EXTRA_DIST.
+	* rtai-lab/scilab/GNUmakefile.am: Removed README from  EXTRA_DIST.
+	* rtai-lab/scicoslab/GNUmakefile.*: Removed from repository.
+
+2009-04-27 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/asm-ppc/rtai_fpu.h, rtai_lxrt, rtai_hal.h: upgraded to
+	  work with linux-2.6.29.
+	* base/arch/ppc/hal/hal.c: upgraded to work with linux-2.6.29.
+	* base/arch/i386/hal/hal.immed and
+	* base/arch/x86_64/hal/hal.immed: ensure task flags register returns
+	  with interrupt bit cleared from a tick irq.
+
+2009-04-26 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/sched/api.c: in rt_change_prio reschedule whenever a self change
+	  removes the task from top of the ready list also, accepting a remark
+	  from Richly Matthias <Matthias.Richly@student.hpi.uni-potsdam.de>.
+	* base/sched/include/rtai_schedcore.h: in pass prio reschedule whenever
+	  the top ready task has changed, now it is done if the task receiving 
+	  a prio goes to the top.
+
+2009-04-24 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/sched/api.c: reschedule immediatly if the caller of
+	  rt_task_yield if not at the highest priority.
+
+2009-04-21 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/README.scilab: Install procedures for scilab-4.1.2,
+	  scicoslab and scilab-5.1.1
+	* rtai-lab/scilab5/*: Removed some duplicated files already installed
+	  from folder scilab.
+	* rtai-lab/scilab/macros/RTAI/RTAICodegen_.sci:
+	* rtai-lab/scilab5/RTAI/macros/RTAICodegen_.sci:
+	* rtai-lab/scilab5/RTAI/RT_templates/rtai.mak:
+	* rtai-lab/scilab5/RTAI/RT_templates/rtai_sh.mak: Compatibility between
+	  different scilab/scicoslab versions.
+
+2009-04-21 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/*: Initial files for scicoslab.
+
+2009-04-21 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab5/Makefile: Modified for installing static libraries.
+	* rtai-lab/scilab5/libs/scicoslibs.tgz: tarball with static libraries.
+	* rtai-lab/scilab5/RTAI/RT_templates/rtai_sh.mak: Additional shared
+	  library for Scilab-5.1.1 (thanks to Holger Nahrstaedt).
+
+2009-04-20 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/xrtailab.c, rtai-lab/xrtailab.h: Added some 
+	  lock/unlock commands (many tanks to Robert Dye).
+
+2009-04-20 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab5/Makefile, 
+	  rtai-lab/scilab5/RTAI/RT_templates/rtai_sh.mak: Choice between
+	  generated code with static (default) or shared libraries (thanks to
+	  Holger Nahrstaedt).
+
+2009-04-11 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_lxrt.h: add args array to struct mode_regs for
+	  multiplexed socketcalls.
+	* base/sched/api.c: manage multiplexed socketcalls.
+
+2009-04-10 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/sched/sys.c: rework NONROOT_HRT to align with new way of
+	  setting user space permission in Linux > 2.6.28.
+
 2009-04-09 Pierangelo Masarati <masarati@aero.polimi.it>
 
 	* RTAI 3.7
@@ -33,7 +238,7 @@
 	* base/sched/api.c: anticipate marking a task unblocked before putting
 	  it onto the ready.
 	* base/ipc/netrpc/netrpc.c: set the return value of soft_rt_fun_call
-	  following lxrt mode fullyr; it wont work on CPUs whose endianness
+	  following lxrt mode fully; it wont work on CPUs whose endianness
 	  differs from x86 otherwise.
 
 2009-03-28 Paolo Mantegazza <mantegazza@aero.polimi.it>
@@ -74,7 +279,7 @@
 
 	* base/ipc/netrpc/netrpc.c: do the final cleanup of soft servers by
 	  letting them die autonomously on unblock returns.
-	* base/sched/sche.c: export rt_daemonize for Linux < 2.6.24, used by
+	* base/sched/sched.c: export rt_daemonize for Linux < 2.6.24, used by
 	  netrpc.c.
 
 2009-03-21 Paolo Mantegazza <mantegazza@aero.polimi.it>
