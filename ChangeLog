@@ -1,3 +1,141 @@
+2010-02-16 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.8
+
+2010-02-15 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.8-test2
+
+2010-01-25 Joe Brandt <jbrandt@nrao.edu>
+
+	* rtai-lab/matlab/rtmain.c: create MULTITASKING threads in a way
+	  that does not depend on whom will resume first.
+
+2010-01-14 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_lxrt.h: call rt_thread_delete using rtai_lxrt
+	  syscall mode directly in Linux server soft thread.
+
+2010-01-13 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/arch/i386/calibration/smi-module.c and setsmi.in: fix the SMI
+	  set/reset procedure (thanks to some remarks by: Ries van Twisk
+	  <rtai@rvt.dds.nl>)
+
+2010-01-01 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_schedcore.h: setup OOM killer protection macro,
+	  depending on kernel version.
+	* base/sched/sched.c, sys.c: use related macro in rtai_schedcore.h 
+	  to protect real time tasks from the OOM killer.
+
+2009-12-10 Fernando Augusto <fernando_aug@yahoo.com.br>
+
+	* base/ipc/tbx/tbx.c: fixed a too earlier error return in deleting
+	  a tbx.
+	* base/ipc/msg/msg.c: fixed a bug related to returnx trying to reply
+	  to a timed out rpcing task, without checking its state.
+
+2009-12-01 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.8-test1
+
+2009-11-05 Roberto Bucher <roberto.bucher@supsi.ch>
+	* rtai-lab/matlab/rtmain.c:
+	* rtai-lab/matlab/rtmain.h:
+	* rtai-lab/scicoslab/macros/RTAI/rtai_ext_clock.sci:
+	* rtai-lab/scicoslab/macros/RTAI/gif_icons/rtai_ext_clock.gif:
+	* rtai-lab/scilab/macros/RTAI/rtai_ext_clock.sci:
+	* rtai-lab/scila5/macros/RTAI/rtai_ext_clock.sci: Modifications for
+	  external synchronization (thanks to Henrik Slotholt).
+	* rtai-lab/xrtailab.cpp: 
+	* rtai-lab/xrtailab.h: 
+	* rtai-lab/Fl_Scopes_Manager.cpp:
+	* rtai-lab/matlab/devices/sfun_rtai_scope.c:
+	* rtai-lab/scilab5/RTAI/macros/RTAICodeGen_.sci:
+	* rtai-lab/scilab/macros/RTAI/RTAICodeGen_.sci:
+	* rtai-lab/scicoslab/macros/RTAI/RTAICodeGen_.sci:
+	* rtai-lab/sci*/macros/RTAI/rtai4_scope.sci:
+	* rtai-lab/sci*/macros/RTAI/rtai4_scope.sci:
+	* rtai-lab/scila5/macros/RTAI/rtai4_scope.sci: Modifications for
+	  scopes with signal names and double type (thanks to Henrik Slotholt).
+	* rtai-lab/sci*/devices/rtai_fifoin.c:
+	* rtai-lab/sci*/devices/rtai_fifoout.c: Buffer length set to multiplexed
+          of signal size.
+
+2009-11-04 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* makefile: fix path of kconfig file (thanks to suggestion from
+	  Kevin Kemper kemperke at engr.oregonstate.edu)
+
+2009-10-07 Pierangelo Masarati <masarati@aero.polimi.it>
+	* addons/drivers/16550A/GNUmakefile.am:
+	* addons/drivers/16550A/Makefile.kbuild: fix build out of source tree
+
+2009-10-07 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* base/include/rtai_lxrt.h: Modified for C++ support.
+
+2009-10-06 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_lxrt.h: a few functions for async Linux syscalls
+	  renamed, legacy compatibilty maintained, added a few checks more
+	  and rt_destroy_linux_syscalls_server.
+	* base/include/rtai_sched.h: modified type of the Linux server in 
+	  rt_task structure.
+	* base/sched/api.c: reworked to check for overruns.
+	* base/sched/sched.c: modified call to the Linux async syscalls
+ 	  server, reworked suspend-resume services.
+	* base/sched/sys.c: reworked Linux sycalls server entry, added server
+	  cancellation, modified __task_delete to ensure server cancellation.
+	* base/include/rtai_lxrt.h: linux server reworked to need no info
+	  about registers structure and to support syscalls status inquiries
+	  and cancellations.
+	* base/schede/api.c: linux server reworked to allow server task
+	  working with no info about registers structure and to support 
+	  syscalls status inquiries and cancellations.
+
+2009-09-29 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/sched/api.c: fix rt_task_suspend_timed if it does timeout, use
+	  RTE_TMROVRN in place of RTE_TIMOUT if time is overrunned.
+
+2009-09-25 Valentin Pavlyuchenko <TheValik@gmail.com>
+	   Pierangelo Masarati <masarati@aero.polimi.it>
+	* base/arch/m68k:
+	* base/include/asm-m68k: import of m68k support
+	  contributed by Valentin
+
+2009-09-22 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/include/rtai_wrappers.h: define set find_task_by_pid to work
+	  with Linux > 2.6.30.
+	* base/include/asm-i386/rtai_vectors.h: RTAI_SYS_VECTOR depends on
+	  Linux version now, to support changes in latest HALs.
+
+2009-06-28 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/arch/i386/hal/immed.c: support CONFIG_X86_32_LAZY_GS for
+	  direct vectoring with Linux > 2.6.29.
+
+2009-06-27 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/arch/i386/hal/hal.c: use general hal_processor_id in place of
+	  hard_smp_processor_id to avoid Linux version dependencies.
+	* base/arch/i386/hal/hal.immed, base/arch/x_86_64/hal/hal_immed: do
+	  not set proc entry owner for Linux >= 2.6.30
+
+2009-06-06 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/arch/i386/hal/hal.c: care of Linux version in calling
+	  smp_call_function, pointed at by Rodrigo Amestica
+	  <ramestica@nrao.edu>
+
+2009-06-19 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scilab5/RTAI/RT_templates/rtai.mak: Substitute the
+          previous wrong file.
+
 2009-06-15 Pierangelo Masarati <masarati@aero.polimi.it>
 
 	* RTAI 3.7.1

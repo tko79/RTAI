@@ -36,9 +36,6 @@ ACKNOWLEDGMENTS:
 #include <linux/irq.h>
 #include <linux/reboot.h>
 #include <linux/sys.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18)
-#include <linux/oom.h>
-#endif
 
 #include <asm/param.h>
 #include <asm/system.h>
@@ -1493,6 +1490,16 @@ static int _rt_linux_hrt_next_shot(unsigned long deltat, struct ipipe_tick_devic
 		}
 	}
 	rtai_sti();
+#if 0
+{
+	static int cnt[4] = { 0, 0, 0, 0 },  echo[2] = { 0, 0, 0, 0 };
+	if (++cnt[cpuid = rtai_cpuid()] == 100000) {
+		echo[cpuid] += cnt[cpuid];
+		cnt[cpuid] = 0;	
+		printk("LNX TIMESHOTS CPU %d: %d.\n", cpuid, echo[cpuid]);
+	}
+}
+#endif
 	return 0;
 }
 
@@ -2083,9 +2090,8 @@ static void kthread_fun(int cpuid)
 	void give_back_to_linux(RT_TASK *, int);
 	RT_TASK *task;
 
-#ifdef OOM_DISABLE
-	current->oomkilladj = OOM_DISABLE;
-#endif
+	RTAI_OOM_DISABLE();
+
 	rt_daemonize();
 	rtai_set_linux_task_priority(current, SCHED_FIFO, KTHREAD_F_PRIO);
 	sprintf(current->comm, "F:HARD:%d:%d", cpuid, ++rsvr_cnt[cpuid]);
@@ -2145,9 +2151,8 @@ static void kthread_m(int cpuid)
 	struct klist_t *klistp;
 	RT_TASK *task;
 	
-#ifdef OOM_DISABLE
-	current->oomkilladj = OOM_DISABLE;
-#endif
+	RTAI_OOM_DISABLE();
+
 	rt_daemonize();
 	(task = &thread_task[cpuid])->magic = RT_TASK_MAGIC;
 	task->runnable_on_cpus = cpuid;
@@ -2589,7 +2594,7 @@ static int lxrt_intercept_syscall_prologue(struct pt_regs *regs)
 	if (regs->LINUX_SYSCALL_NR < NR_syscalls && (task = current->rtai_tskext(TSKEXT0))) {
 		if (task->is_hard > 0) {
 			if (task->linux_syscall_server) {
-				rt_exec_linux_syscall(task, task->linux_syscall_server, regs);
+				rt_exec_linux_syscall(task, ((RT_TASK *)task->linux_syscall_server)->linux_syscall_server, regs);
 				return 1;
 			}
 			if (!systrans++) {
