@@ -402,9 +402,8 @@ RTAI_PROTO(int, comedi_do_insn, (void *dev, comedi_insn *insn))
 		int retval;
 		memcpy(ldata, linsn.data, sizeof(ldata));
 		linsn.data = ldata;
-		if ((retval = rtai_lxrt(FUN_COMEDI_LXRT_INDX, COMEDI_LXRT_SIZARG, _KCOMEDI_DO_INSN, &arg).i[LOW]) >= 0) {
-			memcpy(insn[0].data, ldata, sizeof(ldata));
-		}
+		retval = rtai_lxrt(FUN_COMEDI_LXRT_INDX, COMEDI_LXRT_SIZARG, _KCOMEDI_DO_INSN, &arg).i[LOW];
+		memcpy(insn[0].data, ldata, sizeof(ldata));
         	return retval;
 	}
 	return -1;
@@ -428,12 +427,12 @@ RTAI_PROTO(int, rt_comedi_do_insnlist, (void *dev, comedi_insnlist *ilist))
 		for (i = 0; i < lilist.n_insns; i++) { 
 			memcpy(ldata[i], lilist.insns[i].data, lilist.insns[i].n*sizeof(lsampl_t));
 			insns[i] = lilist.insns[i];
+			insns[i].data = ldata[i];
 		}
 		lilist.insns = insns;
-		if (!(retval = rtai_lxrt(FUN_COMEDI_LXRT_INDX, COMEDI_LXRT_SIZARG, _KCOMEDI_DO_INSN_LIST, &arg).i[LOW])) {
-			for (i = 0; i < retval; i++) { 
-				memcpy(ilist->insns[i].data, ldata[i], insns[i].n*sizeof(lsampl_t));
-			} 
+		retval = rtai_lxrt(FUN_COMEDI_LXRT_INDX, COMEDI_LXRT_SIZARG, _KCOMEDI_DO_INSN_LIST, &arg).i[LOW];
+		for (i = 0; i < retval; i++) { 
+			memcpy(ilist->insns[i].data, ldata[i], insns[i].n*sizeof(lsampl_t));
 		} }
         	return retval;
 	}
