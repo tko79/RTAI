@@ -1,3 +1,178 @@
+2012-02-14 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/addons/rtdm/xn.h: move WORK stuff out of a wrong embedding 
+	  within an ifdef CONFIG_SMP
+        * base/arch/i386/hal/hal.immed: review and fix a few bugs of the 
+	  reworked stuff related to enabling/disabling. 
+        * base/arch/x86_64/hal/hal.immed: review and fix a few bugs of the 
+	  reworked stuff related to enabling/disabling. 
+
+2012-02-07 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.9-test2
+
+2012-01-13 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/Makefile: Installation for Scicoslab-4.4.1
+	
+2012-01-12 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/arch/x86_64/hal/hal.immed: reworked all the enabling/disabling 
+	  interrupt controllers functions as already done for i386.
+
+2012-01-10 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/i386/hal/hal.immed: reworked all the enabling/disabling 
+	  interrupt controllers functions to hopefully work from 2.4.36
+	  to 2.6.38; added a check for possible NULL pointers also.
+
+2012-01-09 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* RTAI 3.9-test1
+
+2012-01-09 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* configure configure.in: fix build out of source dir
+
+2012-01-07 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/x86_64/hal/hal.immed and base/i386/hal/hal.immed: use 
+	  IPIPE_HEAD_PRIORITY for the RTAI domain.
+
+2012-01-04 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* configure.in, rtai_config.h: add support for Linux COMEDI.
+        * configure.in, rtai_config.h: add support for setting COMEDI locks
+          by default.
+	* configure, rtai_config.h, [*/]GNUmakefile.in: regenerate with
+	  different autotools (automake 1.11.1, libtoolize 2.2.6b, 
+	  autoconf 2.67).
+
+2012-01-03 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/x86_64/hal/hal.immed: updated to work with Linux up to 
+	  2.6.38.
+        * base/x86_64/hal/rtai_fpu.h: add FPU_ENV compatibility for 
+          Linux > 2.6.34.
+        * base/x86_64/hal/rtai_hal.h: upgraded macros definition to support 
+	  Linux > 2.6.34.
+ 
+2012-01-02 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * addons/comedi/README: add explanations about using native LINUX
+	  COMEDI and remote/distributed COMEDI.
+        * addons/comedi/patchlinuxcomedi: shell script for patching native 
+	  Linux COMEDI.
+        * addons/comedi/rtai_comedi.h: rework and reorder previous layout
+          setup make it possible to use COMEDI as found in Linux kernels;
+	  add netrpc based support for remote/distributed COMEDI usage.
+        * addons/comedi/kcomedi-module.c: set the interface to native Linux 
+	  COMEDI within this module, to avoid touching RTAI hal module and 
+	  to be usable on any arch; set safe pointers at module cleanup to 
+	  avoid oopses in between rtai_comedi module removal and the full 
+	  closure of an application; add specific functions to support
+          remote/distributed COMEDI commands and instructions.
+	* base/arch/i386/Kconfig: make default use of COMEDI lock configurable.
+
+2012-01-01 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+        * base/ipc/msg/msg.c: revised sendx, previous implementation could
+	  overwrite previous sends, made rt_sendx_if safer for in interrupt 
+	  handlers usage, strengthened correctness check of task args and 
+	  copying into pointed variables, receivex-es should have more 
+	  appropriate returns now.
+
+2011-12-31 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/RTAI/RTAICodeGen_.sci: if state are not
+	  present, code for state update is not generated.
+	* rtai-lab/scicoslab/macros/RTAI/RTAICodeGen_.sci: scicosim is not
+	  started by creating code, avoiding problems with blocks used for
+	  HIL (thanks to Klaus Weichinger).
+	
+2011-12-31 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/sched/sched.c and sys.c: if PF_EVNOTIFY is defined use the
+	  related Linux patch service, instead of or-ring the related flag
+	  directly.
+	* addons/rtdm/device.c: avoid DECLARE_MUTEX, use the related struct
+	  declaration and initialize it explicitly at module init.
+	* base/arch/i386/hal/hal.immed: upgraded to work up to Linux 2.6.38.8.
+
+2011-12-29 Paolo Mantegazza <mantegazza@aero.polimi.it>
+
+	* base/arch/i386/hal/hal.c: put diag for APIC timers sync under ifdef.
+	* base/include/asm-i386/rtai_fpu.h: upgrade to support 2.6.35.
+	* base/include/asm-i386/rtai_hal.h: upgrade to support 2.6.35.
+	* addons/drivers/serial/rtai_serial.h: make all declared prototypes
+	  compilable in a lib.
+	* rtai-py/rtai_ser.py: add RTAI serial support for python.
+	* base/include/rtai_wrappers.h: define init_MUTEX_LOCKED if not
+	  defined in Linux.
+	* base/ipc/fifos/fifos.c: define iopl according to
+	  HAVE_UNLOCKED_IOCTL.
+	* base/ipc/shm/shm.c: define iopl according to
+	  HAVE_UNLOCKED_IOCTL.
+	* base/include/rtai_schedcore.h: resume a timed out, suspended task,
+	  unconditionally, zeroing suspdepth if it is > 0: this choice allows
+	  a uniform resumption mechanism both for self and externally
+	  suspended tasks.
+	* base/sched/api.c: resume a suspended task forced to unblock
+	  unconditionally by zeroing suspdepth if it is > 0: this choice
+	  allows a uniform resumption mechanism both for self and externally
+	  suspended tasks; use both of the previous resulting modifications
+	  for all rt_task_suspend flavours.
+	* base/sched/sys.c: export rt_fun_ext for direct use in netrpc.c.
+	* base/ipc/netrpc/netrpc.c: use rt_fun_ext directly, in place of
+	  rt_net_rpc_fun_ext.
+	* base/include/rtai_posix.h: fixed return value of pthread_cond_wait.
+	* addons/rtdm/* and addons/drivers/16559A/*: upgraded to more recent 
+	  rtdm changes.
+	* base/ipc/sem/sem.c: a higher prio task can grab a resem that is
+	  owned by a task that has not been scheduled yet, "ubi maior minor
+	  cessat"; mimicking Linux rt-mutexes.
+	* base/sched/sched.c: use RT_TASK "running" variable to mark a truly
+	  owned resource semaphores when scheduling.
+
+2011-06-27 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/RTAI/RTAICodeGen_.sci: Removed
+	  bug on creating opar structure (thanks to Matteo Morelli)
+
+2011-05-09 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* configure.in, configure: avoid potential shell syntax error,
+	  allow separate src and build dirs for Linux, from Ian Abbott
+
+2011-03-04 Pierangelo Masarati <masarati@aero.polimi.it>
+
+	* makefile: remove erroneous '%' in 'all ::' rule
+
+2011-01-17 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/RTAI/RTAICodeGen_.sci: Modifications
+	  from INRIA
+	* rtai-lab/scicoslab/devices/scicos_block4.h: Modifications from
+	  INRIA
+
+2010-11-27 Fernando Augusto <fernando_aug@yahoo.com.
+
+	* base/ipc/sem/sem.c: fixed a possible nasty locking loop in 
+	  rt_sem_broadcast.
+
+2010-09-01 Roberto Bucher <roberto.bucher@supsi.ch>
+
+	* rtai-lab/scicoslab/macros/RTAI/RTAICodeGen_.sci: Modifications
+	  from INRIA
+	* rtai-lab/scicoslab/devices/scicos_block4.h: Modifications from
+	  INRIA
+
+2010-08-15 Paolo Mantegazza <mantegazza@aero.polimi.it>
+           suggested by Tommaso Falchi Delitala <volalto86@gmail.com>
+
+	* addons/rtdm/rtdm.h: change RTAI_LXRT into RTDM_RTAI_LXRT
+	  to avoid naming conflicts
+
 2010-05-07 Pierangelo Masarati <masarati@aero.polimi.it>
 
 	* RTAI 3.8.1

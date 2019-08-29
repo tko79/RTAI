@@ -1,7 +1,7 @@
 function RTAICodeGen_()
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
-// Last update : 28/08/09
+// Last update : 19/07/10
 //
 // Input editor function of Scicos code generator
 
@@ -61,7 +61,7 @@ function RTAICodeGen_()
             // Got to target sblock.
             scs_m_top=goto_target_scs_m(scs_m_top)
             //## call do_compile_superblock
-            [ok, XX, gui_path, flgcdgen, szclkINTemp, freof] = ...
+            [ok, XX, gui_path, flgcdgen, szclkINTemp, freof, c_atomic_code] = ...
                               do_compile_superblock42(scs_m_top, k);
 
             clearglobal scs_m_top;
@@ -84,7 +84,7 @@ endfunction
 // *******************************************************
 
 function [txt]=call_block42(bk,pt,flag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //** call_block42 : generate C calling sequence
 //                  of a scicos block
@@ -98,6 +98,11 @@ function [txt]=call_block42(bk,pt,flag)
 //
 
   txt=[]
+
+  if flag==2 & (zptr(bk+1)-zptr(bk)+xptr(bk+1)-xptr(bk) == 0) then
+    return
+  end
+
   //**
   if flag==2 & ((zcptr(bk+1)-zcptr(bk))<>0) & pt<0 then
 
@@ -165,7 +170,7 @@ function [txt]=call_block42(bk,pt,flag)
   end
 
   //** add comment
-  txt=[get_comment('call_blk',list(funs(bk),funtyp(bk),bk));]
+  txt=[get_comment('call_blk',list(funs(bk),funtyp(bk),bk,ztyp(bk)));]
 
   //@@ remove call to the end block for standalone
   if stalone & funs(bk)=='scicosexit' then
@@ -865,7 +870,7 @@ endfunction
 // *******************************************************
 
 function [CCode,FCode]=gen_blocks()
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ gen_blocks : generates code for dynamically
 //                linked Fortran and C blocks
@@ -1042,7 +1047,7 @@ endfunction
 // *******************************************************
 
 function [ok,XX,gui_path,flgcdgen,szclkINTemp,freof,c_atomic_code,cpr]=do_compile_superblock42(all_scs_m,numk,atomicflag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ do_compile_superblock42 : transforms a given Scicos discrete and continuous
 //                             SuperBlock into a C defined Block
@@ -1377,9 +1382,9 @@ function [ok,XX,gui_path,flgcdgen,szclkINTemp,freof,c_atomic_code,cpr]=do_compil
   //**** solve which blocks use work ****//
   BeforeCG_WinList = winsid();
 
-  ierr=execstr('[state,t]=scicosim(cpr.state,0,0,cpr.sim,'+..
-               '''start'',scs_m.props.tol)','errcatch')
-
+  //  ierr=execstr('[state,t]=scicosim(cpr.state,0,0,cpr.sim,'+..
+  //               '''start'',scs_m.props.tol)','errcatch')
+  ierr = 1
   //@@ save initial outtb
   if ierr==0
     outtb_init = state.outtb;
@@ -1400,8 +1405,8 @@ function [ok,XX,gui_path,flgcdgen,szclkINTemp,freof,c_atomic_code,cpr]=do_compil
        end
     end
 
-    ierr=execstr('[state,t]=scicosim(state,0,0,cpr.sim,'+..
-                 '''finish'',scs_m.props.tol)','errcatch')
+  //  ierr=execstr('[state,t]=scicosim(state,0,0,cpr.sim,'+..
+  //               '''finish'',scs_m.props.tol)','errcatch')
   end
 
   //@@ remove windows opened by simulation
@@ -1530,17 +1535,23 @@ function [ok,XX,gui_path,flgcdgen,szclkINTemp,freof,c_atomic_code,cpr]=do_compil
   rpat = getcwd(); 
   archname=''; 
   Tsamp = sci2exp(eval(sTsamp));
-  
-  template = ''; //** default values for this version 
+  can_flag = %f;
   
   if XX.model.rpar.props.void3 == [] then
 	target = 'rtai'; //** default compilation chain 
+        template = ''; //** default values for this version 
 	odefun = 'ode4';  //** default solver 
 	odestep = '10';   //** default continous step size 
-  else
-	target  = XX.model.rpar.props.void3(1); //** user defined parameters 
-	odefun  = XX.model.rpar.props.void3(2);
-	odestep = XX.model.rpar.props.void3(3);
+  elseif size(XX.model.rpar.props.void3,2)==3 then
+	target = 'rtai'; //** default compilation chain 
+        template = ''; //** default target board
+	odefun = 'ode4';  //** default solver 
+	odestep = '10';   //** default continous step size 
+  else  
+	target   = XX.model.rpar.props.void3(1); //** user defined parameters
+	template = XX.model.rpar.props.void3(2);
+	odefun   = XX.model.rpar.props.void3(3);
+	odestep  = XX.model.rpar.props.void3(4);
   end
 
   ode_x=['ode1';'ode2';'ode4']; //** available continous solver 
@@ -1554,6 +1565,7 @@ function [ok,XX,gui_path,flgcdgen,szclkINTemp,freof,c_atomic_code,cpr]=do_compil
       rdnom = strsubst(rdnom,' ','_');
       rdnom = strsubst(rdnom,'-','_');
       rdnom = strsubst(rdnom,'.','_');
+      rdnom = strsubst(rdnom,"",'_');
     end
 
     //** dialog box default variables 
@@ -1734,7 +1746,7 @@ endfunction
 // *******************************************************
 
 function [txt]=BlockProto(bk)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //BlockProto : generate prototype for a calling C sequence
 //             of a scicos computational function
@@ -1746,10 +1758,37 @@ function [txt]=BlockProto(bk)
 
   nin=inpptr(bk+1)-inpptr(bk);  //* number of input ports */
   nout=outptr(bk+1)-outptr(bk); //* number of output ports */
+  funs_bk=funs(bk); //* name of the computational function */
+  funtyp_bk=funtyp(bk); //* type of the computational function */
+  ztyp_bk=ztyp(bk); //* zero crossing type */
+
+  //&& call make_BlockProto
+  txt=make_BlockProto(nin,nout,funs_bk,funtyp_bk,ztyp_bk,bk)
+
+endfunction
+
+
+// *******************************************************
+
+function [txt]=make_BlockProto(nin,nout,funs_bk,funtyp_bk,ztyp_bk,bk)
+//Copyright (c) 1989-2010 Metalau project INRIA
+
+//make_BlockProto : generate prototype for a calling C sequence
+//                  of a scicos computational function
+//
+// Input :  nin       : number of input ports
+//          nout      : number of output ports
+//          funs_bk   : name of the computational function
+//          funtyp_bk : type of the computational function
+//          ztyp_bk   : say if block has zero crossings
+//          bk        : an index number
+//
+// Output : txt  : the generated prototype
+//
 
   //## check and adjust function type
-  ftyp=funtyp(bk)
-  ftyp_tmp=modulo(funtyp(bk),10000)
+  ftyp=funtyp_bk
+  ftyp_tmp=modulo(funtyp_bk,10000)
   if ftyp_tmp>2000 then
     ftyp=ftyp-2000
   elseif ftyp_tmp>1000 then
@@ -1769,13 +1808,13 @@ function [txt]=BlockProto(bk)
   end
 
   //@@ agenda_blk
-  if funs(bk)=='agenda_blk' then
+  if funs_bk=='agenda_blk' then
     txt=[]
     return;
   end
 
   //** add comment
-  txt=[get_comment('proto_blk',list(funs(bk),funtyp(bk),bk));]
+  txt=[get_comment('proto_blk',list(funs_bk,funtyp_bk,bk,ztyp_bk));]
 
   select ftyp
     //** zero funtyp
@@ -1785,17 +1824,17 @@ function [txt]=BlockProto(bk)
       txtp=['(int *, int *, double *, double *, double *, int *, double *, \';
             ' int *, double *, int *, double *, int *,int *, int *, \';
             ' double *, int *, double *, int *);'];
-      if (funtyp(bk)>2000 & funtyp(bk)<3000)
-        blank = get_blank('void '+funs(bk)+'(');
-        txtp(1) = 'void '+funs(bk)+txtp(1);
-      elseif (funtyp(bk)<2000)
+      if (funtyp_bk>2000 & funtyp_bk<3000)
+        blank = get_blank('void '+funs_bk+'(');
+        txtp(1) = 'void '+funs_bk+txtp(1);
+      elseif (funtyp_bk<2000)
         //@@ special case for andlog func : should be fixed in scicos
-        if funs(bk) <> 'andlog' then
-          txtp(1) = 'void C2F('+funs(bk)+')'+txtp(1);
-          blank = get_blank('void C2F('+funs(bk)+')');
+        if funs_bk <> 'andlog' then
+          txtp(1) = 'void C2F('+funs_bk+')'+txtp(1);
+          blank = get_blank('void C2F('+funs_bk+')');
         else
-          blank = get_blank('void '+funs(bk)+'(');
-          txtp(1) = 'void '+funs(bk)+txtp(1);
+          blank = get_blank('void '+funs_bk+'(');
+          txtp(1) = 'void '+funs_bk+txtp(1);
         end
       end
       txtp(2:$) = blank + txtp(2:$);
@@ -1809,12 +1848,12 @@ function [txt]=BlockProto(bk)
       //*********** prototype definition ***********//
       txtp=['(int *, int *, double *, double *, double *, int *, double *, \';
             ' int *, double *, int *, double *, int *,int *, int *';]
-      if (funtyp(bk)>2000 & funtyp(bk)<3000)
-        blank = get_blank('void '+funs(bk)+'(');
-        txtp(1) = 'void '+funs(bk)+txtp(1);
-      elseif (funtyp(bk)<2000)
-        txtp(1) = 'void C2F('+funs(bk)+')'+txtp(1);
-        blank = get_blank('void C2F('+funs(bk)+')');
+      if (funtyp_bk>2000 & funtyp_bk<3000)
+        blank = get_blank('void '+funs_bk+'(');
+        txtp(1) = 'void '+funs_bk+txtp(1);
+      elseif (funtyp_bk<2000)
+        txtp(1) = 'void C2F('+funs_bk+')'+txtp(1);
+        blank = get_blank('void C2F('+funs_bk+')');
       end
       if nin>=1 | nout>=1 then
         txtp($)=txtp($)+', \'
@@ -1837,7 +1876,7 @@ function [txt]=BlockProto(bk)
         end
       end
 
-      if ztyp(bk) then
+      if ztyp_bk then
         txtp($)=txtp($)+', \'
         txtp=[txtp;' double *,int *);'];
       else
@@ -1853,18 +1892,18 @@ function [txt]=BlockProto(bk)
 
       //*********** prototype definition ***********//
 
-      txtp=['void '+funs(bk)+...
+      txtp=['void '+funs_bk+...
             '(int *, int *, double *, double *, double *, int *, double *, \';
             ' int *, double *, int *, double *, int *, int *, int *, \'
             ' double **, int *, int *, double **,int *, int *'];
-      if ~ztyp(bk) then
+      if ~ztyp_bk then
         txtp($)=txtp($)+');';
       else
         txtp($)=txtp($)+', \';
         txtp=[txtp;
               ' double *,int *);']
       end
-      blank = get_blank('void '+funs(bk));
+      blank = get_blank('void '+funs_bk);
       txtp(2:$) = blank + txtp(2:$);
       txt = [txt;txtp];
       //********************************************//
@@ -1872,14 +1911,15 @@ function [txt]=BlockProto(bk)
     //**
     case 4 then
       txt=[txt;
-           'void '+funs(bk)+'(scicos_block *, int );'];
+           'void '+funs_bk+'(scicos_block *, int );'];
 
     //**
     case 10004 then
       txt=[txt;
-           'void '+funs(bk)+'(scicos_block *, int );'];
+           'void '+funs_bk+'(scicos_block *, int );'];
 
   end
+
 endfunction
 
 
@@ -2008,8 +2048,7 @@ function txt=make_rtai_params()
             OO=scs_m(path);
           end
         end
-       
-      
+
         //** Add comments **//
         nbipa=nbipa+1;
         ntot_i = ntot_i + (ipptr(i+1)-ipptr(i));
@@ -2056,13 +2095,12 @@ function txt=make_rtai_params()
          '#endif';
          '';
         ]
-
 endfunction
 
 // *******************************************************
 
 function [Code, Code_common]=make_standalonert()
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 // Modified for RTAI by Roberto Bucher roberto.bucher@supsi.ch
 
@@ -2072,7 +2110,6 @@ function [Code, Code_common]=make_standalonert()
 //
 // rmk : zdoit is not used
 //
-
 Code_common= []
 
   x=cpr.state.x;
@@ -2162,7 +2199,7 @@ Code_common= []
         get_scicos_version()+' */'
         '/*     date : '+date()+' */'
         ''
-        '/* Copyright (c) 1989-2009 Metalau project INRIA */'
+        '/* Copyright (c) 1989-2010 Metalau project INRIA */'
 	'/* Code generation modified by Roberto Bucher */'
         ''
         '/* ---- Headers ---- */'
@@ -2217,6 +2254,8 @@ Code_common= []
             '/* ---- Solver functions prototype for standalone use ---- */'
             'int '+rdnom+'simblk_imp(double , double *, double *, double *);'
             'int dae1();'
+            'int dae2();'
+            'int dae4();'
             '']
     else
       Code=[Code
@@ -2471,16 +2510,26 @@ Code = [Code;
 
       for j=1:nopar
         if mat2scs_c_nb(opar(opptr(i)+j-1)) <> 11 then
-          Code_opar =[Code_opar;
-                 '  __CONST__ '+cformatline(mat2c_typ(opar(opptr(i)+j-1)) +...
-                         ' opar_'+string(opptr(i)+j-1) + '[]={'+...
-                             strcat(string(opar(opptr(i)+j-1)),',')+'};',70)]
-        else //** cmplx test
-          Code_opar =[Code_opar;
-                 '  __CONST__ '+cformatline(mat2c_typ(opar(opptr(i)+j-1)) +...
+
+	// Thanks to Matteo Morelli for the correction of this bug
+
+          Code_tmp = cformatline(mat2c_typ(opar(opptr(i)+j-1)) +...
+                                 ' opar_'+string(opptr(i)+j-1) + '[]={'+...
+                                 strcat(string(opar(opptr(i)+j-1)),',')+'};',70);
+          Code_tmp(1) = '  __CONST__ '+Code_tmp(1); 
+          Code_opar =[Code_opar; Code_tmp]         
+
+
+
+
+
+       else //** cmplx test
+          Code_tmp = cformatline(mat2c_typ(opar(opptr(i)+j-1)) +...
                          ' opar_'+string(opptr(i)+j-1) + '[]={'+...
                              strcat(string([real(opar(opptr(i)+j-1)(:));
-                                            imag(opar(opptr(i)+j-1)(:))]),',')+'};',70)]
+                                            imag(opar(opptr(i)+j-1)(:))]),',')+'};',70);
+          Code_tmp(1) = '  __CONST__ '+Code_tmp(1); 
+          Code_opar =[Code_opar; Code_tmp]         
         end
       end
 
@@ -2645,7 +2694,6 @@ Code = [Code;
 
   if Code_work<>[] then
     Code=[Code
-          ''
           '  /* Work array declaration */'
           Code_work
           '']
@@ -2735,7 +2783,8 @@ Code = [Code;
           ''
           '  '+Code_ooztyp
           ''
-          '  '+Code_ozptr]
+          '  '+Code_ozptr
+          '']
   end
   //#######################//
 
@@ -2758,7 +2807,6 @@ Code = [Code;
 
   if Code_outtb<>[] then
     Code=[Code
-          ''
           '  /* Output declaration */'
           Code_outtb
           '']
@@ -2943,6 +2991,10 @@ Code = [Code;
         Code_evout=[Code_evout
                     Code_toevout];
       end
+      //## with_nrd2 ##//
+      if funtyp(kf)==0 then
+        with_nrd2=%t;
+      end
     end
   end
   if Code_evout<>[] then
@@ -2968,9 +3020,21 @@ Code = [Code;
    if impl_blk then
     Code=[Code;
           '  double h,dt;'
+	  '  int i;'
           '']
   end
  
+  if with_nrd then
+    if with_nrd2 then
+      Code=[Code;
+            '  /* Variables for constant values */'
+            '  int nrd_1, nrd_2;'
+            ''
+            '  double *args[2];'
+            '']
+    end
+   end
+
 
   //## input connection to outtb
   Code_inptr=[]
@@ -3285,12 +3349,8 @@ Code = [Code;
         '/*'+part('-',ones(1,40))+'  ISR function */'
         'int '+rdnom+'_isr(double t)'
         '{'
-//        '  int nevprt=1;'
         '  int local_flag;'
 	'  int i;'
-//	'#ifdef linux'
-//        '  double *args[2];'
-//	'#endif'
        ]
 
   if (x <> []) then
@@ -3299,13 +3359,16 @@ Code = [Code;
           '']
   end
 
-  if ALL then
-    Code=[Code;
-          '    /* */'
-          '    ptr = *(block_'+rdnom+'['+string(nb_agenda_blk-1)+'].work);'
-          '    kever = ptr->pointi;'
-          '']
-  end
+  if with_nrd then
+    if with_nrd2 then
+      Code=[Code;
+            '  /* Variables for constant values */'
+            '  int nrd_1, nrd_2;'
+            ''
+            '  double *args[2];'
+            '']
+    end
+  end  
 
   //** flag 1,2,3
   for flag=[1,3,2]
@@ -3380,23 +3443,30 @@ Code = [Code;
             '    '+get_comment('flag',list(flag))
             txt3];
     end
+
+  end
+
+  if impl_blk then
+    intgfun=strsubst(odefun,'ode','dae');
+  else
+    intgfun=odefun
   end
 
   if x<>[] then
     Code=[Code
           ''
-          '  tout=t;'
-	  '  dt='+rdnom+'_get_tsamp();'
-          '  h=dt/'+odestep+';' 
-          '  while (tout+h<t+dt){'
+          '    tout=t;'
+	  '    dt='+rdnom+'_get_tsamp();'
+          '    h=dt/'+odestep+';' 
+          '    while (tout+h<t+dt){'
 	  ]
     if impl_blk then
       Code=[Code
-            '   dae1('+rdnom+'simblk_imp,x,xd,res,tout,h);'
+            '    '+intgfun+'('+rdnom+'simblk_imp,x,xd,res,tout,h);'
 	   ]
     else
       Code=[Code
-            '  '+odefun+'('+rdnom+'simblk,x,xd,tout,h);'
+            '    '+intgfun+'('+rdnom+'simblk,x,xd,tout,h);'
 	   ]
     end
 
@@ -3408,12 +3478,12 @@ Code = [Code;
 	  ]
     if impl_blk then
       Code=[Code
-            '   dae1('+rdnom+'simblk_imp,x,xd,res,tout,he);'
+            '  '+intgfun+'('+rdnom+'simblk_imp,x,xd,res,tout,he);'
 	   ]
 
     else
       Code=[Code
-            '  '+odefun+'('+rdnom+'simblk,x,xd,tout,he);'
+            '  '+intgfun+'('+rdnom+'simblk,x,xd,tout,he);'
             '']
     end
   end
@@ -3442,7 +3512,7 @@ Code = [Code;
     end
   end
 
- Code=[Code
+  Code=[Code
 	''
 	'  return 0;'
         '}']
@@ -3460,6 +3530,17 @@ Code = [Code;
 //	'#endif'
         '']
 
+  if with_nrd then
+    if with_nrd2 then
+      Code=[Code;
+            '  /* Variables for constant values */'
+            '  int nrd_1, nrd_2;'
+            ''
+            '  double *args[2];'
+            '']
+    end
+  end
+  
   Code=[Code;
         '  '+get_comment('flag',list(5))]
 
@@ -3496,7 +3577,8 @@ Code = [Code;
                '#include <machine.h>'
 	       ''
 	       'int phase;'
-	       'int * block_error;'
+	       'int err = 0;'
+	       'int * block_error = &err;'
 	       ''
 	       ]
 
@@ -3525,7 +3607,7 @@ Code = [Code;
                '']
 
                Code_common=[Code_common
-               'void get_block_error(int err)'
+               'int get_block_error(int err)'
                '{'
  	       '  return *block_error;'
                '}'
@@ -3655,19 +3737,12 @@ Code = [Code;
         else
           with_nrd2=%f
         end
-//         with_nrd2=%f;
-//         for k=1:size(ind,2)
-//           if ~or(oord([ind(k)],1)==cap) then
-//             with_nrd2=%t;
-//             break;
-//           end
-//         end
         if with_nrd2 then
           Code=[Code;
                 '  /* Variables for constant values */'
                 '  int nrd_1, nrd_2;'
                 ''
-                '  double *args[100];'
+                '  double *args[2];'
                 '']
         end
       end
@@ -3707,9 +3782,10 @@ Code = [Code;
             '}'
             ''
             '/* DAE Method */'
+	    '/* Euler''s Method */'
             'int dae1(f,x,xd,res,t,h)'
             '  int (*f) ();'
-            '  double *x,*xd,*res;'
+            '  double *x, *xd, *res;'
             '  double t, h;'
             '{'
             '  int i;'
@@ -3720,11 +3796,111 @@ Code = [Code;
             '  if (ierr!=0) return ierr;'
             ''
             '  for (i=0;i<NEQ;i++) {'
-            '   x[i]=x[i]+h*xd[i];'
+            '   x[i]=x[i]+h*res[i];'
             '  }'
             ''
             '  return 0;'
-            '}']
+	    '}'
+             ''
+            '/* Heun''s Method */'
+            'int dae2(f,x,xd,res,t,h)'
+            '  int (*f) ();'
+            '  double *x, *xd, *res;'
+            '  double t, h;'
+            '{'
+            '  int i;'
+            '  int ierr;'
+            '  double y['+string(nX)+'],yh['+string(nX)+'],temp,f0['+string(nX)+'],th;'
+            ''
+            '  /**/'
+            '  memcpy(y,x,NEQ*sizeof(double));'
+            '  memcpy(f0,res,NEQ*sizeof(double));'
+            ''
+            '  /**/'
+            '  ierr=(*f)(t,y, f0, res);'
+            '  if (ierr!=0) return ierr;'
+            ''
+            '  /**/'
+            '  for (i=0;i<NEQ;i++) {'
+            '    x[i]=y[i]+h*f0[i];'
+            '  }'
+            '  th=t+h;'
+            '  for (i=0;i<NEQ;i++) {'
+            '    yh[i]=y[i]+h*f0[i];'
+            '  }'
+            '  ierr=(*f)(th,yh, xd, res);'
+            '  if (ierr!=0) return ierr;'
+            ''
+            '  /**/'
+            '  temp=0.5*h;'
+            '  for (i=0;i<NEQ;i++) {'
+            '    x[i]=y[i]+temp*(f0[i]+res[i]);'
+            '  }'
+            ''
+            '  return 0;'
+            '}'
+            ''
+            '/* Fourth-Order Runge-Kutta (RK4) Formula */'
+            'int dae4(f,x,xd,res,t,h)'
+            '  int (*f) ();'
+            '  double *x, *xd, *res;'
+            '  double t, h;'
+            '{'
+            '  int i;'
+            '  int ierr;'
+            '  double y['+string(nX)+'],yh['+string(nX)+'],'+...
+              'temp,f0['+string(nX)+'],th,th2,'+...
+              'f1['+string(nX)+'],f2['+string(nX)+'];'
+            ''
+            '  /**/'
+            '  memcpy(y,x,NEQ*sizeof(double));'
+            '  memcpy(f0,res,NEQ*sizeof(double));'
+            ''
+            '  /**/'
+            '  ierr=(*f)(t,y, xd, f0);'
+            '  if (ierr!=0) return ierr;'
+            ''
+            '  /**/'
+            '  for (i=0;i<NEQ;i++) {'
+            '    x[i]=y[i]+h*f0[i];'
+            '  }'
+            '  th2=t+h/2;'
+            '  for (i=0;i<NEQ;i++) {'
+            '    yh[i]=y[i]+(h/2)*f0[i];'
+            '  }'
+            '  ierr=(*f)(th2,yh, xd, f1);'
+            '  if (ierr!=0) return ierr;'
+            ''
+            '  /**/'
+            '  temp=0.5*h;'
+            '  for (i=0;i<NEQ;i++) {'
+            '    x[i]=y[i]+temp*f1[i];'
+            '  }'
+            '  for (i=0;i<NEQ;i++) {'
+            '    yh[i]=y[i]+(h/2)*f1[i];'
+            '  }'
+            '  ierr=(*f)(th2,yh, xd, f2);'
+            '  if (ierr!=0) return ierr;'
+            ''
+            '  /**/'
+            '  for (i=0;i<NEQ;i++) {'
+            '    x[i]=y[i]+h*f2[i];'
+            '  }'
+            '  th=t+h;'
+            '  for (i=0;i<NEQ;i++) {'
+            '    yh[i]=y[i]+h*f2[i];'
+            '  }'
+            '  ierr=(*f)(th2,yh, xd, res);'
+            '  if (ierr!=0) return ierr;'
+            ''
+            '  /**/'
+            '  temp=h/6;'
+            '  for (i=0;i<NEQ;i++) {'
+            '    x[i]=y[i]+temp*(f0[i]+2.0*f1[i]+2.0*f2[i]+res[i]);'
+            '  }'
+            ''
+            '  return 0;'
+           '}']
     //## explicit case
     else
       Code=[Code;
@@ -3765,19 +3941,12 @@ Code = [Code;
         else
           with_nrd2=%f
         end
-//         with_nrd2=%f;
-//         for k=1:size(ind,2)
-//           if ~or(oord([ind(k)],1)==cap) then
-//             with_nrd2=%t;
-//             break;
-//           end
-//         end
         if with_nrd2 then
           Code=[Code;
                 '  /* Variables for constant values */'
                 '  int nrd_1, nrd_2;'
                 ''
-                '  double *args[100];'
+                '  double *args[2];'
                 '']
         end
       end
@@ -3942,7 +4111,7 @@ endfunction
 // *******************************************************
 
 function [ccmat]=adj_clkconnect_dep(blklst,ccmat)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //this part was taken from c_pass2 and put in c_pass1;!!
 nbl=size(blklst)
@@ -3975,7 +4144,7 @@ endfunction
 // *******************************************************
 
 function [new_agenda]=adjust_agenda(evts,clkptr,funtyp)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ adjust_agenda : remove secondary activation sources
 //                   from the scicos cpr agenda
@@ -4012,7 +4181,7 @@ endfunction
 // *******************************************************
 
 function [clkptr]=adjust_clkptr(clkptr,funtyp)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ adjust_clkptr : remove secondary activation sources
 //                   from the compiled clkptr
@@ -4044,7 +4213,7 @@ endfunction
 // *******************************************************
 
 function [bllst,ok]=adjust_id_scopes(list_of_scopes,bllst)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ adjust_adjust_id_scopes : function to adjust negative
 //                             and positive id of scicos scopes
@@ -4121,7 +4290,7 @@ endfunction
 // *******************************************************
 
 function [t1]=cformatline(t ,l)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ cformatline : utilitary fonction used to format long C instruction
 //
@@ -4184,7 +4353,7 @@ endfunction
 // *******************************************************
 
 function [txt]=code_to_read_params(varname,var,fpp,typ_str)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ code_to_read_params :  function that write binary data in a scilab file
 //                          descriptor fpp and returns the C code to read
@@ -4259,7 +4428,7 @@ endfunction
 // *******************************************************
 
 function [t]=filetype(m)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ filetype : return type of file using fileinfo
 //              output 2
@@ -4286,7 +4455,7 @@ endfunction
 // *******************************************************
 
 function [txt]=get_blank(str)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ get_blank : return blanks with a length
 //               of the given input string
@@ -4308,7 +4477,7 @@ endfunction
 // *******************************************************
 
 function [txt]=get_code_to_read_params(varname,var,fpp,typ_str)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ get_code_to_read_params : function that write binary data in a scilab file
 //                             descriptor fpp and returns the C code to read
@@ -4346,7 +4515,7 @@ endfunction
 // *******************************************************
 
 function [txt]=get_comment(typ,param)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ get_comment : return a C comment
 //                 for generated code
@@ -4387,7 +4556,7 @@ function [txt]=get_comment(typ,param)
         txt = ['/* Call of '''+param(1) + ...
                ''' (type '+string(param(2))+' - blk nb '+...
                     string(param(3))];
-        if ztyp(param(3)) then
+        if param(4) then
           txt=txt+' - with zcross) */';
         else
           txt=txt+') */';
@@ -4396,7 +4565,7 @@ function [txt]=get_comment(typ,param)
     case 'proto_blk' then
         txt = ['/* prototype of '''+param(1) + ...
                ''' (type '+string(param(2))];
-        if ztyp(param(3)) then
+        if param(4) then
           txt=txt+' - with zcross) */';
         else
           txt=txt+') */';
@@ -4438,7 +4607,7 @@ endfunction
 // *******************************************************
 
 function [ind]=get_ind_clkptr(bk,clkptr,funtyp)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ get_ind_clkptr : get event index of adjusted
 //                    compiled clkptr vector
@@ -4463,7 +4632,7 @@ endfunction
 // *******************************************************
 
 function [scs_m]=goto_target_scs_m(scs_m)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ goto_target_scs_m : look if we want generate a sblock
 //                       contained in a sblock
@@ -4491,7 +4660,7 @@ endfunction
 // *******************************************************
 
 function [depu_mat,ok]=incidence_mat(bllst,connectmat,clkconnect,cor,corinv)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ incidence_mat : compute the incidence matrix
 //
@@ -4551,7 +4720,7 @@ endfunction
 // *******************************************************
 
 function [dep]=is_dep(i,j,bllst,connectmat,clkconnect,cor,corinv)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ is_dep : return the dep_u dependance concerning block i and j
 //
@@ -4587,7 +4756,7 @@ endfunction
 // *******************************************************
 
 function [txt]=mat2c_typ(outtb)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ mat2c_typ : returns the C type of a given ScicosLab
 //               variable
@@ -4631,7 +4800,7 @@ endfunction
 // *******************************************************
 
 function [c_nb]=mat2scs_c_nb(outtb)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ mat2scs_c_nb : returns the scicos C type of a
 //                  given ScicosLab variable
@@ -4675,7 +4844,7 @@ endfunction
 // *******************************************************
 
 function [txt]=mat2scs_c_ptr(outtb)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ mat2scs_c_ptr : returns the scicos C ptr of a
 //                  given ScicosLab variable
@@ -4720,7 +4889,7 @@ endfunction
 // *******************************************************
 
 function [txt]=mat2scs_c_typ(outtb)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ mat2scs_c_typ matrix to scicos C type
 //
@@ -4764,7 +4933,7 @@ endfunction
 // *******************************************************
 
 function [str]=string_to_c_string(a)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 //
 //@@ string_to_c_string : ScicosLab string to C string
 //
@@ -4792,7 +4961,7 @@ endfunction
 // *******************************************************
 
 function [txt]=write_code_cdoit(flag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ write_code_cdoit : generate body of the code for
 //                      for all time dependant blocks
@@ -4914,8 +5083,8 @@ endfunction
 
 // *******************************************************
 
-function [txt]=write_code_doit(ev,flag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+function [txt]=write_code_doit(ev,flag,vvvv)
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ write_code_doit : generate body of the code for
 //                     ordering calls of blocks during
@@ -4928,10 +5097,15 @@ function [txt]=write_code_doit(ev,flag)
 //
 
   txt=[];
+  zeroflag=(argn(2)==3);
 
   for j=ordptr(ev):ordptr(ev+1)-1
     bk=ordclk(j,1);
-    pt=ordclk(j,2);
+    if zeroflag then
+      pt=0;
+    else
+      pt=ordclk(j,2);
+    end
     //** blk
     if funtyp(bk)>-1 then
       if or(bk==act) | or(bk==cap) then
@@ -4958,11 +5132,6 @@ function [txt]=write_code_doit(ev,flag)
                ''];
         end
       end
-
-
-// BUBU
-
-
     //** ifthenelse blk
     elseif funtyp(bk)==-1 then
       ix=-1+inplnk(inpptr(bk));
@@ -5100,7 +5269,7 @@ endfunction
 // *******************************************************
 
 function [txt]=write_code_idoit()
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ write_code_idoit : generate body of the code for
 //                   ordering calls of initial
@@ -5225,7 +5394,7 @@ endfunction
 // *******************************************************
 
 function [txt]=write_code_initdoit(ev,flag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ write_code_initdoit : generate body of the code for
 //                         ordering calls of blocks during
@@ -5350,7 +5519,7 @@ endfunction
 // *******************************************************
 
 function [txt]=write_code_odoit(flag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ write_code_odoit : generate body of the code for
 //                      ordering calls of blocks before
@@ -5365,7 +5534,11 @@ function [txt]=write_code_odoit(flag)
 
   for j=1:noord
     bk=oord(j,1);
-    pt=oord(j,2);
+    if flag==2 then
+      pt=0;
+    else
+      pt=oord(j,2);
+    end
     //** blk
     if funtyp(bk)>-1 then
       if or(bk==cap) then
@@ -5504,7 +5677,7 @@ endfunction
 // *******************************************************
 
 function [txt]=write_code_ozdoit(ev,flag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ write_code_ozdoit : generate body of the code for both
 //                       flag 0 & flag 9
@@ -5654,7 +5827,7 @@ endfunction
 // *******************************************************
 
 function [txt]=write_code_reinitdoit(flag)
-//Copyright (c) 1989-2009 Metalau project INRIA
+//Copyright (c) 1989-2010 Metalau project INRIA
 
 //@@ write_code_reinitdoit : generate body of the code for
 //                           implicit solver reinitialization

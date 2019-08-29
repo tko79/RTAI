@@ -113,6 +113,12 @@ static inline unsigned long hweight_long(unsigned long w)
 
 #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) */
 
+#ifndef init_MUTEX_LOCKED 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,26)
+#define init_MUTEX_LOCKED(sem)  sema_init(sem, 0)
+#endif
+#endif
+
 #define RTAI_MODULE_PARM_ARRAY(name, type, addr, size) \
 	module_param_array(name, type, addr, 0400);
 

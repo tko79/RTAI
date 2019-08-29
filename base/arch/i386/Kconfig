@@ -6,7 +6,7 @@ config MODULES
 
 config RTAI_VERSION
 	string
-	default "3.8 (vulcano)"
+	default "3.9 (vulcano)"
 
 menu "General"
 
@@ -740,7 +740,7 @@ config RTAI_USE_NEWERR
 
 config RTAI_IMMEDIATE_LINUX_SYSCALL
 	bool "Immediate Linux syscall in hard real time"
-	default y
+	default n
 	help
 	This parameter allows to control RTAI behaviour when a Linux syscall
 	is made while in hard real time, according to the following two ways:
@@ -755,8 +755,8 @@ config RTAI_IMMEDIATE_LINUX_SYSCALL
 		- call the related sys service through the Linux syscall path;
 		- return to user space in soft real time mode;
 		- resume hard real time at the next call of an RTAI function.
-	The most efficient behaviour is 1 but 2 can be useful in relation to
-	specific RTAI users extensions.
+	The marginally most efficient behaviour is likely 1 but 2, the default,
+	is safer.
 	It is remarked that nothing is changed if hard/soft transitions 
 	are called controlled by an application task through 
 	rt_make_hard_real_time/rt_make_soft_real_time.
@@ -928,21 +928,36 @@ config RTAI_COMEDI_LXRT
 	bool "Real Time COMEDI support in user space"
 	default n
 	help
-	RTAI offers a unified kcomedilib interface to kernel/user space 
+	RTAI offers a unified COMEDI interface to kernel/user space 
 	real-time applications. A kernel module will be built and a library 
-	will be provided. The kernel modules is called rtai_comedi.o and
-	must be loaded if you want to use the libkcomedilxrt.a library.
+	will be provided. The kernel module is called rtai_comedi.o and must 
+	be loaded if you want to use the libkcomedilxrt.a library.
 
 config RTAI_COMEDI_DIR
 	depends on RTAI_COMEDI_LXRT
 	string "COMEDI installation directory"
 	default "/usr/local"
 	help
-	You need the COMEDI support for data acquisition to build
-	applications such as RTAILab.
-	You can set the path to this package's installation
-	directory here. More specifically, RTAI needs the file
-	linux/comedilib.h.
+	You may need the COMEDI support for data acquisition to build your
+	applications, such as RTAILab.
+	You can set the path to COMEDI installation directory here. 
+	It will be found either in Linux, since 2.6.29 (circa), see README
+	in "addons/comedi" for what to do in such a case, or by getting 
+        kcomedi from www.comedi.org, in which case RTAI needs the file 
+	linux/comedilib.h also.
+
+config RTAI_USE_COMEDI_LOCK
+	depends on RTAI_COMEDI_LXRT
+	bool "Use COMEDI lock by default"
+	default "n"
+	help
+	You may need the COMEDI lock for data acquisition when sharing a
+	board among many users. You can lock/unlock explicitly any 
+	operation by calling comedi_lock/unlock yourself. By setting this
+	parameter all functions needing a lock for a safe shared use are
+	lock/unlocked by default. It can be useful to save a couple of
+	calls to enforce locking from user space. Little is gained with it
+	in kernel space.
 
 config RTAI_CPLUSPLUS
 	bool "In-kernel C++ support"

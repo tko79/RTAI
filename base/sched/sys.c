@@ -46,7 +46,8 @@ Nov. 2001, Jan Kiszka (Jan.Kiszka@web.de) fix a tiny bug in __task_init.
 #include <rtai_schedcore.h>
 
 #define MAX_FUN_EXT  16
-static struct rt_fun_entry *rt_fun_ext[MAX_FUN_EXT];
+struct rt_fun_entry *rt_fun_ext[MAX_FUN_EXT];
+EXPORT_SYMBOL(rt_fun_ext);
 
 /* 
  * WATCH OUT for the default max expected size of messages from/to user space.
@@ -242,8 +243,9 @@ static inline RT_TASK* __task_init(unsigned long name, int prio, int stack_size,
 		rt_task->max_msg_size[1] = max_msg_size;
 		if (rt_register(name, rt_task, IS_TASK, 0)) {
 			rt_task->state = 0;
-
-#ifdef PF_EVNOTIFY
+#ifdef __IPIPE_FEATURE_ENABLE_NOTIFIER
+			ipipe_enable_notifier(current);
+#else
 			current->flags |= PF_EVNOTIFY;
 #endif
 #if (defined VM_PINNED) && (defined CONFIG_MMU)
@@ -609,7 +611,7 @@ static inline long long handle_lxrt_request (unsigned int lxsrq, long *arg, RT_T
 			if ((larg->task)->exectime[0] && (larg->task)->exectime[1]) {
 				larg->exectime[0] = (larg->task)->exectime[0]; 
 				larg->exectime[1] = (larg->task)->exectime[1]; 
-				larg->exectime[2] = rdtsc(); 
+				larg->exectime[2] = rtai_rdtsc(); 
 			}
                         return 0;
 		}
